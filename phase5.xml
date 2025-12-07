@@ -1,0 +1,40 @@
+<!-- phase5.xml -->
+<phase>
+  <id>phase5</id>
+  <name>Manual Versioning and Commits</name>
+  <goal>
+    Introduce explicit exhibition versions with manual commit points and comments, capturing full room state.
+  </goal>
+  <basedOnPrdSections>
+    <section>functionalRequirements.versioningAndCollaboration</section>
+    <section>dataModel.entities.ExhibitionVersion</section>
+    <section>apiDesign.exhibitionsAndVersions</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>ExhibitionVersion records with parent_version_id, comment, created_at, created_by</item>
+      <item>"Save as new version" button in planner</item>
+      <item>Version list/history UI</item>
+      <item>Loading a selected version for editing</item>
+    </in>
+    <out>
+      <item>No branch-merging UI in MVP</item>
+      <item>No constraints integration yet</item>
+    </out>
+  </scope>
+  <requirements>
+    <backend>
+      <item>Implement POST /exhibitions/:id/versions to create a new version from current state (instances, movable walls).</item>
+      <item>Add GET endpoints to list versions and fetch specific versions for an exhibition.</item>
+    </backend>
+    <frontend>
+      <item>Add a "Save as new version" button in planner, opening a dialog for a commit comment.</item>
+      <item>On commit, send current state to backend to create a new ExhibitionVersion.</item>
+      <item>Add a versions panel listing all versions with timestamps and comments; allow selecting which version to load.</item>
+    </frontend>
+  </requirements>
+  <successCriteria>
+    <item>A curator can create multiple versions with distinct comments and switch between them in the planner.</item>
+    <item>Each version loads its own snapshot of artwork instances and room state.</item>
+  </successCriteria>
+</phase>

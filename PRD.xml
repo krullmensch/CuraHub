@@ -1,0 +1,379 @@
+<prd>
+  <meta>
+    <productName>CuraHub</productName>
+    <version>0.1-MVP</version>
+    <language>en</language>
+    <lastUpdated>2025-12-07</lastUpdated>
+  </meta>
+
+  <vision>
+    <summary>
+      CuraHub is a web-based tool for planning, curating, and archiving exhibitions inside a digital twin of real exhibition spaces, starting with the room "Satellit". Curators can upload media (images, videos, 3D objects), place them in a 3D room, and save curated versions that visitors can experience through a browser-based 3D walkthrough. [1][2]
+    </summary>
+    <targetGroups>
+      <group>Curators, teachers, and students working with exhibitions and spatial design</group>
+      <group>Admins responsible for physical spaces and technical setup</group>
+      <group>Public visitors using a browser-only viewer without login</group>
+    </targetGroups>
+    <primaryMvpGoal>
+      Deliver an accurate, navigable digital copy of the Satellit room in the browser, where curators can place 2D images, videos, and 3D objects, save their arrangement as versions, and expose a published version via a public link.
+    </primaryMvpGoal>
+  </vision>
+
+  <rolesAndUseCases>
+    <roles>
+      <role id="viewer">
+        <description>
+          Public user with no login. Can open an exhibition via a URL and enter a 3D walkthrough of the currently published version.
+        </description>
+      </role>
+      <role id="curator">
+        <description>
+          Registered user. Can create exhibitions, upload media, place artworks in the room, and create new versions via manual commits.
+        </description>
+      </role>
+      <role id="admin">
+        <description>
+          Registered user with admin role. Has all curator capabilities plus room- and constraint-management, and can choose featured exhibitions for the homepage.
+        </description>
+      </role>
+    </roles>
+
+    <useCases>
+      <useCase id="UC1_viewerEnterExhibition">
+        <title>Viewer enters exhibition</title>
+        <actor>viewer</actor>
+        <preconditions>
+          <condition>An exhibition has at least one published version.</condition>
+          <condition>The viewer has a valid exhibition URL (/exhibition/:slug).</condition>
+        </preconditions>
+        <mainFlow>
+          <step>The viewer opens /exhibition/:slug in a browser.</step>
+          <step>The system loads the Satellit GLB room model and the published exhibition version.</step>
+          <step>The viewer navigates with mouse look and WASD movement in a first-person style walkthrough, with soft camera motion and collisions against walls and artworks.</step>
+          <step>By focusing an artwork with the crosshair and interacting (e.g. click or key), the viewer opens an info overlay showing title, artist, short text, and dimensions.</step>
+        </mainFlow>
+        <postconditions>
+          <condition>No login is required at any point.</condition>
+        </postconditions>
+      </useCase>
+
+      <useCase id="UC2_curatorEditExhibition">
+        <title>Curator edits exhibition in planner mode</title>
+        <actor>curator</actor>
+        <preconditions>
+          <condition>Curator is logged in.</condition>
+          <condition>An exhibition exists or is created by the curator.</condition>
+        </preconditions>
+        <mainFlow>
+          <step>The curator opens /exhibition/:slug/edit.</step>
+          <step>The system checks authentication and permissions and loads the latest working version for that curator or the latest global version.</step>
+          <step>The planner view shows the Satellit room with all current artwork instances and movable walls.</step>
+          <step>The curator drags and drops media files (image, video, 3D) into the browser window, which opens an upload dialog with basic metadata fields.</step>
+          <step>The curator confirms metadata; the system creates or updates Artwork and Asset records.</step>
+          <step>The curator drops the media onto a position in the scene; the system raycasts against walls or floor and creates an ArtworkInstance with default transform at that position.</step>
+          <step>The curator refines position, rotation, and scale via 3D gizmos and a floating numeric input panel (e.g. set artwork center to 1.45 m above floor).</step>
+          <step>When satisfied, the curator manually saves a new version with a commit comment.</step>
+        </mainFlow>
+      </useCase>
+
+      <useCase id="UC3_reuseArtwork">
+        <title>Reuse existing artwork in another exhibition</title>
+        <actor>curator</actor>
+        <preconditions>
+          <condition>Artwork with at least one Asset exists in the global library.</condition>
+        </preconditions>
+        <mainFlow>
+          <step>The curator opens the planner for a given exhibition version.</step>
+          <step>The curator opens a library panel listing existing Artworks.</step>
+          <step>The curator selects an Artwork and one or more of its Assets for placement.</step>
+          <step>The curator drops the Asset into the scene; the system creates a new ArtworkInstance with independent transform for this version.</step>
+        </mainFlow>
+      </useCase>
+
+      <useCase id="UC4_adminManageConstraints">
+        <title>Admin manages room constraints</title>
+        <actor>admin</actor>
+        <preconditions>
+          <condition>Admin is logged in.</condition>
+          <condition>A Room record for Satellit exists and is associated with at least one exhibition.</condition>
+        </preconditions>
+        <mainFlow>
+          <step>The admin opens the planner for any exhibition in a given room and switches to the "Room &amp; Constraints" tab, visible only for admins.</step>
+          <step>The admin creates new 3D constraint boxes in the room (BoxGeometry meshes) and positions, rotates, and scales them using transform gizmos.</step>
+          <step>The admin assigns each constraint a type such as "no_artwork" or "no_wall".</step>
+          <step>Constraints are saved per room and are effective for all exhibitions using that room.</step>
+        </mainFlow>
+      </useCase>
+
+      <useCase id="UC5_publishAndFeature">
+        <title>Publish and feature an exhibition version</title>
+        <actor>curatorOrAdmin</actor>
+        <preconditions>
+          <condition>At least one version exists for a given exhibition.</condition>
+        </preconditions>
+        <mainFlow>
+          <step>The curator or admin selects a version in the versions panel.</step>
+          <step>The curator or admin marks that version as published.</step>
+          <step>An admin can additionally flag a published version as featured for the homepage.</step>
+          <step>The homepage displays the featured exhibition and provides a link into /exhibition/:slug.</step>
+        </mainFlow>
+      </useCase>
+    </useCases>
+  </rolesAndUseCases>
+
+  <functionalRequirements>
+    <viewerMode>
+      <requirements>
+        <requirement>
+          The system must load an accurate GLB model of the Satellit room as a static mesh, ideally with baked lighting to reduce runtime rendering cost. [1]
+        </requirement>
+        <requirement>
+          The viewer uses a first-person style navigation with pointer lock and keyboard movement (WASD or arrow keys), with soft motion, no jumping, and simple collision against room geometry, movable walls, artworks, and constraints.
+        </requirement>
+        <requirement>
+          A crosshair is always centered on the screen; raycasting from the camera through the crosshair determines which artwork is focused.
+        </requirement>
+        <requirement>
+          When an artwork is focused and in range, an info overlay can be opened showing at least title, artist, short text, and dimensions.
+        </requirement>
+        <requirement>
+          The viewer route /exhibition/:slug must be accessible without authentication.
+        </requirement>
+      </requirements>
+    </viewerMode>
+
+    <plannerMode>
+      <requirements>
+        <requirement>
+          The planner is accessible under /exhibition/:slug/edit and requires login and curator or admin role.
+        </requirement>
+        <requirement>
+          The planner reuses the same 3D scene as the viewer but adds UI elements such as toolbars, gizmos, side panels, and context menus.
+        </requirement>
+        <requirement>
+          Drag and drop uploads of images, videos, and 3D models must open an upload dialog that allows entering basic metadata (title, artist, short text, dimensions) and confirms the creation of Artworks and Assets.
+        </requirement>
+        <requirement>
+          Images should be pre-compressed on the client where possible; videos should be compressed or transcoded on the server, with the frontend clearly indicating processing status. [2]
+        </requirement>
+        <requirement>
+          Dropping media into the 3D scene must use raycasting to determine the initial position on walls or floor and create an ArtworkInstance at that location with default transform values.
+        </requirement>
+        <requirement>
+          Curators must be able to change position, rotation, and scale of ArtworkInstances via 3D transform gizmos and via precise numeric input in a floating context panel.
+        </requirement>
+        <requirement>
+          The planner should display key measurements such as artwork center height above the floor (e.g. 1.45 m) and optionally distances to nearby surfaces or instances.
+        </requirement>
+        <requirement>
+          Multiple assets can be grouped into a single logical Artwork, sharing common metadata such as title, artist, and description while each asset has its own placement.
+        </requirement>
+      </requirements>
+    </plannerMode>
+
+    <adminFunctions>
+      <requirements>
+        <requirement>
+          Admin-only controls must appear as an additional tab or mode inside the planner UI, not as a separate admin site, and must be hidden for non-admin users.
+        </requirement>
+        <requirement>
+          Admins must be able to create, edit, and delete 3D constraint boxes inside the room: position, rotation, dimensions, and type.
+        </requirement>
+        <requirement>
+          Constraint types must at least distinguish between areas where artworks cannot be placed and areas where movable walls cannot be placed.
+        </requirement>
+        <requirement>
+          Constraints are stored per room and automatically applied to all exhibitions and versions associated with that room.
+        </requirement>
+      </requirements>
+    </adminFunctions>
+
+    <constraintsAndValidation>
+      <requirements>
+        <requirement>
+          Constraints must be toggleable in the planner: when visible, they appear as semi-transparent boxes (e.g. in red); when hidden, they are not rendered but still active logically.
+        </requirement>
+        <requirement>
+          When a movable wall or ArtworkInstance intersects a constraint box, the system should mark the object as invalid, visually highlight the object and the relevant constraint in red, and either block the placement or clearly indicate that the current state cannot be committed.
+        </requirement>
+        <requirement>
+          Even when global constraint visibility is off, any violated constraint must briefly light up and become visible during the violation, to clearly explain why placement fails.
+        </requirement>
+      </requirements>
+    </constraintsAndValidation>
+
+    <versioningAndCollaboration>
+      <requirements>
+        <requirement>
+          Curators must explicitly trigger new versions via a manual "Save as new version" or commit action, providing a commit comment.
+        </requirement>
+        <requirement>
+          Each ExhibitionVersion record must reference a parent_version_id, enabling a simple branching structure when multiple curators work from the same base version.
+        </requirement>
+        <requirement>
+          The system does not need to support automatic merges of conflicting versions in the MVP; instead, curators can choose which version branch to continue from and can manually combine ideas into a new version.
+        </requirement>
+        <requirement>
+          Exactly one version per exhibition can be marked as published; the public viewer always loads that published version.
+        </requirement>
+      </requirements>
+    </versioningAndCollaboration>
+  </functionalRequirements>
+
+  <dataModel>
+    <entities>
+      <entity name="Room">
+        <fields>
+          <field name="id" type="uuidOrInt"/>
+          <field name="name" type="string"/>
+          <field name="model_url" type="string"/>
+        </fields>
+      </entity>
+
+      <entity name="RoomConstraint">
+        <fields>
+          <field name="id" type="uuidOrInt"/>
+          <field name="room_id" type="foreignKey(Room)"/>
+          <field name="type" type="enum(no_artwork,no_wall,other)"/>
+          <field name="position" type="vector3"/>
+          <field name="rotation" type="vector3"/>
+          <field name="dimensions" type="vector3"/>
+        </fields>
+      </entity>
+
+      <entity name="Exhibition">
+        <fields>
+          <field name="id" type="uuidOrInt"/>
+          <field name="room_id" type="foreignKey(Room)"/>
+          <field name="title" type="string"/>
+          <field name="slug" type="string"/>
+          <field name="description" type="text"/>
+        </fields>
+      </entity>
+
+      <entity name="ExhibitionVersion">
+        <fields>
+          <field name="id" type="uuidOrInt"/>
+          <field name="exhibition_id" type="foreignKey(Exhibition)"/>
+          <field name="parent_version_id" type="foreignKey(ExhibitionVersionOrNull)"/>
+          <field name="created_by_user_id" type="foreignKey(User)"/>
+          <field name="created_at" type="datetime"/>
+          <field name="comment" type="string"/>
+          <field name="is_published" type="boolean"/>
+        </fields>
+      </entity>
+
+      <entity name="Artwork">
+        <fields>
+          <field name="id" type="uuidOrInt"/>
+          <field name="title" type="string"/>
+          <field name="artist" type="string"/>
+          <field name="description" type="text"/>
+          <field name="year" type="stringOrInt"/>
+          <field name="metadata" type="jsonOptional"/>
+        </fields>
+      </entity>
+
+      <entity name="Asset">
+        <fields>
+          <field name="id" type="uuidOrInt"/>
+          <field name="artwork_id" type="foreignKey(Artwork)"/>
+          <field name="type" type="enum(image,video,model3d)"/>
+          <field name="medium" type="enum(frame,projector,display,wallpaper,model3d)"/>
+          <field name="media_url" type="string"/>
+          <field name="texture_url" type="stringOptional"/>
+          <field name="real_dimensions" type="vector3"/>
+        </fields>
+      </entity>
+
+      <entity name="ArtworkInstance">
+        <fields>
+          <field name="id" type="uuidOrInt"/>
+          <field name="asset_id" type="foreignKey(Asset)"/>
+          <field name="exhibition_version_id" type="foreignKey(ExhibitionVersion)"/>
+          <field name="position" type="vector3"/>
+          <field name="rotation" type="vector3"/>
+          <field name="scale" type="vector3"/>
+          <field name="virtual_dimensions" type="vector3Optional"/>
+          <field name="collider_type" type="enum(box,capsule,cylinder,auto)"/>
+          <field name="collider_dimensions" type="vector3Optional"/>
+        </fields>
+      </entity>
+
+      <entity name="User">
+        <fields>
+          <field name="id" type="uuidOrInt"/>
+          <field name="email" type="string"/>
+          <field name="password_hash" type="string"/>
+          <field name="role" type="enum(curator,admin)"/>
+        </fields>
+      </entity>
+
+      <entity name="ExhibitionUser">
+        <fields>
+          <field name="user_id" type="foreignKey(User)"/>
+          <field name="exhibition_id" type="foreignKey(Exhibition)"/>
+        </fields>
+      </entity>
+    </entities>
+  </dataModel>
+
+  <apiDesign>
+    <auth>
+      <endpoint method="POST" path="/auth/register"/>
+      <endpoint method="POST" path="/auth/login"/>
+      <endpoint method="GET" path="/auth/me"/>
+    </auth>
+
+    <roomsAndConstraints>
+      <endpoint method="GET" path="/rooms"/>
+      <endpoint method="GET" path="/rooms/:roomId/constraints"/>
+      <endpoint method="POST" path="/rooms/:roomId/constraints"/>
+      <endpoint method="PATCH" path="/constraints/:id"/>
+      <endpoint method="DELETE" path="/constraints/:id"/>
+    </roomsAndConstraints>
+
+    <exhibitionsAndVersions>
+      <endpoint method="GET" path="/exhibitions/:slug/published"/>
+      <endpoint method="GET" path="/exhibitions/:slug/versions/latest"/>
+      <endpoint method="POST" path="/exhibitions"/>
+      <endpoint method="POST" path="/exhibitions/:id/versions"/>
+      <endpoint method="PATCH" path="/versions/:id/publish"/>
+    </exhibitionsAndVersions>
+
+    <artworksAndAssets>
+      <endpoint method="GET" path="/artworks"/>
+      <endpoint method="POST" path="/artworks"/>
+      <endpoint method="POST" path="/artworks/:id/assets"/>
+    </artworksAndAssets>
+
+    <instances>
+      <endpoint method="POST" path="/versions/:versionId/instances"/>
+      <endpoint method="PATCH" path="/instances/:id"/>
+      <endpoint method="DELETE" path="/instances/:id"/>
+    </instances>
+
+    <uploads>
+      <endpoint method="POST" path="/upload"/>
+    </uploads>
+  </apiDesign>
+
+  <architecture>
+    <frontend>
+      <stack>
+        <item>React with React Router for routes "/", "/exhibition/:slug", "/exhibition/:slug/edit". [3]</item>
+        <item>@react-three/fiber and drei for the 3D scene, loading the GLB room and placing artworks. [1]</item>
+        <item>Zustand as global state manager for exhibition/version state, selection, UI modes, constraints visibility, etc. [2]</item>
+      </stack>
+    </frontend>
+    <backend>
+      <stack>
+        <item>Node.js (e.g. Express or Fastify) for REST API.</item>
+        <item>MariaDB as the relational database, accessed via an ORM such as Prisma or Sequelize.</item>
+        <item>Server-side tools like ffmpeg for video processing and ImageMagick or similar for image processing.</item>
+        <item>Self-hosted VPS, using filesystem or S3-compatible storage for media assets.</item>
+      </stack>
+    </backend>
+  </architecture>
+</prd>

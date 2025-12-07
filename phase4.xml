@@ -1,0 +1,41 @@
+<!-- phase4.xml -->
+<phase>
+  <id>phase4</id>
+  <name>Transform Gizmos and Precise Editing</name>
+  <goal>
+    Enable curators to select placed images and adjust their position, rotation, and scale via gizmos and numeric input.
+  </goal>
+  <basedOnPrdSections>
+    <section>functionalRequirements.plannerMode</section>
+    <section>dataModel.entities.ArtworkInstance</section>
+    <section>architecture.frontend</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>Selection of artwork instances in the 3D scene</item>
+      <item>TransformControls (translate/rotate/scale)</item>
+      <item>Floating context panel showing and editing transform values</item>
+      <item>Backend persistence of transforms</item>
+    </in>
+    <out>
+      <item>No version commits yet</item>
+      <item>No constraints enforcement</item>
+    </out>
+  </scope>
+  <requirements>
+    <frontend>
+      <item>Implement hit-testing / raycasting to select an ArtworkInstance by clicking it.</item>
+      <item>Attach TransformControls to the selected ArtworkInstance for translate/rotate/scale.</item>
+      <item>Display a floating panel with numeric position/rotation/scale inputs synchronized with the gizmos.</item>
+      <item>Manage selection and editing state via Zustand (e.g. selectedInstanceId, gizmoMode).</item>
+    </frontend>
+    <backend>
+      <item>Expose PATCH /instances/:id to update transform fields (position, rotation, scale).</item>
+      <item>Ensure planner reloads updated transforms from the backend.</item>
+    </backend>
+  </requirements>
+  <successCriteria>
+    <item>A curator can click a placed image, move/rotate/scale it with gizmos, and see numeric values update live.</item>
+    <item>After page reload, artworks retain their edited positions.</item>
+  </successCriteria>
+</phase>

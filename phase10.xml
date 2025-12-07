@@ -1,0 +1,39 @@
+<!-- phase10.xml -->
+<phase>
+  <id>phase10</id>
+  <name>Homepage, Featured Exhibition, and Polish</name>
+  <goal>
+    Provide a public homepage with a featured exhibition and refine the UI/UX for initial real-world testing.
+  </goal>
+  <basedOnPrdSections>
+    <section>vision.primaryMvpGoal</section>
+    <section>rolesAndUseCases.useCases.UC5_publishAndFeature</section>
+    <section>architecture.frontend</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>Public homepage route "/"</item>
+      <item>Featured exhibition selection by admin</item>
+      <item>List of past published exhibitions</item>
+      <item>Basic UX polish (loading states, error messages)</item>
+    </in>
+    <out>
+      <item>No full CMS for news or blog content</item>
+    </out>
+  </scope>
+  <requirements>
+    <backend>
+      <item>Add a way to mark one published ExhibitionVersion as "featured" (e.g. a field or a settings table).</item>
+      <item>Expose an endpoint to fetch featured exhibition and a list of past published exhibitions.</item>
+    </backend>
+    <frontend>
+      <item>Implement homepage "/" showing featured exhibition info and link to /exhibition/:slug.</item>
+      <item>Show a list of past exhibitions with links to their viewer routes.</item>
+      <item>Add loading indicators for heavy operations (model loading, video processing status) and user-friendly error feedback.</item>
+    </frontend>
+  </requirements>
+  <successCriteria>
+    <item>Opening "/" shows a curated entry point into CuraHub with at least one featured exhibition.</item>
+    <item>The system feels coherent and ready for tests with real curators and visitors.</item>
+  </successCriteria>
+</phase>

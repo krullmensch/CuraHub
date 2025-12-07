@@ -1,0 +1,41 @@
+<!-- phase1.xml -->
+<phase>
+  <id>phase1</id>
+  <name>Static 3D Viewer for Satellit</name>
+  <goal>
+    Provide a browser-based first-person walkthrough of the Satellit room using a GLB model, without backend, auth, or editing features.
+  </goal>
+  <basedOnPrdSections>
+    <section>vision</section>
+    <section>functionalRequirements.viewerMode</section>
+    <section>architecture.frontend</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>React app with routing to /exhibition/satellit</item>
+      <item>React Three Fiber Canvas rendering the Satellit GLB model</item>
+      <item>First-person style navigation (pointer lock + WASD)</item>
+      <item>Basic collision against room geometry (no walls clipping)</item>
+    </in>
+    <out>
+      <item>No backend or database</item>
+      <item>No artworks, uploads, or metadata</item>
+      <item>No versioning or constraints</item>
+    </out>
+  </scope>
+  <requirements>
+    <frontend>
+      <item>Set up React + React Router with a route /exhibition/satellit.</item>
+      <item>Integrate @react-three/fiber Canvas and load the Satellit GLB model.</item>
+      <item>Implement pointer-lock camera with mouse look and WASD movement.</item>
+      <item>Add simple collision detection so the camera cannot pass through walls.</item>
+    </frontend>
+    <backend>
+      <item>No backend; all data is static in this phase.</item>
+    </backend>
+  </requirements>
+  <successCriteria>
+    <item>The app runs locally, /exhibition/satellit opens a WebGL canvas.</item>
+    <item>User can walk through the Satellit room with WASD + mouse without leaving the space.</item>
+  </successCriteria>
+</phase>

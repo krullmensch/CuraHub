@@ -1,0 +1,39 @@
+<!-- phase6.xml -->
+<phase>
+  <id>phase6</id>
+  <name>Public Viewer and Publishing</name>
+  <goal>
+    Expose published exhibition versions via public URLs without login and separate viewer vs. planner modes.
+  </goal>
+  <basedOnPrdSections>
+    <section>functionalRequirements.viewerMode</section>
+    <section>functionalRequirements.versioningAndCollaboration</section>
+    <section>apiDesign.exhibitionsAndVersions</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>Publish flag for versions</item>
+      <item>Public viewer route /exhibition/:slug serving the published version</item>
+      <item>Viewer-only UI (no editing tools)</item>
+      <item>Crosshair + info overlay for artworks</item>
+    </in>
+    <out>
+      <item>No videos/3D models yet (still only 2D from earlier phases, unless Phase7 is already done)</item>
+    </out>
+  </scope>
+  <requirements>
+    <backend>
+      <item>Add PATCH /versions/:id/publish to set a version as published and unset others for the same exhibition.</item>
+      <item>Implement GET /exhibitions/:slug/published to return the published version state.</item>
+    </backend>
+    <frontend>
+      <item>In planner, allow curator/admin to mark a version as published.</item>
+      <item>Implement viewer route /exhibition/:slug that loads the published version without requiring auth.</item>
+      <item>Hide all editing controls in viewer; keep only navigation, crosshair, and info overlays.</item>
+    </frontend>
+  </requirements>
+  <successCriteria>
+    <item>A public user can open /exhibition/:slug, walk through the room, and see info for artworks.</item>
+    <item>Curators can change which version is publicly visible by toggling "published".</item>
+  </successCriteria>
+</phase>

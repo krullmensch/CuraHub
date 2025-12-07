@@ -1,0 +1,40 @@
+<!-- phase9.xml -->
+<phase>
+  <id>phase9</id>
+  <name>Movable Walls and Multi-Asset Artworks</name>
+  <goal>
+    Enable movement of specific walls and allow grouping multiple assets into a single logical artwork with shared metadata.
+  </goal>
+  <basedOnPrdSections>
+    <section>rolesAndUseCases.useCases.UC4_adminManageConstraints</section>
+    <section>dataModel.entities.Artwork</section>
+    <section>dataModel.entities.Asset</section>
+    <section>dataModel.entities.ArtworkInstance</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>Two movable wall meshes from the Satellit GLB</item>
+      <item>Selection and transform editing of walls in planner</item>
+      <item>Constraint enforcement for walls (no_wall zones)</item>
+      <item>Grouping multiple ArtworkInstances into a single Artwork (multi-asset works)</item>
+    </in>
+    <out>
+      <item>No complex branching/merging based on wall states beyond existing versioning logic</item>
+    </out>
+  </scope>
+  <requirements>
+    <frontend>
+      <item>Expose movable walls as selectable objects with TransformControls in planner.</item>
+      <item>Persist wall transforms as part of ExhibitionVersion state.</item>
+      <item>Allow multi-selection of ArtworkInstances and "group into artwork" actions that share Artwork-level metadata.</item>
+    </frontend>
+    <backend>
+      <item>Extend version persistence to include wall transform data.</item>
+      <item>Support multiple Assets per Artwork and proper linkage from ArtworkInstance to Asset and Artwork.</item>
+    </backend>
+  </requirements>
+  <successCriteria>
+    <item>Curators can reposition the two specified walls while respecting constraints.</item>
+    <item>Curators can group two or more image instances into one artwork with shared title and text.</item>
+  </successCriteria>
+</phase>

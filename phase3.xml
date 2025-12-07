@@ -1,0 +1,48 @@
+<!-- phase3.xml -->
+<phase>
+  <id>phase3</id>
+  <name>Image Upload and Basic Placement</name>
+  <goal>
+    Allow curators to upload 2D images, enter basic metadata, and place them on walls in the Satellit room.
+  </goal>
+  <basedOnPrdSections>
+    <section>functionalRequirements.plannerMode</section>
+    <section>dataModel.entities.Artwork</section>
+    <section>dataModel.entities.Asset</section>
+    <section>dataModel.entities.ArtworkInstance</section>
+    <section>apiDesign.artworksAndAssets</section>
+    <section>apiDesign.instances</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>Drag &amp; drop image upload (JPG/PNG)</item>
+      <item>Upload dialog with title, artist, short text, dimensions</item>
+      <item>Client-side image compression before upload</item>
+      <item>Raycast-based initial placement on walls</item>
+      <item>Rendering 2D artworks as framed quads on walls</item>
+    </in>
+    <out>
+      <item>No videos or 3D models yet</item>
+      <item>No versioning UI (only current working state)</item>
+      <item>No constraints or admin features</item>
+    </out>
+  </scope>
+  <requirements>
+    <backend>
+      <item>Implement /upload for image files, returning a media_url after storage.</item>
+      <item>Create /artworks and /artworks/:id/assets endpoints to store metadata and asset records.</item>
+      <item>Create /versions/:versionId/instances or similar to register ArtworkInstances with transforms.</item>
+    </backend>
+    <frontend>
+      <item>Add drag &amp; drop area in planner view for images.</item>
+      <item>On drop, open a dialog for metadata entry (title, artist, text, dimensions).</item>
+      <item>Compress images client-side and send to /upload; then create Artwork and Asset records via API.</item>
+      <item>On drop onto the 3D scene, use raycasting to compute the wall hit point and create an ArtworkInstance there.</item>
+      <item>Render image as a textured plane with a simple frame in the 3D room.</item>
+    </frontend>
+  </requirements>
+  <successCriteria>
+    <item>A curator can upload an image, enter metadata, and see it as a framed artwork on a wall.</item>
+    <item>ArtworkInstances persist via backend and reload correctly when reopening the planner.</item>
+  </successCriteria>
+</phase>

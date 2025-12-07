@@ -1,0 +1,41 @@
+<!-- phase8.xml -->
+<phase>
+  <id>phase8</id>
+  <name>Constraints and Admin Editor</name>
+  <goal>
+    Allow admins to define 3D constraint boxes in the room and enforce them during placement and movement of walls and artworks.
+  </goal>
+  <basedOnPrdSections>
+    <section>functionalRequirements.adminFunctions</section>
+    <section>functionalRequirements.constraintsAndValidation</section>
+    <section>dataModel.entities.RoomConstraint</section>
+    <section>apiDesign.roomsAndConstraints</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>Admin-only "Room &amp; Constraints" tab in planner</item>
+      <item>Creation, editing, deletion of constraint boxes</item>
+      <item>Toggle visibility of constraints</item>
+      <item>Collision-based validation with visual feedback (red highlighting)</item>
+    </in>
+    <out>
+      <item>No advanced constraint types beyond basic "no_artwork" and "no_wall"</item>
+    </out>
+  </scope>
+  <requirements>
+    <backend>
+      <item>Implement CRUD endpoints for RoomConstraint: /rooms/:roomId/constraints and /constraints/:id.</item>
+      <item>Secure these endpoints so only admins can modify constraints.</item>
+    </backend>
+    <frontend>
+      <item>Add an admin-only tab in planner to list and manage constraints.</item>
+      <item>Use BoxGeometry meshes with TransformControls for constraint editing.</item>
+      <item>Store and retrieve constraint transforms and types from backend.</item>
+      <item>During wall or artwork movement, check intersection with constraints and apply red highlighting + blocking behavior.</item>
+    </frontend>
+  </requirements>
+  <successCriteria>
+    <item>An admin can define constraint volumes for exits or sockets.</item>
+    <item>Curators cannot place walls or artworks violating these constraints; violations are visually obvious.</item>
+  </successCriteria>
+</phase>

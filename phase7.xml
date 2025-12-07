@@ -1,0 +1,39 @@
+<!-- phase7.xml -->
+<phase>
+  <id>phase7</id>
+  <name>Video and 3D Model Support</name>
+  <goal>
+    Extend media support to include videos on screens/projectors and 3D models as objects in the room.
+  </goal>
+  <basedOnPrdSections>
+    <section>dataModel.entities.Asset</section>
+    <section>dataModel.entities.ArtworkInstance</section>
+    <section>functionalRequirements.plannerMode</section>
+  </basedOnPrdSections>
+  <scope>
+    <in>
+      <item>Video upload and server-side compression</item>
+      <item>Video playback on 3D surfaces (screens, projectors)</item>
+      <item>3D model upload (GLB/GLTF) and placement</item>
+      <item>Medium field (projector, display, frame, wallpaper, 3D model) influences rendering</item>
+    </in>
+    <out>
+      <item>No advanced media controls (e.g. playlists, subtitles) in MVP</item>
+    </out>
+  </scope>
+  <requirements>
+    <backend>
+      <item>Extend /upload and asset handling to accept video and 3D model files.</item>
+      <item>Integrate ffmpeg for transcoding videos to a web-friendly format (e.g. H.264 MP4).</item>
+    </backend>
+    <frontend>
+      <item>Extend upload dialog to detect file type and set Asset.type (image, video, model3d) and medium.</item>
+      <item>Render video assets as planes with video textures (projector/display behavior).</item>
+      <item>Load 3D models via useGLTF and place them as Meshes in the scene.</item>
+    </frontend>
+  </requirements>
+  <successCriteria>
+    <item>A curator can upload a video and see it playing on a virtual screen or projected surface.</item>
+    <item>A curator can upload a 3D model and place it as a sculpture in the room.</item>
+  </successCriteria>
+</phase>
