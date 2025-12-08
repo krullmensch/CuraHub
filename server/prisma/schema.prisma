@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            Int      @id @default(autoincrement())
+  email         String   @unique
+  password_hash String
+  role          String   @default("curator") // "curator" or "admin"
+  createdAt     DateTime @default(now())
+
+  exhibitions   ExhibitionVersion[]
+}
+
+model Exhibition {
+  id          Int                 @id @default(autoincrement())
+  title       String
+  slug        String              @unique
+  room_id     Int                 // Placeholder for now
+  versions    ExhibitionVersion[]
+}
+
+model ExhibitionVersion {
+  id                  Int        @id @default(autoincrement())
+  exhibition_id       Int
+  exhibition          Exhibition @relation(fields: [exhibition_id], references: [id])
+  parent_version_id   Int?
+  created_by_user_id  Int
+  creator             User       @relation(fields: [created_by_user_id], references: [id])
+  created_at          DateTime   @default(now())
+  comment             String?
+  is_published        Boolean    @default(false)
+
+  // Content JSON for now until we define full relational structure for placements
+  // This simplifies Phase 2 MVP
+  data                Json?      
+}

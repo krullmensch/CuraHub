@@ -19,21 +19,23 @@
     </in>
     <out>
       <item>No videos/3D models yet (still only 2D from earlier phases, unless Phase7 is already done)</item>
+      <item>Viewing is open to all, but editing remains restricted to @hsbi.de accounts</item>
     </out>
   </scope>
   <requirements>
     <backend>
       <item>Add PATCH /versions/:id/publish to set a version as published and unset others for the same exhibition.</item>
-      <item>Implement GET /exhibitions/:slug/published to return the published version state.</item>
+      <item>Implement GET /exhibitions/:slug/published to return the published version state without requiring authentication.</item>
     </backend>
     <frontend>
       <item>In planner, allow curator/admin to mark a version as published.</item>
       <item>Implement viewer route /exhibition/:slug that loads the published version without requiring auth.</item>
       <item>Hide all editing controls in viewer; keep only navigation, crosshair, and info overlays.</item>
+      <item>Viewer should not show any indication of the @hsbi.de email restriction (only curators need to know this).</item>
     </frontend>
   </requirements>
   <successCriteria>
     <item>A public user can open /exhibition/:slug, walk through the room, and see info for artworks.</item>
-    <item>Curators can change which version is publicly visible by toggling "published".</item>
+    <item>Curators with @hsbi.de accounts can change which version is publicly visible by toggling "published".</item>
   </successCriteria>
 </phase>

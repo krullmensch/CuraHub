@@ -16,6 +16,7 @@
       <item>Featured exhibition selection by admin</item>
       <item>List of past published exhibitions</item>
       <item>Basic UX polish (loading states, error messages)</item>
+      <item>Optional: info text about curator access (e.g. "To curate exhibitions, register with your @hsbi.de email")</item>
     </in>
     <out>
       <item>No full CMS for news or blog content</item>
@@ -30,10 +31,12 @@
       <item>Implement homepage "/" showing featured exhibition info and link to /exhibition/:slug.</item>
       <item>Show a list of past exhibitions with links to their viewer routes.</item>
       <item>Add loading indicators for heavy operations (model loading, video processing status) and user-friendly error feedback.</item>
+      <item>Optionally add a footer or info section mentioning that curator access requires an @hsbi.de email address.</item>
     </frontend>
   </requirements>
   <successCriteria>
     <item>Opening "/" shows a curated entry point into CuraHub with at least one featured exhibition.</item>
+    <item>Visitors understand the platform is open for viewing but restricted for curators to @hsbi.de accounts.</item>
     <item>The system feels coherent and ready for tests with real curators and visitors.</item>
   </successCriteria>
 </phase>

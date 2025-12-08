@@ -3,7 +3,7 @@
   <id>phase2</id>
   <name>Backend & Authentication Foundation</name>
   <goal>
-    Introduce a Node.js backend with MariaDB and basic user authentication, preparing for protected planner routes.
+    Introduce a Node.js backend with MariaDB and basic user authentication, preparing for protected planner routes. Only users with "@hsbi.de" email addresses can register and log in.
   </goal>
   <basedOnPrdSections>
     <section>dataModel.entities.User</section>
@@ -15,6 +15,7 @@
       <item>Node.js server (Express or Fastify)</item>
       <item>MariaDB schema setup for User and basic Exhibition tables</item>
       <item>Register, login, and "current user" endpoints</item>
+      <item>Email domain validation: only "@hsbi.de" addresses allowed</item>
       <item>Protected frontend route /exhibition/:slug/edit requiring login</item>
     </in>
     <out>
@@ -26,17 +27,21 @@
     <backend>
       <item>Set up Node.js project and connect to MariaDB using an ORM (e.g. Prisma/Sequelize).</item>
       <item>Create User table with fields: id, email, password_hash, role (curator/admin).</item>
-      <item>Implement /auth/register, /auth/login, /auth/me endpoints with JWT or similar session mechanism.</item>
+      <item>Implement /auth/register with server-side validation that rejects any email not ending in "@hsbi.de".</item>
+      <item>Implement /auth/login with JWT or similar session mechanism.</item>
+      <item>Implement /auth/me endpoint to fetch current authenticated user.</item>
       <item>Create minimal Exhibition table (id, title, slug, room_id) for later use.</item>
     </backend>
     <frontend>
       <item>Add login and registration views.</item>
+      <item>In registration form, display clear error message if email does not end with "@hsbi.de".</item>
       <item>Implement auth state handling (e.g. via Zustand) and store the token.</item>
       <item>Protect /exhibition/:slug/edit route; redirect unauthenticated users to login with redirect back.</item>
     </frontend>
   </requirements>
   <successCriteria>
-    <item>New users can register and log in.</item>
+    <item>New users with "@hsbi.de" email addresses can register and log in successfully.</item>
+    <item>Users with other email domains receive clear error feedback and cannot register.</item>
     <item>Authenticated users can open /exhibition/:slug/edit; unauthenticated users are redirected to /login.</item>
   </successCriteria>
 </phase>
