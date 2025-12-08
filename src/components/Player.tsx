@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls, KeyboardControls, useKeyboardControls } from '@react-three/drei';
 import { RigidBody, CapsuleCollider, RapierRigidBody } from '@react-three/rapier';
@@ -12,6 +12,11 @@ const PlayerController = () => {
     const rigidBody = useRef<RapierRigidBody>(null);
     // We used to simulate direction vector, now we apply velocity to the RB
     // and sync camera to RB.
+
+    useEffect(() => {
+        // Fix initial camera tilt - look straight forward
+        camera.rotation.set(0, 0, 0);
+    }, [camera]);
     
     useFrame(() => {
         const { forward, backward, left, right } = getKeys();
