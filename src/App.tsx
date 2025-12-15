@@ -3,6 +3,7 @@ import { ViewerPage } from './pages/ViewerPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { EditorLayout } from './components/EditorLayout';
 import './App.css';
 
 function App() {
@@ -15,9 +16,11 @@ function App() {
       {/* Public Viewer */}
       <Route path="/exhibition/satellit" element={<ViewerPage />} />
 
-      {/* Protected Routes (Placeholder for now) */}
+      {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
-         <Route path="/exhibition/satellit/edit" element={<div style={{color:'white', padding: 50}}><h1>Editor Placeholder</h1></div>} />
+         <Route element={<EditorLayout />}>
+            <Route path="/exhibition/satellit/edit" element={<div style={{color:'white', padding: 50}}><h1>Editor Placeholder</h1></div>} />
+         </Route>
       </Route>
     </Routes>
   );

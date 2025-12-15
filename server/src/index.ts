@@ -14,6 +14,10 @@ app.get('/', (req, res) => {
   res.send('CuraHub API Phase 2');
 });
 
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+export { app };
