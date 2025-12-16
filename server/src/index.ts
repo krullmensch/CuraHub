@@ -1,6 +1,10 @@
 import express from 'express';
 import cors from 'cors';
+import path from 'path';
 import { authRouter } from './routes/auth';
+import { uploadRouter } from './routes/upload';
+import { artworksRouter } from './routes/artworks';
+import { instancesRouter } from './routes/instances';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -8,7 +12,13 @@ const PORT = process.env.PORT || 3000;
 app.use(cors());
 app.use(express.json());
 
+// Serve uploaded files statically
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
 app.use('/auth', authRouter);
+app.use('/upload', uploadRouter);
+app.use('/artworks', artworksRouter);
+app.use('/instances', instancesRouter);
 
 app.get('/', (req, res) => {
   res.send('CuraHub API Phase 2');

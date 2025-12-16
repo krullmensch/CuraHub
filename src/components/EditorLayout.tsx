@@ -1,13 +1,41 @@
+import { useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { UploadDropzone } from './UploadDropzone';
+import { MetadataDialog } from './MetadataDialog';
+import { useEditorStore } from '../store/editorStore';
 
 export const EditorLayout = () => {
   const { user, logout } = useAuthStore();
+  const startPlacement = useEditorStore((state) => state.startPlacement);
   const navigate = useNavigate();
+  const [uploadedAsset, setUploadedAsset] = useState<any | null>(null);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const setDialogOpen = useEditorStore((state) => state.setDialogOpen);
+
+  const onUploadComplete = (asset: any) => {
+      console.log('Upload complete:', asset);
+      setUploadedAsset(asset);
+      setDialogOpen(true);
+  };
+
+  // Update type to receive data object
+  const onMetadataSaved = (data: { id: number, width: number, height: number }) => {
+      console.log('Artwork saved:', data);
+      setUploadedAsset(null);
+      setDialogOpen(false);
+      
+      startPlacement({ 
+          id: data.id, 
+          width: data.width, 
+          height: data.height, 
+          url: uploadedAsset.url 
+      });
   };
 
   return (
@@ -40,8 +68,23 @@ export const EditorLayout = () => {
           Logout
         </button>
       </header>
+      
       <div style={{ flex: 1, position: 'relative' }}>
-         <Outlet />
+         <UploadDropzone
+            onUploadStart={() => console.log('Upload started')}
+            onUploadComplete={onUploadComplete}
+            onUploadError={(err) => alert(`Upload error: ${err}`)}
+         >
+            <Outlet />
+         </UploadDropzone>
+
+         {uploadedAsset && (
+             <MetadataDialog 
+                asset={uploadedAsset}
+                onSave={onMetadataSaved}
+                onCancel={() => { setUploadedAsset(null); setDialogOpen(false); }}
+             />
+         )}
       </div>
     </div>
   );

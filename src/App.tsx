@@ -4,6 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { EditorLayout } from './components/EditorLayout';
+import { EditorPage } from './pages/EditorPage';
 import './App.css';
 
 function App() {
@@ -19,7 +20,7 @@ function App() {
       {/* Protected Routes */}
       <Route element={<ProtectedRoute />}>
          <Route element={<EditorLayout />}>
-            <Route path="/exhibition/satellit/edit" element={<div style={{color:'white', padding: 50}}><h1>Editor Placeholder</h1></div>} />
+            <Route path="/exhibition/satellit/edit" element={<EditorPage />} />
          </Route>
       </Route>
     </Routes>

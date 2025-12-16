@@ -36,7 +36,63 @@ model ExhibitionVersion {
   comment             String?
   is_published        Boolean    @default(false)
 
-  // Content JSON for now until we define full relational structure for placements
-  // This simplifies Phase 2 MVP
+  // Content JSON for legacy/cache, but using relational for Phase 3
   data                Json?      
+  
+  instances           ArtworkInstance[]
+}
+
+model Artwork {
+  id          Int      @id @default(autoincrement())
+  title       String
+  artist      String?
+  year        String?
+  description String?  @db.Text
+  width       Float?   // Physical width in cm
+  height      Float?   // Physical height in cm
+  
+  asset       Asset?   @relation(fields: [assetId], references: [id])
+  assetId     Int?     @unique
+
+  instances   ArtworkInstance[]
+  
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Asset {
+  id        Int      @id @default(autoincrement())
+  filename  String
+  path      String   // Relative path or URL
+  mimetype  String
+  size      Int
+  width     Int?     // Original pixel width
+  height    Int?     // Original pixel height
+  dpi       Int?     // Original DPI
+  metadata  Json?    // Any extra extracted metadata
+  
+  artwork   Artwork?
+  
+  createdAt DateTime @default(now())
+}
+
+model ArtworkInstance {
+  id          Int               @id @default(autoincrement())
+  
+  artwork     Artwork           @relation(fields: [artworkId], references: [id])
+  artworkId   Int
+  
+  version     ExhibitionVersion @relation(fields: [versionId], references: [id])
+  versionId   Int
+
+  // Transform (stored as individual floats for querying, or could be JSON)
+  position_x  Float
+  position_y  Float
+  position_z  Float
+  rotation_x  Float             @default(0)
+  rotation_y  Float             @default(0)
+  rotation_z  Float             @default(0)
+  scale       Float             @default(1.0)
+
+  createdAt   DateTime          @default(now())
 }
