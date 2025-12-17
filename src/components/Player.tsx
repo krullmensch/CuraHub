@@ -7,7 +7,7 @@ import { useEditorStore } from '../store/editorStore';
 
 const SPEED = 5;
 
-const PlayerController = ({ paused }: { paused: boolean }) => {
+export const PlayerController = ({ paused }: { paused: boolean }) => {
     const { camera } = useThree();
     const [, getKeys] = useKeyboardControls();
     const rigidBody = useRef<RapierRigidBody>(null);

@@ -3,10 +3,16 @@ import { Grid } from '@react-three/drei';
 import { RigidBody } from '@react-three/rapier';
 import { Satellit } from './Satellit';
 import { ArtworkInstances } from './ArtworkInstances';
+import { PlannerCameraSystem } from './PlannerCameraSystem';
+import { useEditorStore } from '../store/editorStore';
 
 export const Scene = () => {
+    const viewMode = useEditorStore(state => state.plannerViewMode);
+
     return (
         <>
+            <PlannerCameraSystem />
+
             {/* Lighting Setup */}
             {/* Ambient Light: Base level illumination */}
             <ambientLight intensity={.9} />
@@ -26,10 +32,13 @@ export const Scene = () => {
             <pointLight position={[-5, 5, -5]} intensity={0.5} color="#eef" />
 
             {/* Show grid only during development/editing if needed, or keeping it for reference */}
-            <Grid args={[20, 20]} cellColor="white" sectionColor="gray" infiniteGrid fadeDistance={50} position={[0, -0.01, 0]} />
+            {/* Hide grid in First Person Mode for immersion */}
+            {viewMode !== 'firstPerson' && (
+                <Grid args={[20, 20]} cellColor="white" sectionColor="gray" infiniteGrid fadeDistance={50} position={[0, -0.01, 0]} />
+            )}
             
             <RigidBody type="fixed" colliders="trimesh">
-                <Satellit />
+                <Satellit viewMode={viewMode} />
             </RigidBody>
 
             <Suspense fallback={null}>

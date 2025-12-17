@@ -3,18 +3,19 @@ import { Loader } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
 import * as THREE from 'three';
 import { Scene } from '../components/Scene';
-import { Player } from '../components/Player';
+// Player is now handled inside PlannerCameraSystem
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { useEditorStore } from '../store/editorStore';
 
 export const EditorPage = () => {
   const isPlacing = useEditorStore((state) => state.isPlacing);
+  const viewMode = useEditorStore((state) => state.plannerViewMode);
 
   return (
     <>
       <Canvas 
         shadows 
-        camera={{ position: [0, 1.7, 0], fov: 60 }} 
+        // Camera is managed by PlannerCameraSystem in Scene
         style={{ width: '100vw', height: '100vh' }}
         gl={{
             toneMapping: THREE.ACESFilmicToneMapping,
@@ -24,19 +25,20 @@ export const EditorPage = () => {
       >
         <Physics gravity={[0, -9.81, 0]}>
             <Scene />
-            <Player />
             <ArtworkPlacement />
         </Physics>
       </Canvas>
       <Loader />
       
-      {/* Reticle */}
-      <div style={{
-        position: 'absolute', top: '50%', left: '50%',
-        width: '10px', height: '10px', background: 'white',
-        borderRadius: '50%', transform: 'translate(-50%, -50%)',
-        pointerEvents: 'none', zIndex: 10
-      }} />
+      {/* Reticle - Only valid in First Person Mode */}
+      {viewMode === 'firstPerson' && (
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%',
+            width: '10px', height: '10px', background: 'white',
+            borderRadius: '50%', transform: 'translate(-50%, -50%)',
+            pointerEvents: 'none', zIndex: 10
+          }} />
+      )}
 
       {/* Placement UI Overlay */}
       {isPlacing && (

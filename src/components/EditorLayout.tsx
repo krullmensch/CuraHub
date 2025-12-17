@@ -5,9 +5,12 @@ import { UploadDropzone } from './UploadDropzone';
 import { MetadataDialog } from './MetadataDialog';
 import { useEditorStore } from '../store/editorStore';
 
+import { ViewModeControls } from './ViewModeControls';
+
 export const EditorLayout = () => {
   const { user, logout } = useAuthStore();
   const startPlacement = useEditorStore((state) => state.startPlacement);
+  const viewMode = useEditorStore((state) => state.plannerViewMode);
   const navigate = useNavigate();
   const [uploadedAsset, setUploadedAsset] = useState<any | null>(null);
 
@@ -38,39 +41,46 @@ export const EditorLayout = () => {
       });
   };
 
+  const isPlanningMode = viewMode !== 'firstPerson';
+
   return (
     <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <header style={{ 
-        padding: '1rem', 
+        padding: '0.5rem 1rem', // Reduced padding
         background: '#333', 
         color: 'white', 
         display: 'flex', 
         justifyContent: 'space-between',
         alignItems: 'center'
       }}>
-        <div>
-           <span style={{ fontWeight: 'bold' }}>CuraHub Editor</span>
-           <span style={{ marginLeft: '1rem', fontSize: '0.8rem', color: '#ccc' }}>
-             {user?.email}
-           </span>
+        <div className="flex items-center">
+           <span style={{ fontWeight: 'bold', marginRight: '2rem' }}>CuraHub Editor</span>
+           <ViewModeControls />
         </div>
-        <button 
-          onClick={handleLogout}
-          style={{ 
-            padding: '0.5rem 1rem', 
-            background: '#d9534f', 
-            color: 'white', 
-            border: 'none', 
-            borderRadius: '4px',
-            cursor: 'pointer' 
-          }}
-        >
-          Logout
-        </button>
+        
+        <div className="flex items-center">
+            <span style={{ marginRight: '1rem', fontSize: '0.8rem', color: '#ccc' }}>
+                {user?.email}
+            </span>
+            <button 
+              onClick={handleLogout}
+              style={{ 
+                padding: '0.5rem 1rem', 
+                background: '#d9534f', 
+                color: 'white', 
+                border: 'none', 
+                borderRadius: '4px',
+                cursor: 'pointer' 
+              }}
+            >
+              Logout
+            </button>
+        </div>
       </header>
       
       <div style={{ flex: 1, position: 'relative' }}>
          <UploadDropzone
+            disabled={!isPlanningMode} // Disable upload in FP mode
             onUploadStart={() => console.log('Upload started')}
             onUploadComplete={onUploadComplete}
             onUploadError={(err) => alert(`Upload error: ${err}`)}
@@ -78,12 +88,28 @@ export const EditorLayout = () => {
             <Outlet />
          </UploadDropzone>
 
-         {uploadedAsset && (
+         {uploadedAsset && isPlanningMode && (
              <MetadataDialog 
                 asset={uploadedAsset}
                 onSave={onMetadataSaved}
                 onCancel={() => { setUploadedAsset(null); setDialogOpen(false); }}
              />
+         )}
+         
+         {!isPlanningMode && (
+             <div style={{
+                 position: 'absolute',
+                 bottom: '2rem',
+                 left: '50%',
+                 transform: 'translateX(-50%)',
+                 color: 'white',
+                 backgroundColor: 'rgba(0,0,0,0.6)',
+                 padding: '0.5rem 1rem',
+                 borderRadius: '8px',
+                 pointerEvents: 'none'
+             }}>
+                 First Person Preview (Press ESC to exit)
+             </div>
          )}
       </div>
     </div>

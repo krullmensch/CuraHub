@@ -6,32 +6,37 @@ interface UploadDropzoneProps {
   onUploadComplete: (fileData: { url: string, filename: string, mimetype: string, size: number, width?: number, height?: number, widthCm?: number, heightCm?: number }) => void;
   onUploadError: (error: string) => void;
   children: React.ReactNode;
+  disabled?: boolean;
 }
 
-export const UploadDropzone = ({ onUploadStart, onUploadComplete, onUploadError, children }: UploadDropzoneProps) => {
+export const UploadDropzone = ({ onUploadStart, onUploadComplete, onUploadError, children, disabled = false }: UploadDropzoneProps) => {
   const [isDragging, setIsDragging] = useState(false);
   const token = useAuthStore((state) => state.token);
 
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (disabled) return;
     setIsDragging(true);
   };
 
   const handleDragLeave = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (disabled) return;
     setIsDragging(false);
   };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (disabled) return;
   };
 
   const handleDrop = async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (disabled) return;
     setIsDragging(false);
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {

@@ -28,16 +28,69 @@ type GLTFResult = GLTF & {
   animations: any[]
 }
 
-export function Satellit(props: React.JSX.IntrinsicElements['group']) {
+// Fix: Use React.ComponentProps instead of direct interface extension on complex utility type if problematic, 
+// or just use intersection type for props.
+type SatellitProps = React.JSX.IntrinsicElements['group'] & {
+  viewMode?: 'orthographic' | 'perspective' | 'firstPerson';
+}
+
+export function Satellit({ viewMode = 'firstPerson', ...props }: SatellitProps) {
   const { nodes, materials } = useGLTF('/models/Satellit.glb') as unknown as GLTFResult
+  
+  // Opacity Logic
+  const isPlanning = viewMode !== 'firstPerson';
+  const wallOpacity = isPlanning ? 0.7 : 1.0;
+  const wallTransparent = isPlanning;
+
+  // We need to clone materials or update them to avoid side-effects if shared?
+  // Actually commonly used materials in GLTF are shared.
+  // We can just update the props on the material instance for now, but be careful of side effects if Viewer uses same loaded GLTF.
+  // Since we use useGLTF hook, it caches. 
+  // Better to use <mesh ... material-opacity={wallOpacity} material-transparent={wallTransparent} /> which creates a derived material prop override?
+  // No, R3F does not auto-clone materials like that unless we explicitly put <meshStandardMaterial /> as child.
+  // But we want to keep the original material properties (textures etc) and just change opacity.
+  // Let's try traversing or just setting properties directly in the render (which is reactive) if we are okay with mutation.
+  // OR we can use the `material` prop with a cloned material if needed.
+  // For simplicity MVP: Let's assume this component is the only one rendering this model right now in a given scene context.
+  // BUT the Viewer Page also renders Satellit. If we mutate the cached material, the Viewer page might also get transparent walls if navigated to?
+  // Yes, useGLTF caches.
+  // Safe approach: Clone the material or use <mesh ...> <primitive object={materials['...']} opacity={...} /></mesh> ?
+  // Easiest is to just set properties on the meshes' material prop overrides if supported, or clone.
+  
+  // Let's try direct prop override on the material object if we can access it cleanly, or just spread.
+  // Actually, let's just use <mesh material={materials['...']} material-opacity={wallOpacity} material-transparent={wallTransparent} />
+  // This tells R3F to apply these props to the material.
+  
   return (
     <group {...props} dispose={null}>
       <group position={[6.33, 1, 0.12]}>
         <mesh name="Door" castShadow receiveShadow geometry={nodes.Cube010.geometry} material={materials['Tür2.001']} />
         <mesh name="Door" castShadow receiveShadow geometry={nodes.Cube010_1.geometry} material={materials['Tür1.001']} />
+        
+        {/* Misc / Traverses */}
         <mesh name="Misc" castShadow receiveShadow geometry={nodes.Cube010_2.geometry} material={materials['Material.006']} />
-        <mesh name="Wall" castShadow receiveShadow geometry={nodes.Cube010_3.geometry} material={materials['Wall Paint (White Wall Paint).001']} />
-        <mesh name="Ceiling" castShadow receiveShadow geometry={nodes.Cube010_4.geometry} material={materials['Material.008']} />
+        
+        {/* Walls - Apply transparency in planning modes */}
+        <mesh 
+            name="Wall" 
+            castShadow 
+            receiveShadow 
+            geometry={nodes.Cube010_3.geometry} 
+            material={materials['Wall Paint (White Wall Paint).001']} 
+            material-opacity={wallOpacity}
+            material-transparent={wallTransparent}
+        />
+        
+        {/* Ceiling - Only visible in First Person Mode */}
+        <mesh 
+            name="Ceiling" 
+            castShadow 
+            receiveShadow 
+            geometry={nodes.Cube010_4.geometry} 
+            material={materials['Material.008']} 
+            visible={viewMode === 'firstPerson'}
+        />
+        
         <mesh name="Floor" castShadow receiveShadow geometry={nodes.Cube010_5.geometry} material={materials['Animal Brown Vinyl.001']} />
       </group>
     </group>
