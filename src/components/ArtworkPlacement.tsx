@@ -21,14 +21,15 @@ export const ArtworkPlacement = () => {
         // In a real app, we might want to filter this to only "walls"
         const intersects = raycaster.current.intersectObjects(scene.children, true);
         
-        // Filter out the ghost itself and non-mesh objects
+        // Filter out ghost, floor, and non-mesh objects
         const hit = intersects.find(i => 
             i.object.type === 'Mesh' && 
-            i.object !== ghostRef.current // && 
-            // i.object.name.includes('Wall') // Optional specific filtering
+            i.object !== ghostRef.current &&
+            i.object.name === 'Wall'
         );
 
         if (hit) {
+            console.log("Raycast hit:", hit.object.name); // Re-enable temporarily if finding issues
             setCanPlace(true);
             const { point, face } = hit;
             if (!face) return;
@@ -38,12 +39,14 @@ export const ArtworkPlacement = () => {
             ghostRef.current.position.copy(point).add(normal.multiplyScalar(0.01));
             
             // Align rotation to the wall normal
-
             if (Math.abs(normal.y) > 0.99) {
-                // If on floor/ceiling, change up vector
+                // If on floor/ceiling (should be filtered out, but just in case), change up vector
                 ghostRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
             } else {
-                ghostRef.current.lookAt(point.clone().add(normal));
+                // Look AT the point minus the normal.
+                // Standard Plane faces +Z. lookAt aligns -Z to target.
+                // If we look at (Point - Normal), -Z points to -Normal (into wall), so +Z points OUT of wall.
+                ghostRef.current.lookAt(point.clone().sub(normal));
             }
         } else {
             setCanPlace(false);

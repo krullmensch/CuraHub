@@ -33,12 +33,12 @@ export function Satellit(props: React.JSX.IntrinsicElements['group']) {
   return (
     <group {...props} dispose={null}>
       <group position={[6.33, 1, 0.12]}>
-        <mesh castShadow receiveShadow geometry={nodes.Cube010.geometry} material={materials['Tür2.001']} />
-        <mesh castShadow receiveShadow geometry={nodes.Cube010_1.geometry} material={materials['Tür1.001']} />
-        <mesh castShadow receiveShadow geometry={nodes.Cube010_2.geometry} material={materials['Material.006']} />
-        <mesh castShadow receiveShadow geometry={nodes.Cube010_3.geometry} material={materials['Wall Paint (White Wall Paint).001']} />
-        <mesh castShadow receiveShadow geometry={nodes.Cube010_4.geometry} material={materials['Material.008']} />
-        <mesh castShadow receiveShadow geometry={nodes.Cube010_5.geometry} material={materials['Animal Brown Vinyl.001']} />
+        <mesh name="Door" castShadow receiveShadow geometry={nodes.Cube010.geometry} material={materials['Tür2.001']} />
+        <mesh name="Door" castShadow receiveShadow geometry={nodes.Cube010_1.geometry} material={materials['Tür1.001']} />
+        <mesh name="Misc" castShadow receiveShadow geometry={nodes.Cube010_2.geometry} material={materials['Material.006']} />
+        <mesh name="Wall" castShadow receiveShadow geometry={nodes.Cube010_3.geometry} material={materials['Wall Paint (White Wall Paint).001']} />
+        <mesh name="Ceiling" castShadow receiveShadow geometry={nodes.Cube010_4.geometry} material={materials['Material.008']} />
+        <mesh name="Floor" castShadow receiveShadow geometry={nodes.Cube010_5.geometry} material={materials['Animal Brown Vinyl.001']} />
       </group>
     </group>
   )
