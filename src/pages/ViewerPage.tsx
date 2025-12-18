@@ -20,7 +20,7 @@ export const ViewerPage = () => {
         }}
       >
         <Physics gravity={[0, -9.81, 0]}>
-            <Scene />
+            <Scene isEditor={false} />
             <Player />
         </Physics>
       </Canvas>

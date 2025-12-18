@@ -6,12 +6,20 @@ import { ArtworkInstances } from './ArtworkInstances';
 import { PlannerCameraSystem } from './PlannerCameraSystem';
 import { useEditorStore } from '../store/editorStore';
 
-export const Scene = () => {
-    const viewMode = useEditorStore(state => state.plannerViewMode);
+interface SceneProps {
+    isEditor?: boolean;
+}
+
+export const Scene = ({ isEditor = true }: SceneProps) => {
+    const plannerViewMode = useEditorStore(state => state.plannerViewMode);
+    
+    // In Viewer mode (not editor), always force First Person
+    const viewMode = isEditor ? plannerViewMode : 'firstPerson';
 
     return (
         <>
-            <PlannerCameraSystem />
+            {/* Only use Planner Camera System in Editor Mode */}
+            {isEditor && <PlannerCameraSystem />}
 
             {/* Lighting Setup */}
             {/* Ambient Light: Base level illumination */}
@@ -31,9 +39,8 @@ export const Scene = () => {
             {/* Fill Light: Softens shadows from the opposite side */}
             <pointLight position={[-5, 5, -5]} intensity={0.5} color="#eef" />
 
-            {/* Show grid only during development/editing if needed, or keeping it for reference */}
-            {/* Hide grid in First Person Mode for immersion */}
-            {viewMode !== 'firstPerson' && (
+            {/* Show grid only in Editor (and not in First Person) */}
+            {isEditor && viewMode !== 'firstPerson' && (
                 <Grid args={[20, 20]} cellColor="white" sectionColor="gray" infiniteGrid fadeDistance={50} position={[0, -0.01, 0]} />
             )}
             
