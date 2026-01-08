@@ -1,9 +1,22 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { OrthographicCamera, PerspectiveCamera, OrbitControls, PointerLockControls, KeyboardControls } from '@react-three/drei';
+import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { useEditorStore } from '../store/editorStore';
 import { PlayerController } from './Player';
+
+// --- CONFIGURATION ---
+const CAMERA_LIMITS = {
+    PERSPECTIVE: {
+        minDistance: 1,  // Closest you can get (meters)
+        maxDistance: 50, // Furthest you can orbit (meters)
+    },
+    ORTHOGRAPHIC: {
+        minZoom: 20,      // Furthest out (smaller number = wider view)
+        maxZoom: 200      // Closest in (larger number = tighter view)
+    }
+};
 
 export const PlannerCameraSystem = () => {
     const viewMode = useEditorStore(state => state.plannerViewMode);
@@ -16,23 +29,43 @@ export const PlannerCameraSystem = () => {
     const orthoRef = useRef<THREE.OrthographicCamera>(null);
     const perspRef = useRef<THREE.PerspectiveCamera>(null);
     const fpRef = useRef<THREE.PerspectiveCamera>(null);
-    const orbitControlsRef = useRef<any>(null);
+    const orbitControlsRef = useRef<OrbitControlsImpl>(null);
 
     // Sync Orbit Cameras (Ortho <-> Persp)
+    // Sync Orbit Cameras (Ortho <-> Persp)
     useEffect(() => {
+        const target = new THREE.Vector3(...orbitState.target);
+        
         if (viewMode === 'orthographic' && perspRef.current && orthoRef.current) {
             // Switching TO Ortho: Match position from Persp
+            const dist = perspRef.current.position.distanceTo(target);
+            const smartZoom = 40 / dist; // Heuristic: Zoom = Constant / Distance
+
             orthoRef.current.position.copy(perspRef.current.position);
-            orthoRef.current.lookAt(new THREE.Vector3(...orbitState.target));
-            orthoRef.current.zoom = orbitState.zoom;
+            orthoRef.current.lookAt(target);
+            orthoRef.current.zoom = smartZoom;
             orthoRef.current.updateProjectionMatrix();
+
+            // Explicitly update store so controls pick it up immediately
+            updateOrbitState({ zoom: smartZoom });
+
         } else if (viewMode === 'perspective' && orthoRef.current && perspRef.current) {
             // Switching TO Persp: Match position from Ortho
-            perspRef.current.position.copy(orthoRef.current.position);
-            perspRef.current.lookAt(new THREE.Vector3(...orbitState.target));
+            // Inverse the formula: Distance = Constant / Zoom
+            const currentZoom = Math.max(0.1, orthoRef.current.zoom); 
+            const newDist = 40 / currentZoom;
+            
+            // Calculate new position based on direction from target
+            const direction = new THREE.Vector3().subVectors(orthoRef.current.position, target).normalize();
+            const newPos = target.clone().add(direction.multiplyScalar(newDist));
+
+            perspRef.current.position.copy(newPos);
+            perspRef.current.lookAt(target);
             perspRef.current.updateProjectionMatrix();
+
+            updateOrbitState({ position: newPos.toArray() });
         }
-    }, [viewMode, orbitState.target, orbitState.zoom]);
+    }, [viewMode]); // Removed orbitState deps to prevent loop, logic depends on transition only
 
     // Continuous State Update
     useFrame(() => {
@@ -100,10 +133,16 @@ export const PlannerCameraSystem = () => {
                     target={new THREE.Vector3(...orbitState.target)}
                     enableDamping
                     dampingFactor={0.05}
-                    minDistance={1}
-                    maxDistance={50}
+                    
+                    // Boundaries
+                    minDistance={CAMERA_LIMITS.PERSPECTIVE.minDistance}
+                    maxDistance={CAMERA_LIMITS.PERSPECTIVE.maxDistance}
+                    minZoom={CAMERA_LIMITS.ORTHOGRAPHIC.minZoom}
+                    maxZoom={CAMERA_LIMITS.ORTHOGRAPHIC.maxZoom}
+
+                    enableRotate={true} 
                     mouseButtons={{
-                        LEFT: undefined, // Free for selection
+                        LEFT: THREE.MOUSE.ROTATE,
                         MIDDLE: THREE.MOUSE.ROTATE,
                         RIGHT: THREE.MOUSE.PAN
                     }}
