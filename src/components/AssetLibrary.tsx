@@ -11,10 +11,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, FileIcon, Loader2, Edit, CloudUpload, LogOut } from 'lucide-react';
+import { Trash2, FileIcon, Loader2, Edit, CloudUpload } from 'lucide-react';
 import { MetadataDialog } from './MetadataDialog';
-import { useAuthStore } from '../store/authStore';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
 
 interface Asset {
   id: number;
@@ -50,16 +48,6 @@ export const AssetLibrary = () => {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   
   const { toast } = useToast();
-  const { user, logout } = useAuthStore();
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  const handleLogout = () => {
-    logout();
-    navigate('/login');
-  };
-
-  const isActive = (path: string) => location.pathname.startsWith(path);
 
   const fetchAssets = async () => {
     try {
@@ -183,42 +171,6 @@ export const AssetLibrary = () => {
         onUploadError={(msg) => toast({ variant: "destructive", title: "Upload Failed", description: msg })}
         className="h-full w-full flex flex-col bg-zinc-950"
     >
-        <header className="border-b border-zinc-800 p-3 bg-zinc-900 flex justify-between items-center z-10">
-            <div className="flex items-center gap-4">
-                <h1 className="text-lg font-bold tracking-tight text-white">CuraHub <span className="text-blue-500">Dashboard</span></h1>
-                <nav className="flex gap-4 ml-6 text-sm font-medium">
-                    <Link 
-                        to="/exhibition/satellit/edit" 
-                        className={`transition-colors ${isActive('/exhibition') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
-                    >
-                        Editor
-                    </Link>
-                    <Link 
-                        to="/dashboard/assets" 
-                        className={`transition-colors ${isActive('/dashboard') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
-                    >
-                        Assets
-                    </Link>
-                </nav>
-            </div>
-            
-            <div className="flex items-center gap-4">
-                {user?.email && (
-                    <span className="text-xs text-gray-500 hidden sm:inline-block">
-                        {user.email}
-                    </span>
-                )}
-                <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={handleLogout}
-                    className="text-gray-400 hover:text-white hover:bg-zinc-800"
-                >
-                    <LogOut className="h-4 w-4 mr-2" />
-                    Logout
-                </Button>
-            </div>
-        </header>
 
         <div className="flex-1 overflow-auto p-6 space-y-6 pb-20">
             <div className="flex justify-between items-center">

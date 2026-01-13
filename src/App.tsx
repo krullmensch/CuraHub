@@ -5,7 +5,6 @@ import { RegisterPage } from './pages/RegisterPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 // import { ViewModeControls } from '../components/ViewModeControls';
 import { EditorLayout } from './components/EditorLayout';
-import { EditorPage } from './pages/EditorPage';
 import { AssetLibraryPage } from './pages/AssetLibraryPage';
 import { Toaster } from "@/components/ui/toaster";
 import './App.css';
@@ -24,10 +23,11 @@ function App() {
 
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
-           <Route path="/dashboard/assets" element={<AssetLibraryPage />} />
            <Route element={<EditorLayout />}>
+              <Route path="/dashboard/assets" element={<AssetLibraryPage />} />
               <Route path="/edit" element={<Navigate to="/exhibition/satellit/edit" replace />} />
-              <Route path="/exhibition/satellit/edit" element={<EditorPage />} />
+              {/* Render null for the edit route because EditorPage is now manually managed in EditorLayout */}
+              <Route path="/exhibition/satellit/edit" element={null} />
            </Route>
         </Route>
       </Routes>

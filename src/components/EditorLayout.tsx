@@ -12,6 +12,9 @@ import { AssetSidebar } from './AssetSidebar';
 // Temporarily disabled to allow the app to run.
 // import { ViewModeControls } from './ViewModeControls';
 
+import { ControlsSidebar } from './ControlsSidebar';
+import { EditorPage } from '../pages/EditorPage';
+
 export const EditorLayout = () => {
   const { user, logout } = useAuthStore();
   const startPlacement = useEditorStore((state) => state.startPlacement);
@@ -19,6 +22,8 @@ export const EditorLayout = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [uploadedAsset, setUploadedAsset] = useState<any | null>(null);
+  const [leftOpen, setLeftOpen] = useState(true);
+  const [rightOpen, setRightOpen] = useState(true);
 
   const handleLogout = () => {
     logout();
@@ -49,6 +54,7 @@ export const EditorLayout = () => {
 
   const isPlanningMode = viewMode !== 'firstPerson';
   const isActive = (path: string) => location.pathname.startsWith(path);
+  const isAssetRoute = location.pathname.startsWith('/dashboard/assets');
 
   return (
     <div className="h-full w-full flex flex-col bg-zinc-950">
@@ -91,15 +97,28 @@ export const EditorLayout = () => {
       
       <div className="flex-1 relative overflow-hidden">
          <UploadDropzone
-            disabled={!isPlanningMode} // Disable upload in FP mode
+            disabled={!isAssetRoute} // Only allow uploads in Assets tab
             onUploadStart={() => console.log('Upload started')}
             onUploadComplete={onUploadComplete}
             onUploadError={(err) => alert(`Upload error: ${err}`)}
          >
-            <Outlet />
+            {/* Persistent Editor Background */}
+            <div className="absolute inset-0 z-0">
+                 <EditorPage />
+            </div>
+
+            {/* Content Overlay (Asset Library or empty for Edit route) */}
+            <div className={`absolute inset-0 z-10 ${!isAssetRoute ? 'pointer-events-none' : ''}`}>
+                 <Outlet />
+            </div>
          
-            {/* Show Asset Sidebar in Planning Mode if not already placing an asset (optional logic, but good for now) */}
-            {isPlanningMode && <AssetSidebar />}
+            {/* Show Sidebars specifically for the Editor View */}
+            {isPlanningMode && !isAssetRoute && (
+                <>
+                    <AssetSidebar isOpen={leftOpen} onToggle={() => setLeftOpen(!leftOpen)} />
+                    <ControlsSidebar isOpen={rightOpen} onToggle={() => setRightOpen(!rightOpen)} />
+                </>
+            )}
          </UploadDropzone>
 
          {uploadedAsset && isPlanningMode && (
