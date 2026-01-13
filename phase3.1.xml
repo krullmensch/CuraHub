@@ -1,0 +1,51 @@
+<phase id="3.1">
+  <title>Asset Management UI &amp; Structured Storage</title>
+  <description>
+    Add a frontend UI for viewing and managing uploaded files, and refactor backend upload logic to support project-based folder structures.
+  </description>
+
+  <dependencies>
+    <dependsOn>phase2</dependsOn>
+    <dependsOn>phase3</dependsOn>
+  </dependencies>
+
+  <inScope>
+    <item>Frontend asset library page displaying all uploaded files</item>
+    <item>Delete functionality for assets (both DB record and physical file)</item>
+    <item>Backend refactoring: prepare upload system for project-based folders</item>
+    <item>GET endpoint to list all assets with metadata</item>
+    <item>DELETE endpoint to remove assets</item>
+  </inScope>
+
+  <outOfScope>
+    <item>Full project-folder implementation (only preparation)</item>
+    <item>Advanced filtering or search in asset library</item>
+    <item>Batch operations (multi-delete, etc.)</item>
+  </outOfScope>
+
+  <technicalGuidance>
+    <backend>
+      <task>Refactor upload controller to support optional projectId parameter for folder structure (e.g., uploads/:projectId/)</task>
+      <task>Create GET /api/assets endpoint returning JSON array of all uploaded files with metadata from MariaDB</task>
+      <task>Create DELETE /api/assets/:id endpoint that removes both database record and physical file using fs.unlink</task>
+      <task>Add error handling for file system operations (missing files, permission errors)</task>
+    </backend>
+    <frontend>
+      <task>Create new route /dashboard/assets for asset management</task>
+      <task>Build AssetLibrary component that fetches and displays assets in a grid layout</task>
+      <task>Show thumbnails for images, placeholder icons for GLB/video files</task>
+      <task>Integrate existing upload mechanism (drag &amp; drop zone) into this page</task>
+      <task>Add delete button per asset with confirmation dialog</task>
+      <task>Automatically refresh asset list after upload or delete operations</task>
+      <task>Use Tailwind CSS for professional, clean styling</task>
+    </frontend>
+  </technicalGuidance>
+
+  <acceptanceCriteria>
+    <criterion>A curator can navigate to /dashboard/assets and see all uploaded files</criterion>
+    <criterion>Thumbnails display correctly for image files; placeholders show for 3D models</criterion>
+    <criterion>Clicking delete removes the asset from both database and file system</criterion>
+    <criterion>After uploading a new file, it appears in the list without manual page refresh</criterion>
+    <criterion>Backend is prepared for future project-based folder organization</criterion>
+  </acceptanceCriteria>
+</phase>

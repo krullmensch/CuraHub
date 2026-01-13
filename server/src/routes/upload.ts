@@ -1,13 +1,15 @@
-import express, { Router } from 'express';
+import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { imageSize } from 'image-size';
 import sharp from 'sharp';
-const ExifParser = require('exif-parser');
+import { PrismaClient } from '@prisma/client';
+import ExifParser from 'exif-parser';
 
 export const uploadRouter = Router();
+const prisma = new PrismaClient();
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, '../../uploads');
@@ -22,7 +24,18 @@ const storage = multer.diskStorage({
   },
   filename: (req, file, cb) => {
     const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
+    const basename = path.basename(file.originalname, ext);
+    
+    // Sanitize filename: remove special chars, replace spaces with hyphens
+    const sanitizedTitle = basename
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-') // Replace non-alphanumeric with hyphen
+        .replace(/^-+|-+$/g, '');   // Trim leading/trailing hyphens (if any)
+    
+    // Add short unique suffix (timestamp + 4 chars of UUID) to ensure uniqueness
+    const uniqueSuffix = `${Date.now().toString().slice(-6)}-${uuidv4().split('-')[0]}`;
+    
+    cb(null, `${sanitizedTitle}-${uniqueSuffix}${ext}`);
   }
 });
 
@@ -43,9 +56,11 @@ uploadRouter.post('/', upload.single('file'), async (req, res) => {
     return res.status(400).json({ error: 'No file uploaded' });
   }
 
-  // Return the URL to access the file
-  // Server will serve 'uploads' folder at '/uploads'
-  const fileUrl = `/uploads/${req.file.filename}`;
+  // Optional: Capture project context for future folder organization
+  const projectId = req.body.projectId || req.query.projectId;
+  if (projectId) {
+      console.log(`[Upload] Processing upload for Project ID: ${projectId}`);
+  }
   
   let dimensions = { width: 0, height: 0 };
   let dpi = 72; // Default if not found
@@ -58,14 +73,22 @@ uploadRouter.post('/', upload.single('file'), async (req, res) => {
       
       // Get pixel dimensions
       const size = imageSize(buffer);
-      dimensions = { width: size.width || 0, height: size.height || 0 };
+      if (size) {
+         dimensions = { width: size.width || 0, height: size.height || 0 };
+      }
 
       // Get EXIF data for DPI
-      const parser = ExifParser.create(buffer);
-      const result = parser.parse();
-      
-      if (result.tags && result.tags.XResolution) {
-          dpi = result.tags.XResolution;
+      // Get EXIF data for DPI (Only works reliably for JPEG/TIFF)
+      try {
+          const parser = ExifParser.create(buffer);
+          const result = parser.parse();
+          
+          if (result && result.tags && result.tags.XResolution) {
+              dpi = result.tags.XResolution;
+          }
+      } catch {
+          // Ignore EXIF parsing errors (e.g. for PNG/WebP files)
+          // console.log('No EXIF data found or unsupported format');
       }
       
       // Calculate physical size in cm
@@ -98,8 +121,6 @@ uploadRouter.post('/', upload.single('file'), async (req, res) => {
       req.file.path = newPath;
       req.file.mimetype = 'image/webp';
       
-      const fileUrl = `/uploads/${req.file.filename}`;
-
       // Update file size in response
       const stats = fs.statSync(req.file.path);
       req.file.size = stats.size;
@@ -112,19 +133,29 @@ uploadRouter.post('/', upload.single('file'), async (req, res) => {
           console.warn(`Compressed file is ${req.file.size} bytes, slightly over 1MB target.`);
       }
 
+      // --- CREATE ASSET IN DB ---
+      const asset = await prisma.asset.create({
+          data: {
+              filename: req.file.filename,
+              path: `/uploads/${req.file.filename}`,
+              mimetype: req.file.mimetype,
+              size: req.file.size,
+              width: dimensions.width,
+              height: dimensions.height,
+              dpi: dpi,
+              metadata: {
+                   widthCm,
+                   heightCm,
+                   projectId: projectId ? String(projectId) : undefined
+              }
+          }
+      });
+
+      // Return the Asset object
+      res.json(asset);
+
   } catch (err) {
       console.error('Error processing image:', err);
+      res.status(500).json({ error: 'Failed to process upload' });
   }
-
-  res.json({ 
-    url: `/uploads/${req.file.filename}`, // Use updated filename
-    filename: req.file.filename,
-    mimetype: req.file.mimetype,
-    size: req.file.size,
-    width: dimensions.width,
-    height: dimensions.height,
-    dpi: dpi,
-    widthCm: widthCm,
-    heightCm: heightCm
-  });
 });

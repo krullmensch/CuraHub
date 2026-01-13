@@ -12,11 +12,40 @@ export const EditorPage = () => {
   const viewMode = useEditorStore((state) => state.plannerViewMode);
 
   return (
-    <>
+    <div 
+        style={{ width: '100%', height: '100%', position: 'relative' }}
+        onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        }}
+        onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const assetId = e.dataTransfer.getData('asset-id');
+            const assetDataStr = e.dataTransfer.getData('asset-data');
+            
+            if (assetId && assetDataStr) {
+                try {
+                    const asset = JSON.parse(assetDataStr);
+                    // Trigger placement
+                    useEditorStore.getState().startPlacement({
+                        id: asset.id,
+                        width: asset.width,
+                        height: asset.height,
+                        url: asset.path,
+                        // If we want to drop exactly where the mouse is, we'd need raycasting here.
+                        // For now, we'll existing startPlacement which attaches to mouse cursor.
+                    });
+                } catch (err) {
+                    console.error("Failed to parse dropped asset data", err);
+                }
+            }
+        }}
+    >
       <Canvas 
         shadows 
         // Camera is managed by PlannerCameraSystem in Scene
-        style={{ width: '100vw', height: '100vh' }}
+        style={{ width: '100%', height: '100%' }}
         gl={{
             toneMapping: THREE.ACESFilmicToneMapping,
             toneMappingExposure: 1.2,
@@ -50,6 +79,6 @@ export const EditorPage = () => {
                Placing Artwork... Click to place.
            </div>
       )}
-    </>
+    </div>
   );
 };

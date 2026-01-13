@@ -5,6 +5,7 @@ import { authRouter } from './routes/auth';
 import { uploadRouter } from './routes/upload';
 import { artworksRouter } from './routes/artworks';
 import { instancesRouter } from './routes/instances';
+import { assetsRouter } from './routes/assets';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -17,6 +18,7 @@ app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 app.use('/auth', authRouter);
 app.use('/upload', uploadRouter);
+app.use('/assets', assetsRouter);
 app.use('/artworks', artworksRouter);
 app.use('/instances', instancesRouter);
 

@@ -6,7 +6,7 @@ Command: npx gltfjsx@6.5.3 public/models/Satellit.glb --types --shadows --output
 import * as THREE from 'three'
 import React from 'react'
 import { useGLTF } from '@react-three/drei'
-import { GLTF } from 'three-stdlib'
+import type { GLTF } from 'three-stdlib'
 
 type GLTFResult = GLTF & {
   nodes: {
@@ -38,9 +38,9 @@ export function Satellit({ viewMode = 'firstPerson', ...props }: SatellitProps) 
   const { nodes, materials } = useGLTF('/models/Satellit.glb') as unknown as GLTFResult
   
   // Opacity Logic
-  const isPlanning = viewMode !== 'firstPerson';
-  const wallOpacity = isPlanning ? 0.7 : 1.0;
-  const wallTransparent = isPlanning;
+  // Opacity Logic
+  const wallOpacity = 1.0;
+  const wallTransparent = false;
 
   // We need to clone materials or update them to avoid side-effects if shared?
   // Actually commonly used materials in GLTF are shared.

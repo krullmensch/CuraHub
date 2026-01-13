@@ -39,7 +39,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   isDialogOpen: false,
 
   // Initial Camera State
-  plannerViewMode: 'orthographic',
+  plannerViewMode: 'perspective',
   orbitCameraState: {
     position: [20, 20, 20], // High angle view
     target: [0, 0, 0],

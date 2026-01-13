@@ -1,0 +1,40 @@
+<phase id="3.2">
+  <title>UI Foundation &amp; Asset Manager Implementation</title>
+  <description>
+    Integrate shadcn/ui as the design system foundation and implement the Asset Manager UI using these professional components.
+  </description>
+
+  <dependencies>
+    <dependsOn>phase3.1</dependsOn>
+  </dependencies>
+
+  <inScope>
+    <item>Installation and configuration of shadcn/ui in the Next.js project</item>
+    <item>Adding core UI components (Button, Card, Input, Dialog, Toast)</item>
+    <item>Re-implementing the AssetLibrary component using shadcn components</item>
+    <item>Visual polish of the file upload and deletion workflows</item>
+  </inScope>
+
+  <technicalGuidance>
+    <setup>
+      <task>Provide terminal commands to initialize shadcn/ui (npx shadcn@latest init)</task>
+      <task>Provide commands to add required components: button, card, input, dialog, dropdown-menu, toast, skeleton</task>
+      <task>Ensure lucide-react is installed for icons</task>
+    </setup>
+    <implementation>
+      <task>Create `components/AssetLibrary.tsx` using shadcn Cards for the grid layout</task>
+      <task>Use `<CardHeader>` for thumbnails and `<CardFooter>` for actions (delete)</task>
+      <task>Implement `<Button variant="destructive">` for the delete action with a confirmation dialog</task>
+      <task>Use `<Toast>` to provide feedback on success (Upload complete) or error (File too large)</task>
+      <task>Style the upload area to match the theme (dashed border, centered text, button)</task>
+      <task>Ensure the layout is responsive (grid-cols-1 to grid-cols-4)</task>
+    </implementation>
+  </technicalGuidance>
+
+  <acceptanceCriteria>
+    <criterion>shadcn/ui is correctly installed and `components/ui` folder is populated</criterion>
+    <criterion>Asset Manager page looks consistent and professional</criterion>
+    <criterion>User receives visual feedback (Toasts) for all interactions</criterion>
+    <criterion>Delete button is red (destructive variant) and asks for confirmation</criterion>
+  </acceptanceCriteria>
+</phase>
