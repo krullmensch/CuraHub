@@ -6,51 +6,110 @@ import { Scene } from '../components/Scene';
 // Player is now handled inside PlannerCameraSystem
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { useEditorStore } from '../store/editorStore';
+import { useAuthStore } from '../store/authStore';
+import { useToast } from '@/hooks/use-toast';
+
+const GL_CONFIG = {
+    toneMapping: THREE.ACESFilmicToneMapping,
+    toneMappingExposure: 1.2,
+    outputColorSpace: THREE.SRGBColorSpace,
+};
 
 export const EditorPage = () => {
   const isPlacing = useEditorStore((state) => state.isPlacing);
   const viewMode = useEditorStore((state) => state.plannerViewMode);
-
+  const setDragPosition = useEditorStore((state) => state.setDragPosition);
+  const setDragging = useEditorStore((state) => state.setDragging);
+  // Do not subscribe to dragState here to avoid re-renders on every mouse move/raycast
+  
+  const token = useAuthStore((state) => state.token);
+  const { toast } = useToast();
+  // We need a ref to the container to calculate relative coordinates if needed, 
+  // but for full screen editor, window coordinates are fine for NDC.
+  
   return (
     <div 
         style={{ width: '100%', height: '100%', position: 'relative' }}
         onDragOver={(e) => {
             e.preventDefault();
             e.stopPropagation();
+            
+            // Calculate properties relative to the generic container
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Calculate NDC
+            const ndcX = (x / rect.width) * 2 - 1;
+            const ndcY = -(y / rect.height) * 2 + 1;
+            
+            setDragPosition({ x: ndcX, y: ndcY });
         }}
-        onDrop={(e) => {
+        onDrop={async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            const assetId = e.dataTransfer.getData('asset-id');
-            const assetDataStr = e.dataTransfer.getData('asset-data');
             
-            if (assetId && assetDataStr) {
+            const { isDragging, validPlacement, draggedAsset } = useEditorStore.getState().dragState;
+            
+            // If we have a valid placement from the Raycaster (via store), place it.
+            if (isDragging && validPlacement && draggedAsset) {
                 try {
-                    const asset = JSON.parse(assetDataStr);
-                    // Trigger placement
-                    useEditorStore.getState().startPlacement({
-                        id: asset.id,
-                        width: asset.width,
-                        height: asset.height,
-                        url: asset.path,
-                        // If we want to drop exactly where the mouse is, we'd need raycasting here.
-                        // For now, we'll existing startPlacement which attaches to mouse cursor.
+                    const { position, rotation } = validPlacement;
+                    
+                    const response = await fetch('/api/instances', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                        },
+                        body: JSON.stringify({
+                            artworkId: draggedAsset.id,
+                            position: { x: position[0], y: position[1], z: position[2] },
+                            rotation: { x: rotation[0], y: rotation[1], z: rotation[2] },
+                            scale: validPlacement.scale // Use calculated scale from placement logic
+                        })
                     });
+
+                    if (response.status === 401) {
+                         useAuthStore.getState().logout();
+                         return;
+                    }
+
+                    if (!response.ok) throw new Error('Failed to save placement');
+                    
+                    toast({
+                        title: "Artwork Placed",
+                        description: `Placed ${draggedAsset.url.split('/').pop()}`,
+                    });
+                    
+                    useEditorStore.getState().triggerInstancesRefresh();
+                    
                 } catch (err) {
-                    console.error("Failed to parse dropped asset data", err);
+                    console.error("Placement error:", err);
+                    toast({
+                        variant: "destructive",
+                        title: "Placement Failed",
+                        description: "Could not place artwork.",
+                    });
                 }
+            } else if (isDragging && !validPlacement) {
+                 toast({
+                    variant: "destructive",
+                    title: "Invalid Placement",
+                    description: "Cannot place here. Try a wall.",
+                });
             }
+            
+            // Reset dragging state
+            setDragging(false, null);
+            setDragPosition(null);
         }}
     >
       <Canvas 
         shadows 
         // Camera is managed by PlannerCameraSystem in Scene
         style={{ width: '100%', height: '100%' }}
-        gl={{
-            toneMapping: THREE.ACESFilmicToneMapping,
-            toneMappingExposure: 1.2,
-            outputColorSpace: THREE.SRGBColorSpace,
-        }}
+        gl={GL_CONFIG}
       >
         <Physics gravity={[0, -9.81, 0]}>
             <Scene />

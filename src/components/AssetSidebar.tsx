@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { FileIcon, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { useEditorStore } from '@/store/editorStore';
 
 interface AssetSidebarProps {
     isOpen: boolean;
@@ -18,6 +19,7 @@ interface Asset {
   width: number;
   height: number;
   artwork?: {
+    id: number;
     title: string;
   } | null;
 }
@@ -26,6 +28,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [assets, setAssets] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(true);
     const { toast } = useToast();
+    const setDragging = useEditorStore((state) => state.setDragging);
 
     useEffect(() => {
         const fetchAssets = async () => {
@@ -52,6 +55,21 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
         e.dataTransfer.setData('asset-id', asset.id.toString());
         e.dataTransfer.setData('asset-data', JSON.stringify(asset));
         e.dataTransfer.effectAllowed = 'copy';
+        
+        // Map asset path to url property expected by store
+        // Use Artwork ID if available, otherwise fallback to Asset ID (though backend likely needs Artwork ID)
+        const artworkId = asset.artwork?.id ?? asset.id;
+        
+        setDragging(true, {
+            id: artworkId,
+            width: asset.width,
+            height: asset.height,
+            url: asset.path
+        });
+    };
+
+    const handleDragEnd = () => {
+        setDragging(false, null);
     };
 
     return (
@@ -89,6 +107,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                     key={asset.id}
                                     draggable
                                     onDragStart={(e) => handleDragStart(e, asset)}
+                                    onDragEnd={handleDragEnd}
                                     className="group relative aspect-square bg-zinc-900 rounded-md overflow-hidden border border-zinc-800 cursor-grab active:cursor-grabbing hover:border-zinc-600 transition-colors"
                                     title={asset.artwork?.title || asset.filename}
                                 >

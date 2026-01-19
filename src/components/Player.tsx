@@ -19,7 +19,7 @@ export const PlayerController = ({ paused }: { paused: boolean }) => {
         // camera.rotation.set(0, 0, 0); 
     }, [camera]);
     
-    useFrame(() => {
+    useFrame((state) => {
         if (!rigidBody.current) return;
         
         // If paused, just dampen velocity to zero and return
@@ -67,6 +67,11 @@ export const PlayerController = ({ paused }: { paused: boolean }) => {
         // Sync Camera to Body
         const translation = rigidBody.current.translation();
         camera.position.set(translation.x, translation.y + 0.8, translation.z); 
+
+        // Debug Log
+        if (state.clock.elapsedTime % 1 < 0.02) {
+             console.log("Player Pos:", translation.x.toFixed(2), translation.y.toFixed(2), translation.z.toFixed(2));
+        }
     });
 
     return (

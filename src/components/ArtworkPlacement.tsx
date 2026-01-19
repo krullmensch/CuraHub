@@ -1,131 +1,182 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
+import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { useEditorStore } from '../store/editorStore';
-import { useAuthStore } from '../store/authStore';
 
-export const ArtworkPlacement = () => {
-    const { isPlacing, pendingArtwork, completePlacement } = useEditorStore();
-    const token = useAuthStore((state) => state.token);
-    const { camera, scene, pointer } = useThree();
-    const raycaster = useRef(new THREE.Raycaster());
-    const ghostRef = useRef<THREE.Mesh>(null);
-    const [canPlace, setCanPlace] = useState(false);
+interface GhostPreviewProps {
+    url: string;
+    width: number;
+    height: number;
+    position: THREE.Vector3;
+    quaternion: THREE.Quaternion;
+    isValid: boolean;
+}
 
-    useFrame(() => {
-        if (!isPlacing || !pendingArtwork || !ghostRef.current) return;
-
-        raycaster.current.setFromCamera(pointer, camera);
-        
-        // Intersect with all meshes in the scene
-        // In a real app, we might want to filter this to only "walls"
-        const intersects = raycaster.current.intersectObjects(scene.children, true);
-        
-        // Filter out ghost, floor, and non-mesh objects
-        const hit = intersects.find(i => 
-            i.object.type === 'Mesh' && 
-            i.object !== ghostRef.current &&
-            i.object.name === 'Wall'
-        );
-
-        if (hit) {
-            console.log("Raycast hit:", hit.object.name); // Re-enable temporarily if finding issues
-            setCanPlace(true);
-            const { point, face } = hit;
-            if (!face) return;
-
-            // Position slightly off the wall to avoid z-fighting
-            const normal = face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
-            ghostRef.current.position.copy(point).add(normal.multiplyScalar(0.01));
-            
-            // Align rotation to the wall normal
-            if (Math.abs(normal.y) > 0.99) {
-                // If on floor/ceiling (should be filtered out, but just in case), change up vector
-                ghostRef.current.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
-            } else {
-                // Look AT the point minus the normal.
-                // Standard Plane faces +Z. lookAt aligns -Z to target.
-                // If we look at (Point - Normal), -Z points to -Normal (into wall), so +Z points OUT of wall.
-                ghostRef.current.lookAt(point.clone().sub(normal));
-            }
-        } else {
-            setCanPlace(false);
-        }
-    });
-
-    // Use global click listener because raycast ignores the ghost mesh
+const GhostPreview = ({ url, width, height, position, quaternion, isValid }: GhostPreviewProps) => {
+    // Apply anisotropy for preview
+    const gl = useThree((state) => state.gl);
     useEffect(() => {
-        const handleGlobalClick = async () => {
-             // Only allow placement if the pointer is locked to the game/canvas.
-             // This prevents the "click to resume" action from placing the artwork.
-             if (!document.pointerLockElement) {
-                 return;
-             }
+        if (texture) {
+            texture.anisotropy = gl.capabilities.getMaxAnisotropy();
+            texture.needsUpdate = true;
+        }
+    }, [texture, gl]);
 
-             if (canPlace && isPlacing && pendingArtwork && ghostRef.current) {
-                 if (!token) {
-                     console.error("No token available");
-                     return;
-                 }
-                 
-                 console.log("Placing artwork at:", ghostRef.current.position);
-                 
-                 try {
-                    const position = ghostRef.current.position;
-                    const rotation = ghostRef.current.rotation;
-                    
-                    const response = await fetch('http://localhost:3000/instances', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                        },
-                        body: JSON.stringify({
-                            artworkId: pendingArtwork.id,
-                            position: { x: position.x, y: position.y, z: position.z },
-                            rotation: { x: rotation.x, y: rotation.y, z: rotation.z },
-                            scale: 1.0 
-                        })
-                    });
-
-                    if (!response.ok) {
-                        console.error('Failed to save placement');
-                        alert('Failed to save placement');
-                    } else {
-                        console.log('Placement saved!');
-                    }
-                } catch(e) {
-                    console.error(e);
-                }
-                
-                completePlacement();
-             }
-        };
-
-        window.addEventListener('click', handleGlobalClick);
-        return () => window.removeEventListener('click', handleGlobalClick);
-    }, [canPlace, isPlacing, pendingArtwork, token, completePlacement]); // dependencies important!
-
-    if (!isPlacing || !pendingArtwork) return null;
-
-    // Convert cm dimensions to meters (assuming 1 unit = 1 meter)
-    const width = (pendingArtwork.width || 50) / 100; 
-    const height = (pendingArtwork.height || 50) / 100;
+    // ... scaling logic ...
 
     return (
-        <mesh 
-            ref={ghostRef} 
-            // onClick removed, handled globally
-            // Ignore raycast hits on itself
-            raycast={() => null} 
-        >
-            <planeGeometry args={[width, height]} />
-            <meshBasicMaterial 
-                color={canPlace ? "#00ff00" : "#ff0000"} 
-                transparent 
-                opacity={0.5} 
-                side={THREE.DoubleSide}
+        <group position={position} quaternion={quaternion} scale={[scale, scale, 1]}>
+             <mesh position={[0, 0, 0.02]}>
+                 <planeGeometry args={[widthM, heightM]} />
+                 <meshBasicMaterial 
+                     map={texture} 
+                     transparent 
+                     opacity={0.6} 
+                     color={isValid ? "#4ade80" : "#f87171"} 
+                     side={THREE.DoubleSide}
+                     toneMapped={false} 
+                 />
+                 {/* Thin frame from previous steps */}
+                 <mesh position={[0, 0, -0.02]}>
+                     <boxGeometry args={[widthM + 0.05, heightM + 0.05, 0.01]} />
+                     <meshBasicMaterial color={isValid ? "#22c55e" : "#ef4444"} transparent opacity={0.3} />
+                 </mesh>
+             </mesh>
+        </group>
+    );
+};
+
+export const ArtworkPlacement = () => {
+    const { isDragging, draggedAsset, dragPosition } = useEditorStore((state) => state.dragState);
+    const setValidPlacement = useEditorStore((state) => state.setValidPlacement);
+    
+    const { camera, scene } = useThree();
+    const raycaster = useRef(new THREE.Raycaster());
+    
+    // Local state for smooth updates (though we update store for validation)
+    const [ghostState, setGhostState] = useState<{
+        position: THREE.Vector3;
+        quaternion: THREE.Quaternion;
+        isValid: boolean;
+    } | null>(null);
+
+    useFrame(() => {
+        if (!isDragging || !draggedAsset || !dragPosition) {
+            if (ghostState) {
+                setGhostState(null);
+                setValidPlacement(null);
+            }
+            return;
+        }
+
+        // Setup Raycaster from NDC
+        raycaster.current.setFromCamera(new THREE.Vector2(dragPosition.x, dragPosition.y), camera);
+        
+        // Intersect
+        const intersects = raycaster.current.intersectObjects(scene.children, true);
+        
+        // Find "Wall" mesh
+        // We filter for objects named "Wall" first
+        const wallHit = intersects.find(hit => hit.object.name === "Wall");
+
+        // Debugging logs
+        // console.log("All intersects:", intersects.map(i => i.object.name));
+        // console.log("Wall hit:", wallHit);
+        
+        if (wallHit && wallHit.face) {
+            const point = wallHit.point;
+            const faceNormal = wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld).normalize();
+            
+            // Check verticality (y component of normal should be close to 0)
+            // Allow some tolerance
+            const isVertical = Math.abs(faceNormal.y) < 0.1;
+            
+            // Orientation
+            const quaternion = new THREE.Quaternion();
+            if (Math.abs(faceNormal.y) > 0.99) {
+                // Should not happen if we filter isVertical, but for robustness
+                quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), faceNormal);
+            } else {
+                 // Look at the normal direction
+                 const lookTarget = point.clone().add(faceNormal);
+                 const dummy = new THREE.Object3D();
+                 dummy.position.copy(point);
+                 dummy.lookAt(lookTarget);
+                 quaternion.copy(dummy.quaternion);
+            }
+            
+            const position = point.clone().add(faceNormal.multiplyScalar(0.01)); // Offset slightly
+            
+            setGhostState({
+                position,
+                quaternion,
+                isValid: isVertical
+            });
+            
+            if (isVertical) {
+                // (Duplicate/Intermediate logic removed)
+                
+                // Correction: Store expects [number, number, number].
+                // API expects {x,y,z}.
+                // Let's convert quaternion to Euler
+                // Calculate Scale
+                const MAX_DIMENSION = 3;
+                const widthM = draggedAsset.width / 100;
+                const heightM = draggedAsset.height / 100;
+                let scale = 1;
+                if (widthM > MAX_DIMENSION || heightM > MAX_DIMENSION) {
+                    scale = MAX_DIMENSION / Math.max(widthM, heightM);
+                }
+
+
+
+                // Wall Bounds Check
+                // We cast object to Mesh to access geometry
+                const wallMesh = wallHit.object as THREE.Mesh;
+                
+                if (wallMesh.geometry) {
+                    if (!wallMesh.geometry.boundingBox) wallMesh.geometry.computeBoundingBox();
+                    // Basic check could go here, but for now we rely on auto-scaling logic above 
+                    // which ensures it's at most 3m, which fits most walls.
+                    // Implementation of strict "fits" check is complex due to segmented wall meshes.
+                }
+
+                const euler = new THREE.Euler().setFromQuaternion(quaternion);
+                setValidPlacement({
+                    position: [position.x, position.y, position.z],
+                    rotation: [euler.x, euler.y, euler.z],
+                    scale: scale
+                });
+
+            } else {
+                setValidPlacement(null);
+            }
+
+        } else {
+            // No wall hit
+            setGhostState(null);
+            setValidPlacement(null);
+        }
+    });
+    
+    // Reset on unmount
+    useEffect(() => {
+        return () => setValidPlacement(null);
+    }, [setValidPlacement]);
+
+    if (!isDragging || !draggedAsset || !ghostState) return null;
+
+    return (
+        <Suspense fallback={null}>
+            <GhostPreview 
+                url={draggedAsset.url}
+                width={draggedAsset.width}
+                height={draggedAsset.height}
+                position={ghostState.position}
+                quaternion={ghostState.quaternion}
+                isValid={ghostState.isValid}
             />
-        </mesh>
+        </Suspense>
     );
 };

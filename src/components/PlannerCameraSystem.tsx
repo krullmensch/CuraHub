@@ -12,9 +12,9 @@ const CAMERA_LIMITS = {
         minDistance: 1,  // Closest you can get (meters)
         maxDistance: 50, // Furthest you can orbit (meters)
     },
-    PERSPECTIVE: {
-        minDistance: 1,  // Closest you can get (meters)
-        maxDistance: 50, // Furthest you can orbit (meters)
+    FIRST_PERSON: {
+        minDistance: 1,
+        maxDistance: 50,
     },
 };
 
@@ -29,6 +29,8 @@ export const PlannerCameraSystem = () => {
     const perspRef = useRef<THREE.PerspectiveCamera>(null);
     const fpRef = useRef<THREE.PerspectiveCamera>(null);
     const orbitControlsRef = useRef<OrbitControlsImpl>(null);
+
+
 
 
     // Continuous State Update

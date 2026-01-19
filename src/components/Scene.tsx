@@ -2,7 +2,7 @@ import { Suspense } from 'react';
 import { Grid } from '@react-three/drei';
 import { RigidBody } from '@react-three/rapier';
 import { Satellit } from './Satellit';
-import { ArtworkInstances } from './ArtworkInstances';
+import { PlacedArtworks } from './PlacedArtworks';
 import { PlannerCameraSystem } from './PlannerCameraSystem';
 import { useEditorStore } from '../store/editorStore';
 
@@ -49,7 +49,7 @@ export const Scene = ({ isEditor = true }: SceneProps) => {
             </RigidBody>
 
             <Suspense fallback={null}>
-                <ArtworkInstances />
+                <PlacedArtworks />
             </Suspense>
         </>
     );

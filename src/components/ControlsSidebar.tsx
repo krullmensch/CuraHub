@@ -2,6 +2,7 @@ import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { ChevronRight, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useEditorStore } from '@/store/editorStore';
 
 interface ControlsSidebarProps {
     isOpen: boolean;
@@ -9,6 +10,9 @@ interface ControlsSidebarProps {
 }
 
 export const ControlsSidebar = ({ isOpen, onToggle }: ControlsSidebarProps) => {
+    const showTraverses = useEditorStore((state) => state.showTraverses);
+    const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
+
     return (
         <>
             <Card 
@@ -29,8 +33,21 @@ export const ControlsSidebar = ({ isOpen, onToggle }: ControlsSidebarProps) => {
                     </Button>
                 </CardHeader>
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                    <div className="text-zinc-500 text-xs text-center mt-10">
-                        Controls coming soon...
+                    <div className="space-y-4">
+                        <div className="flex items-center justify-between">
+                            <span className="text-zinc-300 text-sm">Traverses</span>
+                            <Button 
+                                variant={showTraverses ? "default" : "secondary"}
+                                size="sm"
+                                onClick={toggleTraverses}
+                                className={cn(
+                                    "h-8 text-xs",
+                                    showTraverses ? "bg-blue-600 hover:bg-blue-500" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700"
+                                )}
+                            >
+                                {showTraverses ? "Visible" : "Hidden"}
+                            </Button>
+                        </div>
                     </div>
                 </div>
             </Card>

@@ -1,0 +1,84 @@
+<phase id="4.2">
+  <title>Transform Gizmos &amp; Precise Editing</title>
+  <description>
+    Enable curators to select placed images and adjust their position, rotation, and scale via interactive gizmos and numeric input with aspect ratio locking.
+  </description>
+
+  <dependencies>
+    <dependsOn>phase4.1</dependsOn>
+  </dependencies>
+
+  <inScope>
+    <item>Click-to-select functionality for placed images</item>
+    <item>TransformControls (translate/rotate/scale modes) from @react-three/drei</item>
+    <item>Floating properties panel with numeric position/rotation/scale inputs</item>
+    <item>Aspect ratio lock toggle (paperclip icon like Photoshop)</item>
+    <item>Real-time synchronization between gizmo manipulation and numeric inputs</item>
+    <item>Backend persistence of transform updates</item>
+  </inScope>
+
+  <outOfScope>
+    <item>Multi-selection or batch editing</item>
+    <item>Undo/redo functionality (comes later)</item>
+    <item>Snapping to grid or other objects</item>
+    <item>Version commits (Phase 5)</item>
+  </outOfScope>
+
+  <technicalGuidance>
+    <selection>
+      <task>Add onClick handler to PlacedImage component</task>
+      <task>Store selectedInstanceId in Zustand store</task>
+      <task>Highlight selected image with outline or glow effect (drei's &lt;Select&gt; or custom shader)</task>
+      <task>Deselect when clicking canvas background or pressing Escape</task>
+    </selection>
+
+    <transformControls>
+      <task>Conditionally render &lt;TransformControls&gt; from @react-three/drei when an image is selected</task>
+      <task>Support three modes: translate, rotate, scale (toggle via keyboard T/R/S or UI buttons)</task>
+      <task>Attach TransformControls to the selected PlacedImage group</task>
+      <task>Listen to onChange event to update local state in real-time</task>
+      <task>Listen to onMouseUp event to trigger backend PATCH /api/instances/:id</task>
+    </transformControls>
+
+    <propertiesPanel>
+      <task>Create a PropertiesPanel component (HTML overlay, positioned right side of screen)</task>
+      <task>Display when an image is selected, show: Position (X/Y/Z), Rotation (X/Y/Z), Scale (Width/Height)</task>
+      <task>Use shadcn Input components for numeric fields</task>
+      <task>Add aspect ratio lock button (Paperclip icon from lucide-react)</task>
+      <task>When locked, changing width auto-adjusts height (and vice versa) to maintain ratio</task>
+      <task>When unlocked, width and height can be adjusted independently</task>
+      <task>Sync inputs bidirectionally with gizmo changes</task>
+    </propertiesPanel>
+
+    <aspectRatioLock>
+      <task>Store aspectRatioLocked: boolean in local component state</task>
+      <task>Calculate initial aspect ratio on selection: ratio = width / height</task>
+      <task>On width input change (if locked): newHeight = newWidth / ratio</task>
+      <task>On height input change (if locked): newWidth = newHeight * ratio</task>
+      <task>Apply changes to PlacedImage scale immediately for visual feedback</task>
+    </aspectRatioLock>
+
+    <backend>
+      <task>Implement PATCH /api/instances/:id accepting partial updates: { position?, rotation?, scale? }</task>
+      <task>Validate that scale values are positive and within reasonable bounds</task>
+      <task>Return updated instance data</task>
+    </backend>
+  </technicalGuidance>
+
+  <implementationNotes>
+    <note>TransformControls may conflict with OrbitControls - disable camera controls while dragging gizmo</note>
+    <note>Use drei's makeDefault prop on TransformControls to handle control conflicts automatically</note>
+    <note>Store scale as [sx, sy, 1] where sx and sy represent width and height multipliers</note>
+    <note>Convert between scale factors and actual dimensions (meters) for display in properties panel</note>
+  </implementationNotes>
+
+  <acceptanceCriteria>
+    <criterion>Clicking a placed image selects it and shows visual highlight</criterion>
+    <criterion>Transform gizmo appears and allows dragging, rotating, and scaling the image</criterion>
+    <criterion>Properties panel shows current transform values and updates live during gizmo manipulation</criterion>
+    <criterion>Typing values into properties panel updates the image in 3D space immediately</criterion>
+    <criterion>Aspect ratio lock toggle works: locked = proportional scaling, unlocked = free scaling</criterion>
+    <criterion>Transform changes persist to backend on mouse release</criterion>
+    <criterion>After page reload, images retain their edited transforms</criterion>
+  </acceptanceCriteria>
+</phase>

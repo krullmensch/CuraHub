@@ -7,6 +7,7 @@ import * as THREE from 'three'
 import React from 'react'
 import { useGLTF } from '@react-three/drei'
 import type { GLTF } from 'three-stdlib'
+import { useEditorStore } from '@/store/editorStore'
 
 type GLTFResult = GLTF & {
   nodes: {
@@ -36,6 +37,7 @@ type SatellitProps = React.JSX.IntrinsicElements['group'] & {
 
 export function Satellit({ viewMode = 'firstPerson', ...props }: SatellitProps) {
   const { nodes, materials } = useGLTF('/models/Satellit.glb') as unknown as GLTFResult
+  const showTraverses = useEditorStore((state) => state.showTraverses);
   
   // Opacity Logic
   // Opacity Logic
@@ -68,7 +70,14 @@ export function Satellit({ viewMode = 'firstPerson', ...props }: SatellitProps) 
         <mesh name="Door" castShadow receiveShadow geometry={nodes.Cube010_1.geometry} material={materials['Tür1.001']} />
         
         {/* Misc / Traverses */}
-        <mesh name="Misc" castShadow receiveShadow geometry={nodes.Cube010_2.geometry} material={materials['Material.006']} />
+        <mesh 
+            name="Misc" 
+            castShadow 
+            receiveShadow 
+            geometry={nodes.Cube010_2.geometry} 
+            material={materials['Material.006']} 
+            visible={showTraverses}
+        />
         
         {/* Walls - Apply transparency in planning modes */}
         <mesh 

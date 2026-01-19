@@ -1,0 +1,138 @@
+<phase id="4.1">
+  <title>Drag &amp; Drop Image Placement System</title>
+  <description>
+    Implement a stable raycast-based wall placement system allowing curators to drag images from the AssetSidebar and drop them onto valid wall surfaces with visual feedback.
+  </description>
+
+  <dependencies>
+    <dependsOn>phase3.2</dependsOn>
+  </dependencies>
+
+  <inScope>
+    <item>Raycaster setup for mouse position tracking in 3D space</item>
+    <item>Wall surface detection (only vertical walls, excluding floor, ceiling, doors, windows)</item>
+    <item>Ghost preview of dragged image following cursor with red/green overlay</item>
+    <item>Image size calculation from database metadata (width/height in cm)</item>
+    <item>Automatic scaling if image dimensions exceed room constraints</item>
+    <item>Drop validation and final placement on mouse release</item>
+    <item>Persistence of placed images via backend API</item>
+  </inScope>
+
+  <outOfScope>
+    <item>Transform gizmos for post-placement editing (Phase 4.2)</item>
+    <item>Selection of already-placed images</item>
+    <item>Frame style selection or customization</item>
+    <item>3D model placement (only 2D images)</item>
+  </outOfScope>
+
+  <technicalGuidance>
+    <wallDetection>
+      <requirement>Only the mesh with name="Wall" from the Satellit component should be raycastable</requirement>
+      <requirement>Filter raycast intersections by face normal to identify vertical walls</requirement>
+      <implementation>
+        A face is a valid wall if its normal vector is approximately horizontal (normal.y ≈ 0, tolerance ±0.1).
+        This excludes:
+        - Floor/Ceiling (normal.y = ±1)
+        - Doors and windows (part of Door/Misc meshes, not Wall mesh)
+        - Traversen (part of Misc mesh)
+      </implementation>
+      <note>Use THREE.Raycaster with layers or object filtering to only test against nodes.Cube010_3 (the Wall mesh)</note>
+    </wallDetection>
+
+    <raycasting>
+      <task>Create a global Zustand store to track dragging state: { isDragging: boolean, draggedAsset: Asset | null }</task>
+      <task>Implement useRaycaster hook or inline raycaster in PlannerScene component</task>
+      <task>On drag over canvas, use useThree to get camera and convert mouse coordinates to NDC</task>
+      <task>Cast ray from camera through mouse position, intersect with Wall mesh only</task>
+      <task>If intersection found, validate face normal (vertical check)</task>
+      <task>Store intersection.point (position) and intersection.face.normal (orientation) in state</task>
+    </raycasting>
+
+    <ghostPreview>
+      <task>Render a semi-transparent plane (opacity 0.5) at raycast intersection point while dragging</task>
+      <task>Orient plane perpendicular to wall using lookAt or quaternion from face normal</task>
+      <task>Calculate plane size from asset.width and asset.height (convert cm to meters: divide by 100)</task>
+      <task>Apply red tint (color="#ff0000") if placement invalid (no intersection or non-vertical surface)</task>
+      <task>Apply green tint (color="#00ff00") if placement valid</task>
+      <task>Load texture from asset.path and apply to plane material</task>
+      <implementation>
+        Use &lt;mesh position={intersectionPoint} quaternion={orientationFromNormal}&gt;
+          &lt;planeGeometry args={[widthInMeters, heightInMeters]} /&gt;
+          &lt;meshBasicMaterial 
+            map={texture} 
+            transparent 
+            opacity={0.5} 
+            color={isValid ? "#00ff00" : "#ff0000"}
+            side={THREE.DoubleSide}
+          /&gt;
+        &lt;/mesh&gt;
+      </implementation>
+    </ghostPreview>
+
+    <sizeCalculation>
+      <task>Read asset.width and asset.height from database (stored in cm)</task>
+      <task>Convert to Three.js units (meters): width_m = width_cm / 100</task>
+      <task>Check if dimensions exceed room constraints (e.g., max 5m width/height for Satellit room)</task>
+      <task>If oversized, show toast notification: "Image too large, auto-scaled to fit"</task>
+      <task>Scale down proportionally while maintaining aspect ratio</task>
+      <note>Aspect ratio lock will be implemented in Phase 4.2 with manual resize UI</note>
+    </sizeCalculation>
+
+    <dropHandling>
+      <task>Listen for onDrop event on Canvas wrapper or use global onMouseUp when isDragging is true</task>
+      <task>If no valid intersection at drop time, show error toast and cancel placement</task>
+      <task>If valid, create ArtworkInstance object with:
+        - assetId (from draggedAsset.id)
+        - position [x, y, z] (from intersection.point)
+        - rotation [rx, ry, rz] (calculated from face normal)
+        - scale [sx, sy, sz] (from width/height calculations, z=1)
+      </task>
+      <task>POST to /api/instances with instance data</task>
+      <task>On success, add instance to local state and render permanent plane</task>
+      <task>Clear dragging state in Zustand</task>
+    </dropHandling>
+
+    <rendering>
+      <task>Create PlacedImage component that renders a textured plane with simple frame</task>
+      <task>Load texture using useTexture from @react-three/drei</task>
+      <task>Add thin box geometry around plane as frame (offset by small amount, e.g., 0.01m)</task>
+      <implementation>
+        &lt;group position={instance.position} rotation={instance.rotation}&gt;
+          &lt;mesh&gt;
+            &lt;planeGeometry args={[width, height]} /&gt;
+            &lt;meshStandardMaterial map={texture} /&gt;
+          &lt;/mesh&gt;
+          &lt;mesh position={[0, 0, -0.01]}&gt;
+            &lt;boxGeometry args={[width + 0.02, height + 0.02, 0.02]} /&gt;
+            &lt;meshStandardMaterial color="#222" /&gt;
+          &lt;/mesh&gt;
+        &lt;/group&gt;
+      </implementation>
+    </rendering>
+
+    <backend>
+      <task>Ensure POST /api/instances endpoint accepts: assetId, position, rotation, scale</task>
+      <task>Ensure GET /api/instances?exhibitionId=X returns all placed instances</task>
+      <task>Store rotation as Euler angles in degrees or radians (document which)</task>
+    </backend>
+  </technicalGuidance>
+
+  <implementationNotes>
+    <note>The Satellit component has nodes.Cube010_3 as the Wall mesh - use this specific node for raycasting</note>
+    <note>AssetSidebar already implements handleDragStart and sets 'asset-data' in dataTransfer</note>
+    <note>Use onPointerMove on the Canvas or scene to track mouse position during drag</note>
+    <note>Remember to dispose of textures when unmounting PlacedImage components</note>
+    <note>Consider using drei's useTexture hook which handles loading states automatically</note>
+  </implementationNotes>
+
+  <acceptanceCriteria>
+    <criterion>Dragging an image from AssetSidebar shows a ghost preview following the cursor</criterion>
+    <criterion>Ghost preview only appears on vertical wall surfaces (not floor/ceiling/doors)</criterion>
+    <criterion>Ghost preview is green when over valid surface, red when invalid</criterion>
+    <criterion>Dropping image on valid surface places it with correct size based on DB metadata</criterion>
+    <criterion>Image maintains aspect ratio from database dimensions</criterion>
+    <criterion>Oversized images show warning toast and are auto-scaled proportionally</criterion>
+    <criterion>Placed images persist after page reload via backend API</criterion>
+    <criterion>Images render with texture loaded from asset.path and simple frame</criterion>
+  </acceptanceCriteria>
+</phase>
