@@ -21,12 +21,12 @@ export const ControlsSidebar = ({ isOpen, onToggle }: ControlsSidebarProps) => {
                     !isOpen && "translate-x-[calc(100%+2rem)]" // Slide completely off screen including margin
                 )}
             >
-                <CardHeader className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-sm font-medium text-zinc-100">Controls</CardTitle>
+                <CardHeader className="p-4 border-b border-zinc-800 bg-blue-600 flex flex-row items-center justify-between space-y-0">
+                    <CardTitle className="text-sm font-medium text-white">Controls</CardTitle>
                     <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-6 w-6 text-zinc-400 hover:text-white"
+                        className="h-6 w-6 text-blue-100 hover:text-white hover:bg-blue-700"
                         onClick={onToggle}
                     >
                         <ChevronRight className="h-4 w-4" />
@@ -62,10 +62,10 @@ export const ControlsSidebar = ({ isOpen, onToggle }: ControlsSidebarProps) => {
                 <Button
                     variant="secondary"
                     size="sm"
-                    className="h-12 w-6 rounded-l-lg rounded-r-none bg-zinc-900 border-y border-l border-zinc-700 shadow-md p-0 flex items-center justify-center hover:bg-zinc-800"
+                    className="h-12 w-6 rounded-l-lg rounded-r-none bg-blue-600 border-y border-l border-blue-700 shadow-md p-0 flex items-center justify-center hover:bg-blue-500"
                     onClick={onToggle}
                 >
-                    <ChevronLeft className="h-4 w-4 text-zinc-400" />
+                    <ChevronLeft className="h-4 w-4 text-white" />
                 </Button>
             </div>
         </>

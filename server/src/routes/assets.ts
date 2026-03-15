@@ -9,9 +9,17 @@ const prisma = new PrismaClient();
 // GET all assets
 assetsRouter.get('/', async (req, res) => {
     try {
+        const projectId = req.query.projectId ? parseInt(req.query.projectId as string, 10) : undefined;
+        
+        const where: any = {};
+        if (projectId && !isNaN(projectId)) {
+            where.projectId = projectId;
+        }
+
         const assets = await prisma.asset.findMany({
+            where,
             orderBy: { createdAt: 'desc' },
-            include: { artwork: true } // Include linked artwork if any
+            include: { artwork: true }
         });
         res.json(assets);
     } catch (error) {

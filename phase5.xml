@@ -1,17 +1,21 @@
 <!-- phase5.xml -->
 <phase>
   <id>phase5</id>
-  <name>Manual Versioning and Commits</name>
+  <name>Project Management and Versioning</name>
   <goal>
-    Introduce explicit exhibition versions with manual commit points and comments, capturing full room state.
+    Introduce project-based organization for assets and exhibitions, along with explicit versioning and manual commit points.
   </goal>
   <basedOnPrdSections>
     <section>functionalRequirements.versioningAndCollaboration</section>
     <section>dataModel.entities.ExhibitionVersion</section>
     <section>apiDesign.exhibitionsAndVersions</section>
+    <section>functionalRequirements.projectManagement</section> <!-- Added -->
   </basedOnPrdSections>
   <scope>
     <in>
+      <item>Project creation and selection (Header dropdown)</item>
+      <item>Project-scoped Asset Manager (folders/tags per project)</item>
+      <item>Project-scoped 3D Viewer state (placements per project)</item>
       <item>ExhibitionVersion records with parent_version_id, comment, created_at, created_by</item>
       <item>"Save as new version" button in planner</item>
       <item>Version list/history UI</item>
@@ -24,17 +28,27 @@
   </scope>
   <requirements>
     <backend>
+      <item>Implement Project entity/schema to group Assets and ExhibitionVersions.</item>
+      <item>Update Asset and Exhibition/Instance tables to include projectId foreign key.</item>
+      <item>Implement endpoints for Project CRUD operations: GET/POST/PUT/DELETE /projects.</item>
+      <item>Update GET /assets and GET /instances to accept projectId query param for filtering.</item>
       <item>Implement POST /exhibitions/:id/versions to create a new version from current state (instances, movable walls).</item>
       <item>Add GET endpoints to list versions and fetch specific versions for an exhibition.</item>
     </backend>
     <frontend>
+      <item>Add Project Selector to global header: Dropdown with search text field to filter/select active project.</item>
+      <item>Update Asset Manager to fetch and display only assets associated with the selected project.</item>
+      <item>Update 3D Viewer to load only placements/instances associated with the selected project.</item>
       <item>Add a "Save as new version" button in planner, opening a dialog for a commit comment.</item>
-      <item>On commit, send current state to backend to create a new ExhibitionVersion.</item>
+      <item>On commit, send current state to backend to create a new ExhibitionVersion linked to the active project.</item>
       <item>Add a versions panel listing all versions with timestamps and comments; allow selecting which version to load.</item>
     </frontend>
   </requirements>
   <successCriteria>
-    <item>A curator can create multiple versions with distinct comments and switch between them in the planner.</item>
+    <item>A curator can create multiple projects and switch between them via the header.</item>
+    <item>Switching projects clears the current view and loads the correct assets and 3D placements for that project.</item>
+    <item>A curator can create multiple versions with distinct comments and switch between them within a project.</item>
     <item>Each version loads its own snapshot of artwork instances and room state.</item>
   </successCriteria>
 </phase>
+

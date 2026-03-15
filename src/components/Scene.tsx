@@ -27,7 +27,7 @@ export const Scene = ({ isEditor = true }: SceneProps) => {
 
             {/* Key Light: Main directional light casting shadows */}
             <directionalLight 
-                position={[-2, 4, -5]} 
+                position={[-2, 5, -5]} 
                 intensity={2} 
                 castShadow 
                 shadow-mapSize={[2048, 2048]}

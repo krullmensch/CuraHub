@@ -143,6 +143,7 @@ uploadRouter.post('/', upload.single('file'), async (req, res) => {
               width: dimensions.width,
               height: dimensions.height,
               dpi: dpi,
+              projectId: projectId ? parseInt(projectId as string, 10) : undefined, // Add top-level relation
               metadata: {
                    widthCm,
                    heightCm,

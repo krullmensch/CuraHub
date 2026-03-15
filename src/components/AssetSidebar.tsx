@@ -18,6 +18,7 @@ interface Asset {
   mimetype: string;
   width: number;
   height: number;
+  dpi?: number;
   artwork?: {
     id: number;
     title: string;
@@ -29,11 +30,15 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [loading, setLoading] = useState(true);
     const { toast } = useToast();
     const setDragging = useEditorStore((state) => state.setDragging);
+    const activeProjectId = useEditorStore((state) => state.activeProjectId);
 
     useEffect(() => {
         const fetchAssets = async () => {
             try {
-                const res = await fetch('/api/assets');
+                const url = activeProjectId 
+                    ? `/api/assets?projectId=${activeProjectId}` 
+                    : '/api/assets';
+                const res = await fetch(url);
                 if (!res.ok) throw new Error('Failed to fetch assets');
                 const data = await res.json();
                 setAssets(data);
@@ -49,7 +54,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
             }
         };
         fetchAssets();
-    }, [toast]);
+    }, [toast, activeProjectId]);
 
     const handleDragStart = (e: React.DragEvent, asset: Asset) => {
         e.dataTransfer.setData('asset-id', asset.id.toString());
@@ -58,12 +63,15 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
         
         // Map asset path to url property expected by store
         // Use Artwork ID if available, otherwise fallback to Asset ID (though backend likely needs Artwork ID)
-        const artworkId = asset.artwork?.id ?? asset.id;
+        const isArtwork = !!asset.artwork;
+        const id = isArtwork ? asset.artwork!.id : asset.id;
         
         setDragging(true, {
-            id: artworkId,
+            id,
+            type: isArtwork ? 'artwork' : 'asset',
             width: asset.width,
             height: asset.height,
+            dpi: asset.dpi || 72,
             url: asset.path
         });
     };
@@ -80,12 +88,12 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                     !isOpen && "-translate-x-[calc(100%+2rem)]" // Slide off screen
                 )}
             >
-                <CardHeader className="p-4 border-b border-zinc-800 bg-zinc-900/50 flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-sm font-medium text-zinc-100">Asset Library</CardTitle>
+                <CardHeader className="p-4 border-b border-zinc-800 bg-blue-600 flex flex-row items-center justify-between space-y-0">
+                    <CardTitle className="text-sm font-medium text-white">Asset Library</CardTitle>
                     <Button 
                         variant="ghost" 
                         size="icon" 
-                        className="h-6 w-6 text-zinc-400 hover:text-white"
+                        className="h-6 w-6 text-blue-100 hover:text-white hover:bg-blue-700"
                         onClick={onToggle}
                     >
                         <ChevronLeft className="h-4 w-4" />
@@ -145,10 +153,10 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                 <Button
                     variant="secondary"
                     size="sm"
-                    className="h-12 w-6 rounded-r-lg rounded-l-none bg-zinc-900 border-y border-r border-zinc-700 shadow-md p-0 flex items-center justify-center hover:bg-zinc-800"
+                    className="h-12 w-6 rounded-r-lg rounded-l-none bg-blue-600 border-y border-r border-blue-700 shadow-md p-0 flex items-center justify-center hover:bg-blue-500"
                     onClick={onToggle}
                 >
-                    <ChevronRight className="h-4 w-4 text-zinc-400" />
+                    <ChevronRight className="h-4 w-4 text-white" />
                 </Button>
             </div>
         </>

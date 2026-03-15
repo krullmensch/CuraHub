@@ -7,7 +7,7 @@ import { z } from 'zod';
 export const authRouter = Router();
 const prisma = new PrismaClient();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'secret';
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
 
 // Validation Schemas
 const registerSchema = z.object({
@@ -57,7 +57,7 @@ authRouter.post('/login', async (req, res) => {
     const isValid = await bcrypt.compare(password, user.password_hash);
     if (!isValid) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '1d' });
+    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '365d' });
     res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (error) {
      res.status(500).json({ error: 'Login failed' });

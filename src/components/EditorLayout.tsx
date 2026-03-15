@@ -7,13 +7,16 @@ import { useEditorStore } from '../store/editorStore';
 import { Button } from '@/components/ui/button';
 import { LogOut } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
+import { ProjectSelector } from './ProjectSelector';
+import { VersionPanel } from './VersionPanel';
 
 // ViewModeControls import causes a white screen crash (likely due to circular dependency or build issue).
 // Temporarily disabled to allow the app to run.
 // import { ViewModeControls } from './ViewModeControls';
 
-import { ControlsSidebar } from './ControlsSidebar';
+
 import { EditorPage } from '../pages/EditorPage';
+import { PropertiesPanel } from './PropertiesPanel';
 
 export const EditorLayout = () => {
   const { user, logout } = useAuthStore();
@@ -21,9 +24,13 @@ export const EditorLayout = () => {
   const viewMode = useEditorStore((state) => state.plannerViewMode);
   const navigate = useNavigate();
   const location = useLocation();
+  const activeProjectId = useEditorStore((state) => state.activeProjectId);
   const [uploadedAsset, setUploadedAsset] = useState<any | null>(null);
   const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const rightOpen = useEditorStore((state) => state.rightSidebarOpen);
+  const selectedInstanceId = useEditorStore((state) => state.selectedInstanceId);
+  const toggleRight = useEditorStore((state) => state.toggleRightSidebar);
+  const [versionsOpen, setVersionsOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -46,6 +53,7 @@ export const EditorLayout = () => {
       
       startPlacement({ 
           id: data.id, 
+          type: 'artwork', // Newly created/edited artwork
           width: data.width, 
           height: data.height, 
           url: uploadedAsset.path 
@@ -53,24 +61,25 @@ export const EditorLayout = () => {
   };
 
   const isPlanningMode = viewMode !== 'firstPerson';
-  const isActive = (path: string) => location.pathname.startsWith(path);
-  const isAssetRoute = location.pathname.startsWith('/dashboard/assets');
+  const isActive = (path: string) => location.pathname.includes(path);
+  const isAssetRoute = location.pathname.includes('/assets');
 
   return (
     <div className="h-full w-full flex flex-col bg-zinc-950">
-      <header className="border-b border-zinc-800 p-3 bg-zinc-900 flex justify-between items-center z-10">
+      <header className="relative z-30 border-b border-zinc-800 p-3 bg-zinc-900 flex justify-between items-center">
         <div className="flex items-center gap-4">
             <h1 className="text-lg font-bold tracking-tight text-white">CuraHub <span className="text-blue-500">Dashboard</span></h1>
-            <nav className="flex gap-4 ml-6 text-sm font-medium">
+            <ProjectSelector />
+            <nav className="flex gap-4 ml-2 text-sm font-medium">
                 <Link 
-                    to="/exhibition/satellit/edit" 
-                    className={`transition-colors ${isActive('/exhibition') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    to={activeProjectId ? `/project/${activeProjectId}/edit` : "/project"} 
+                    className={`transition-colors ${isActive('/project') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                 >
                     Editor
                 </Link>
                 <Link 
-                    to="/dashboard/assets" 
-                    className={`transition-colors ${isActive('/dashboard') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    to={activeProjectId ? `/project/${activeProjectId}/assets` : "/project"} 
+                    className={`transition-colors ${isActive('/assets') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                 >
                     Assets
                 </Link>
@@ -116,7 +125,13 @@ export const EditorLayout = () => {
             {isPlanningMode && !isAssetRoute && (
                 <>
                     <AssetSidebar isOpen={leftOpen} onToggle={() => setLeftOpen(!leftOpen)} />
-                    <ControlsSidebar isOpen={rightOpen} onToggle={() => setRightOpen(!rightOpen)} />
+                    <PropertiesPanel isOpen={rightOpen} onToggle={toggleRight} />
+                    <VersionPanel 
+                      isOpen={versionsOpen} 
+                      onToggle={() => setVersionsOpen(!versionsOpen)} 
+                      leftSidebarOpen={leftOpen}
+                      rightSidebarOpen={rightOpen && !!selectedInstanceId}
+                    />
                 </>
             )}
          </UploadDropzone>

@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { UploadDropzone } from './UploadDropzone';
+import { useEditorStore } from '../store/editorStore';
 import { Card, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -46,13 +47,15 @@ export const AssetLibrary = () => {
   const [assetsToDelete, setAssetsToDelete] = useState<number[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  const activeProjectId = useEditorStore((state) => state.activeProjectId);
   
   const { toast } = useToast();
 
-  const fetchAssets = async () => {
+  const fetchAssets = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch('/api/assets');
+      const url = activeProjectId ? `/api/assets?projectId=${activeProjectId}` : '/api/assets';
+      const res = await fetch(url);
       if (!res.ok) throw new Error('Failed to fetch assets');
       const data = await res.json();
       setAssets(data);
@@ -66,11 +69,11 @@ export const AssetLibrary = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeProjectId, toast]);
 
   useEffect(() => {
     fetchAssets();
-  }, []);
+  }, [fetchAssets]);
 
   const confirmDelete = async () => {
       if (assetsToDelete.length === 0) return;
@@ -167,6 +170,7 @@ export const AssetLibrary = () => {
 
   return (
     <UploadDropzone
+        projectId={activeProjectId}
         onUploadComplete={handleUploadComplete}
         onUploadError={(msg) => toast({ variant: "destructive", title: "Upload Failed", description: msg })}
         className="h-full w-full flex flex-col bg-zinc-950"

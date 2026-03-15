@@ -7,6 +7,7 @@ interface UploadDropzoneProps {
   onUploadStart?: () => void;
   onUploadComplete?: (fileData: any) => void;
   onUploadError?: (error: string) => void;
+  projectId?: number | null;
   children?: React.ReactNode;
   disabled?: boolean;
   className?: string; 
@@ -16,6 +17,7 @@ export const UploadDropzone = ({
     onUploadStart = () => {}, 
     onUploadComplete = () => {}, 
     onUploadError = (e) => console.error(e), 
+    projectId = null,
     children, 
     disabled = false,
     className = ""
@@ -69,6 +71,9 @@ export const UploadDropzone = ({
               try {
                   const formData = new FormData();
                   formData.append('file', rawFile);
+                  if (projectId) {
+                      formData.append('projectId', projectId.toString());
+                  }
 
                   const response = await fetch('/upload', {
                     method: 'POST',

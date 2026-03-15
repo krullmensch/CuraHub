@@ -8,22 +8,33 @@ interface GhostPreviewProps {
     url: string;
     width: number;
     height: number;
+    dpi: number;
     position: THREE.Vector3;
     quaternion: THREE.Quaternion;
     isValid: boolean;
 }
 
-const GhostPreview = ({ url, width, height, position, quaternion, isValid }: GhostPreviewProps) => {
+const GhostPreview = ({ url, width, height, dpi, position, quaternion, isValid }: GhostPreviewProps) => {
     // Apply anisotropy for preview
+    const texture = useTexture(url);
     const gl = useThree((state) => state.gl);
     useEffect(() => {
         if (texture) {
+            // eslint-disable-next-line react-hooks/immutability
             texture.anisotropy = gl.capabilities.getMaxAnisotropy();
+            // eslint-disable-next-line react-hooks/immutability
             texture.needsUpdate = true;
         }
     }, [texture, gl]);
 
-    // ... scaling logic ...
+    // DPI-based sizing: (pixels / dpi) * 0.0254 = meters
+    const widthM = (width / dpi) * 0.0254;
+    const heightM = (height / dpi) * 0.0254;
+    const MAX_DIMENSION = 3;
+    let scale = 1;
+    if (widthM > MAX_DIMENSION || heightM > MAX_DIMENSION) {
+        scale = MAX_DIMENSION / Math.max(widthM, heightM);
+    }
 
     return (
         <group position={position} quaternion={quaternion} scale={[scale, scale, 1]}>
@@ -48,7 +59,10 @@ const GhostPreview = ({ url, width, height, position, quaternion, isValid }: Gho
 };
 
 export const ArtworkPlacement = () => {
-    const { isDragging, draggedAsset, dragPosition } = useEditorStore((state) => state.dragState);
+    // Select specific properties to avoid re-rendering when validPlacement changes
+    const isDragging = useEditorStore((state) => state.dragState.isDragging);
+    const draggedAsset = useEditorStore((state) => state.dragState.draggedAsset);
+    const dragPosition = useEditorStore((state) => state.dragState.dragPosition);
     const setValidPlacement = useEditorStore((state) => state.setValidPlacement);
     
     const { camera, scene } = useThree();
@@ -76,9 +90,13 @@ export const ArtworkPlacement = () => {
         // Intersect
         const intersects = raycaster.current.intersectObjects(scene.children, true);
         
-        // Find "Wall" mesh
-        // We filter for objects named "Wall" first
-        const wallHit = intersects.find(hit => hit.object.name === "Wall");
+        // Find "Wall" mesh or other valid vertical surfaces
+        // We filter for objects named "Wall", "Misc" (Columns/Traverses), or "Door"
+        const wallHit = intersects.find(hit => 
+            hit.object.name === "Wall" || 
+            hit.object.name === "Misc" || 
+            hit.object.name === "Door"
+        );
 
         // Debugging logs
         // console.log("All intersects:", intersects.map(i => i.object.name));
@@ -121,9 +139,10 @@ export const ArtworkPlacement = () => {
                 // API expects {x,y,z}.
                 // Let's convert quaternion to Euler
                 // Calculate Scale
+                const dpi = draggedAsset.dpi || 72;
                 const MAX_DIMENSION = 3;
-                const widthM = draggedAsset.width / 100;
-                const heightM = draggedAsset.height / 100;
+                const widthM = (draggedAsset.width / dpi) * 0.0254;
+                const heightM = (draggedAsset.height / dpi) * 0.0254;
                 let scale = 1;
                 if (widthM > MAX_DIMENSION || heightM > MAX_DIMENSION) {
                     scale = MAX_DIMENSION / Math.max(widthM, heightM);
@@ -173,6 +192,7 @@ export const ArtworkPlacement = () => {
                 url={draggedAsset.url}
                 width={draggedAsset.width}
                 height={draggedAsset.height}
+                dpi={draggedAsset.dpi}
                 position={ghostState.position}
                 quaternion={ghostState.quaternion}
                 isValid={ghostState.isValid}
