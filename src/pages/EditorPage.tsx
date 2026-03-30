@@ -6,14 +6,14 @@ import { Scene } from '../components/Scene';
 // Player is now handled inside PlannerCameraSystem
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { useEditorStore } from '../store/editorStore';
-import { useAuthStore } from '../store/authStore';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect } from 'react';
-import { Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2, Magnet } from 'lucide-react';
+import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 
 const GL_CONFIG = {
     toneMapping: THREE.ACESFilmicToneMapping,
-    toneMappingExposure: 1.2,
+    toneMappingExposure: 1.1,
     outputColorSpace: THREE.SRGBColorSpace,
 };
 
@@ -24,16 +24,21 @@ export const EditorPage = () => {
   const setDragging = useEditorStore((state) => state.setDragging);
   // Do not subscribe to dragState here to avoid re-renders on every mouse move/raycast
   
-  const token = useAuthStore((state) => state.token);
   const { toast } = useToast();
   const selectInstance = useEditorStore((state) => state.selectInstance);
   const setTransformMode = useEditorStore((state) => state.setTransformMode);
+  const setTransformAxisLock = useEditorStore((state) => state.setTransformAxisLock);
   const showTraverses = useEditorStore((state) => state.showTraverses);
   const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
   const selectedInstanceId = useEditorStore((state) => state.selectedInstanceId);
   const rightSidebarOpen = useEditorStore((state) => state.rightSidebarOpen);
+  const transformMode = useEditorStore((state) => state.transformMode);
+  const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
+  const snapEnabled = useEditorStore((state) => state.snapEnabled);
+  const selectWall = useEditorStore((state) => state.selectWall);
+  const selectZone = useEditorStore((state) => state.selectZone);
 
-  // Keyboard shortcuts: T/R/S for transform mode, Escape to deselect
+  // Blender-style keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs
@@ -43,6 +48,7 @@ export const EditorPage = () => {
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
       const shift = e.shiftKey;
 
+      // Undo / Redo
       if (cmdOrCtrl && e.key.toLowerCase() === 'z') {
         e.preventDefault();
         if (shift) {
@@ -59,11 +65,92 @@ export const EditorPage = () => {
         return;
       }
 
-      switch (e.key.toLowerCase()) {
-        case 't': setTransformMode('translate'); break;
-        case 'r': setTransformMode('rotate'); break;
-        case 's': setTransformMode('scale'); break;
-        case 'escape': selectInstance(null); break;
+      const store = useEditorStore.getState();
+      const hasSelection = !!(store.selectedInstanceId || store.selectedWallId || store.selectedZoneId);
+      const key = e.key.toLowerCase();
+
+      // Escape always works — deselect everything
+      if (key === 'escape') {
+        selectInstance(null);
+        selectWall(null);
+        selectZone(null);
+        setTransformAxisLock('none');
+        return;
+      }
+
+      // Wall-specific hotkeys (no pointer lock — uses TransformControls gizmo directly)
+      if (store.selectedWallId) {
+        if (key === 'r') {
+          e.preventDefault();
+          setTransformMode('rotate');
+        } else if (key === 'g') {
+          e.preventDefault();
+          setTransformMode('translate');
+        }
+        return;
+      }
+
+      // Skip all other hotkeys when a zone is selected
+      if (store.selectedZoneId) return;
+
+      switch (key) {
+        // Transform modes (Blender-style)
+        case 'g':
+          if (!hasSelection) break;
+          e.preventDefault();
+          setTransformMode('translate');
+          setTransformAxisLock('none');
+          store.setModalTransformActive(true);
+          // pointer lock removed — keep cursor visible during transforms
+          break;
+        case 'r':
+          if (!hasSelection) break;
+          e.preventDefault();
+          setTransformMode('rotate');
+          setTransformAxisLock('none');
+          store.setModalTransformActive(true);
+          // pointer lock removed — keep cursor visible during transforms
+          break;
+        case 's':
+          if (!cmdOrCtrl && hasSelection) { // Don't conflict with Cmd+S
+            e.preventDefault();
+            setTransformMode('scale');
+            setTransformAxisLock('none');
+            store.setModalTransformActive(true);
+            // pointer lock removed — keep cursor visible during transforms
+          }
+          break;
+
+        // Axis lock
+        case 'x':
+          if (store.selectedInstanceId) {
+            setTransformAxisLock(store.transformAxisLock === 'x' ? 'none' : 'x');
+          }
+          break;
+        case 'y':
+          if (store.selectedInstanceId) {
+            setTransformAxisLock(store.transformAxisLock === 'y' ? 'none' : 'y');
+          }
+          break;
+        case 'z':
+          if (!cmdOrCtrl && store.selectedInstanceId) {
+            setTransformAxisLock(store.transformAxisLock === 'z' ? 'none' : 'z');
+          }
+          break;
+
+        // Snap toggle
+        case 'n':
+          store.setSnapEnabled(!store.snapEnabled);
+          break;
+
+        // Delete selected instance
+        case 'delete':
+        case 'backspace':
+          if (store.selectedInstanceId) {
+            e.preventDefault();
+            store.deleteSelectedInstance();
+          }
+          break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -81,7 +168,7 @@ export const EditorPage = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [selectInstance, setTransformMode]);
+  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock]);
   // We need a ref to the container to calculate relative coordinates if needed, 
   // but for full screen editor, window coordinates are fine for NDC.
   
@@ -124,14 +211,25 @@ export const EditorPage = () => {
                     const store = useEditorStore.getState();
                     const newInstanceId = -Date.now(); // Temporary ID until saved
                     
+                    // Determine medium based on asset type
+                    const assetType = draggedAsset.assetType || 'image';
+                    const medium = assetType === 'model3d' ? 'model3d' as const
+                        : assetType === 'video' ? 'display' as const
+                        : 'frame' as const;
+
                     store.commitLocalChange([...store.localInstances, {
                         id: newInstanceId,
+                        artworkId: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
+                        assetId: draggedAsset.type === 'asset' ? draggedAsset.id : undefined,
+                        wallId: validPlacement.wallId ?? null,
+                        medium,
                         artwork: {
                             asset: {
-                                path: draggedAsset.url,
+                                path: draggedAsset.videoUrl || draggedAsset.url,
                                 width: draggedAsset.width,
                                 height: draggedAsset.height,
-                                dpi: draggedAsset.dpi
+                                dpi: draggedAsset.dpi,
+                                type: assetType,
                             }
                         },
                         position_x: position[0],
@@ -145,8 +243,9 @@ export const EditorPage = () => {
                         scale_z: 1,
                     }]);
                     
+                    const label = assetType === 'model3d' ? '3D Model' : assetType === 'video' ? 'Video' : 'Artwork';
                     toast({
-                        title: "Artwork Placed",
+                        title: `${label} Placed`,
                         description: `Placed ${draggedAsset.url.split('/').pop()}`,
                     });
                     
@@ -163,7 +262,9 @@ export const EditorPage = () => {
                  toast({
                     variant: "destructive",
                     title: "Invalid Placement",
-                    description: "Cannot place here. Try a wall.",
+                    description: draggedAsset?.assetType === 'model3d'
+                        ? "Cannot place here. Try the floor."
+                        : "Cannot place here. Try a wall.",
                 });
             }
             
@@ -177,7 +278,7 @@ export const EditorPage = () => {
         // Camera is managed by PlannerCameraSystem in Scene
         style={{ width: '100%', height: '100%' }}
         gl={GL_CONFIG}
-        onPointerMissed={() => selectInstance(null)}
+        onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
       >
         <Physics gravity={[0, -9.81, 0]}>
             <Scene />
@@ -186,15 +287,8 @@ export const EditorPage = () => {
       </Canvas>
       <Loader />
       
-      {/* Reticle - Only valid in First Person Mode */}
-      {viewMode === 'firstPerson' && (
-          <div style={{
-            position: 'absolute', top: '50%', left: '50%',
-            width: '10px', height: '10px', background: 'white',
-            borderRadius: '50%', transform: 'translate(-50%, -50%)',
-            pointerEvents: 'none', zIndex: 10
-          }} />
-      )}
+      {/* FPV Crosshair + Artwork Info Overlay */}
+      {viewMode === 'firstPerson' && <ArtworkInfoOverlay />}
 
       {/* Placement UI Overlay */}
       {isPlacing && (
@@ -205,6 +299,65 @@ export const EditorPage = () => {
            }}>
                Placing Artwork... Click to place.
            </div>
+      )}
+
+      {/* Transform HUD — mode, axis lock, snap */}
+      {viewMode !== 'firstPerson' && selectedInstanceId && (
+        <div style={{
+          position: 'absolute',
+          bottom: '20px',
+          left: '20px',
+          zIndex: 15,
+          display: 'flex',
+          alignItems: 'center',
+          gap: '6px',
+          padding: '6px 12px',
+          borderRadius: '10px',
+          border: '1px solid rgba(255,255,255,0.15)',
+          background: 'rgba(0,0,0,0.6)',
+          color: 'white',
+          fontSize: '11px',
+          fontWeight: 500,
+          backdropFilter: 'blur(8px)',
+          fontFamily: '"Albert Sans", sans-serif',
+        }}>
+          {/* Mode icon */}
+          {transformMode === 'translate' && <Move size={14} />}
+          {transformMode === 'rotate' && <RotateCw size={14} />}
+          {transformMode === 'scale' && <Maximize2 size={14} />}
+          <span style={{ textTransform: 'capitalize' }}>{transformMode === 'translate' ? 'Grab' : transformMode}</span>
+
+          {/* Axis lock */}
+          {transformAxisLock !== 'none' && (
+            <span style={{
+              marginLeft: '4px',
+              padding: '1px 6px',
+              borderRadius: '4px',
+              background: transformAxisLock === 'x' ? 'rgba(239,68,68,0.7)' :
+                           transformAxisLock === 'y' ? 'rgba(34,197,94,0.7)' :
+                           'rgba(59,130,246,0.7)',
+              fontSize: '10px',
+              fontWeight: 700,
+              textTransform: 'uppercase',
+            }}>
+              {transformAxisLock}
+            </span>
+          )}
+
+          {/* Snap indicator */}
+          {snapEnabled && (
+            <span style={{
+              marginLeft: '4px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '3px',
+              color: 'rgb(250, 204, 21)',
+            }}>
+              <Magnet size={12} />
+              <span style={{ fontSize: '10px' }}>Snap</span>
+            </span>
+          )}
+        </div>
       )}
 
       {/* Traverses Toggle Button */}

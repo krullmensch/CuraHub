@@ -1,40 +1,50 @@
 <!-- phase9.xml -->
 <phase>
   <id>phase9</id>
-  <name>Movable Walls and Multi-Asset Artworks</name>
+  <name>Multi-Asset Artworks</name>
   <goal>
-    Enable movement of specific walls and allow grouping multiple assets into a single logical artwork with shared metadata.
+    Allow grouping multiple assets into a single logical artwork with shared metadata, enabling curators to manage composite works (e.g. diptychs, triptychs, or multi-part installations) as one entity.
   </goal>
   <basedOnPrdSections>
-    <section>rolesAndUseCases.useCases.UC4_adminManageConstraints</section>
     <section>dataModel.entities.Artwork</section>
     <section>dataModel.entities.Asset</section>
     <section>dataModel.entities.ArtworkInstance</section>
+    <section>functionalRequirements.plannerMode</section>
   </basedOnPrdSections>
   <scope>
     <in>
-      <item>Two movable wall meshes from the Satellit GLB</item>
-      <item>Selection and transform editing of walls in planner</item>
-      <item>Constraint enforcement for walls (no_wall zones)</item>
       <item>Grouping multiple ArtworkInstances into a single Artwork (multi-asset works)</item>
+      <item>Shared metadata (title, artist, description) across grouped instances</item>
+      <item>Multi-selection of placed instances in the editor</item>
+      <item>"Group into Artwork" action that links selected instances under one Artwork record</item>
+      <item>Ungroup action to separate instances back into individual artworks</item>
+      <item>Visual indicator for grouped instances (e.g. shared outline color or group label)</item>
+      <item>Info overlay in viewer showing combined metadata for grouped artworks</item>
     </in>
     <out>
-      <item>No complex branching/merging based on wall states beyond existing versioning logic</item>
+      <item>Movable walls (now covered by the separate Feature-ModularWalls specification)</item>
+      <item>Automatic layout or alignment of grouped instances</item>
+      <item>Nested groups (groups within groups)</item>
     </out>
   </scope>
   <requirements>
     <frontend>
-      <item>Expose movable walls as selectable objects with TransformControls in planner.</item>
-      <item>Persist wall transforms as part of ExhibitionVersion state.</item>
-      <item>Allow multi-selection of ArtworkInstances and "group into artwork" actions that share Artwork-level metadata.</item>
+      <item>Implement multi-selection of ArtworkInstances (e.g. Shift+Click or drag-box selection).</item>
+      <item>Add a "Group into Artwork" context menu action that creates or updates a shared Artwork record.</item>
+      <item>Display a shared outline or indicator for all instances belonging to the same Artwork group.</item>
+      <item>In the PropertiesPanel, show shared metadata fields when a grouped instance is selected.</item>
+      <item>Add an "Ungroup" action to detach instances from a shared Artwork.</item>
     </frontend>
     <backend>
-      <item>Extend version persistence to include wall transform data.</item>
       <item>Support multiple Assets per Artwork and proper linkage from ArtworkInstance to Asset and Artwork.</item>
+      <item>Add API endpoint or extend existing ones to group/ungroup instances under a shared Artwork.</item>
+      <item>Ensure version snapshots preserve group relationships.</item>
     </backend>
   </requirements>
   <successCriteria>
-    <item>Curators can reposition the two specified walls while respecting constraints.</item>
-    <item>Curators can group two or more image instances into one artwork with shared title and text.</item>
+    <item>Curators can select two or more placed image instances and group them into one artwork with shared title and description.</item>
+    <item>Grouped instances display a visual indicator showing they belong together.</item>
+    <item>Editing metadata on one grouped instance updates all instances in the group.</item>
+    <item>Curators can ungroup instances back into independent artworks.</item>
   </successCriteria>
 </phase>

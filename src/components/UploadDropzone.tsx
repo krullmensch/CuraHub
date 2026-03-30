@@ -53,11 +53,17 @@ export const UploadDropzone = ({
   };
 
   const processFiles = async (files: FileList | File[]) => {
-      const validFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-      
+      const validFiles = Array.from(files).filter(file => {
+          if (file.type.startsWith('image/')) return true;
+          if (file.type.startsWith('video/')) return true;
+          const ext = file.name.toLowerCase();
+          if (ext.endsWith('.glb') || ext.endsWith('.gltf')) return true;
+          return false;
+      });
+
       if (validFiles.length === 0) {
           if (files.length > 0) {
-             onUploadError('Only image files are allowed');
+             onUploadError('Unsupported file type. Allowed: images, videos, 3D models (.glb/.gltf)');
           }
           return;
       }
@@ -135,7 +141,7 @@ export const UploadDropzone = ({
       {isDragging && (
         <div className="absolute inset-0 bg-blue-500/20 border-4 border-dashed border-blue-500 z-50 flex items-center justify-center pointer-events-none rounded-lg">
              <div className="bg-black/80 text-white px-4 py-2 rounded-md font-medium backdrop-blur-sm">
-                Drop images to upload
+                Drop files to upload
             </div>
         </div>
       )}
@@ -151,7 +157,7 @@ export const UploadDropzone = ({
                       {processing ? 'Optimizing & Uploading...' : 'Click to upload or drag and drop'}
                   </p>
                   <p className="text-xs text-gray-500">
-                      Images are automatically optimized
+                      Images, videos, and 3D models (.glb) supported
                   </p>
                   <Button variant="outline" size="sm" className="mt-4 pointer-events-none" disabled={processing}>
                       {processing ? 'Processing...' : 'Select Files'}
@@ -166,7 +172,7 @@ export const UploadDropzone = ({
             type="file" 
             className="hidden" 
             onChange={handleFileSelect} 
-            accept="image/*"
+            accept="image/*,video/*,.glb,.gltf"
             multiple 
             disabled={processing} 
         />

@@ -28,6 +28,8 @@ const createVersionSchema = z.object({
     instances: z.array(z.object({
         artworkId: z.number().optional(),
         assetId: z.number().optional(),
+        wallId: z.number().nullable().optional(),
+        wallIndex: z.number().nullable().optional(), // Index into walls[] array for ID remapping
         position_x: z.number(),
         position_y: z.number(),
         position_z: z.number(),
@@ -37,6 +39,20 @@ const createVersionSchema = z.object({
         scale_x: z.number(),
         scale_y: z.number(),
         scale_z: z.number(),
+    })).optional(),
+    walls: z.array(z.object({
+        label: z.string().max(100).optional().nullable(),
+        position_x: z.number(),
+        position_y: z.number(),
+        position_z: z.number(),
+        rotation_x: z.number(),
+        rotation_y: z.number(),
+        rotation_z: z.number(),
+        width: z.number(),
+        height: z.number(),
+        thickness: z.number(),
+        color: z.string(),
+        isLocked: z.boolean(),
     })).optional()
 });
 
@@ -64,6 +80,7 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (r
                 created_at: true,
                 parent_version_id: true,
                 is_published: true,
+                is_featured: true,
                 creator: {
                     select: { id: true, email: true }
                 },
@@ -106,6 +123,7 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticat
                         }
                     }
                 },
+                walls: true,
                 creator: {
                     select: { id: true, email: true }
                 }
@@ -184,6 +202,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                         scale_x: inst.scale_x,
                         scale_y: inst.scale_y,
                         scale_z: inst.scale_z,
+                        // wallId will be linked after walls are created (see below)
                     });
                 }
             }
@@ -191,8 +210,16 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
             const sourceInstances = await prisma.artworkInstance.findMany({
                 where: { versionId: sourceVersionId }
             });
+            // Build old wall ID → index mapping for deep-copy remapping
+            const sourceWalls = await prisma.modularWall.findMany({
+                where: { versionId: sourceVersionId },
+                orderBy: { id: 'asc' }
+            });
+            const oldWallIdToIndex = new Map(sourceWalls.map((w, i) => [w.id, i]));
+
             instancesToCreate = sourceInstances.map(inst => ({
                 artworkId: inst.artworkId,
+                _wallIndex: inst.wallId ? (oldWallIdToIndex.get(inst.wallId) ?? null) : null,
                 position_x: inst.position_x,
                 position_y: inst.position_y,
                 position_z: inst.position_z,
@@ -205,28 +232,103 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
             }));
         }
 
-        // Create new version with instances
-        const newVersion = await prisma.exhibitionVersion.create({
-            data: {
-                exhibition_id: exhibitionId,
-                created_by_user_id: userId,
-                parent_version_id: sourceVersionId,
-                comment: data.comment,
-                is_published: false,
-                instances: {
-                    create: instancesToCreate
-                }
-            },
-            include: {
-                instances: {
-                    include: {
-                        artwork: { include: { asset: true } }
+        // Prepare walls to create
+        let wallsToCreate: any[] = [];
+        if (data.walls) {
+            wallsToCreate = data.walls.map(w => ({
+                label: w.label,
+                position_x: w.position_x,
+                position_y: w.position_y,
+                position_z: w.position_z,
+                rotation_x: w.rotation_x,
+                rotation_y: w.rotation_y,
+                rotation_z: w.rotation_z,
+                width: w.width,
+                height: w.height,
+                thickness: w.thickness,
+                color: w.color,
+                isLocked: w.isLocked,
+            }));
+        } else if (sourceVersionId) {
+            const sourceWalls = await prisma.modularWall.findMany({
+                where: { versionId: sourceVersionId }
+            });
+            wallsToCreate = sourceWalls.map(w => ({
+                label: w.label,
+                position_x: w.position_x,
+                position_y: w.position_y,
+                position_z: w.position_z,
+                rotation_x: w.rotation_x,
+                rotation_y: w.rotation_y,
+                rotation_z: w.rotation_z,
+                width: w.width,
+                height: w.height,
+                thickness: w.thickness,
+                color: w.color,
+                isLocked: w.isLocked,
+            }));
+        }
+
+        // Create version with walls first, then instances with remapped wallIds
+        const newVersion = await prisma.$transaction(async (tx) => {
+            // 1. Create version with walls (no instances yet)
+            const version = await tx.exhibitionVersion.create({
+                data: {
+                    exhibition_id: exhibitionId,
+                    created_by_user_id: userId,
+                    parent_version_id: sourceVersionId,
+                    comment: data.comment,
+                    is_published: false,
+                    walls: {
+                        create: wallsToCreate
                     }
                 },
-                creator: {
-                    select: { id: true, email: true }
+                include: { walls: true }
+            });
+
+            // 2. Build wall index → new wall ID mapping
+            const newWallIds = version.walls.map(w => w.id); // walls created in order
+
+            // 3. Remap wallId on instances using wallIndex (from frontend) or _wallIndex (from deep-copy)
+            const instancesWithWallIds = instancesToCreate.map((inst: any, i: number) => {
+                const srcInst = data.instances?.[i];
+                let wallId: number | null = null;
+
+                // Frontend-provided wallIndex takes priority
+                const wallIndex = srcInst?.wallIndex ?? inst._wallIndex ?? null;
+                if (wallIndex != null && wallIndex >= 0 && wallIndex < newWallIds.length) {
+                    wallId = newWallIds[wallIndex];
                 }
+
+                const { _wallIndex, ...cleanInst } = inst;
+                return { ...cleanInst, wallId };
+            });
+
+            // 4. Create instances with correct wallIds
+            if (instancesWithWallIds.length > 0) {
+                await tx.artworkInstance.createMany({
+                    data: instancesWithWallIds.map((inst: any) => ({
+                        ...inst,
+                        versionId: version.id,
+                    }))
+                });
             }
+
+            // 5. Fetch the complete version with all relations
+            return tx.exhibitionVersion.findUniqueOrThrow({
+                where: { id: version.id },
+                include: {
+                    instances: {
+                        include: {
+                            artwork: { include: { asset: true } }
+                        }
+                    },
+                    walls: true,
+                    creator: {
+                        select: { id: true, email: true }
+                    }
+                }
+            });
         });
 
         res.status(201).json(newVersion);
@@ -236,5 +338,123 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
             return res.status(400).json({ error: 'Validation Error', details: (e as any).errors });
         }
         res.status(500).json({ error: 'Failed to create version' });
+    }
+});
+
+// DELETE /exhibitions/:exhibitionId/versions/:versionId — delete a specific version
+versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenticate, async (req: any, res) => {
+    try {
+        const exhibitionId = parseInt(req.params.exhibitionId, 10);
+        const versionId = parseInt(req.params.versionId, 10);
+        if (isNaN(exhibitionId) || isNaN(versionId)) {
+            return res.status(400).json({ error: 'Invalid ID' });
+        }
+
+        const userId = req.user.userId;
+
+        // Verify ownership
+        const exhibition = await prisma.exhibition.findFirst({
+            where: {
+                id: exhibitionId,
+                project: { ownerId: userId }
+            }
+        });
+        if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
+
+        // Ensure the version exists and belongs to this exhibition
+        const version = await prisma.exhibitionVersion.findFirst({
+            where: { id: versionId, exhibition_id: exhibitionId }
+        });
+        if (!version) return res.status(404).json({ error: 'Version not found' });
+
+        // Delete the version. Prisma cascade will delete ArtworkInstances automatically.
+        await prisma.exhibitionVersion.delete({
+            where: { id: versionId }
+        });
+
+        res.json({ success: true, message: 'Version deleted successfully' });
+    } catch (e) {
+        console.error('Failed to delete version:', e);
+        res.status(500).json({ error: 'Failed to delete version' });
+    }
+});
+
+// PATCH /exhibitions/:exhibitionId/versions/:versionId/publish — publish a version
+versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', authenticate, async (req: any, res) => {
+    try {
+        const exhibitionId = parseInt(req.params.exhibitionId, 10);
+        const versionId = parseInt(req.params.versionId, 10);
+        if (isNaN(exhibitionId) || isNaN(versionId)) {
+            return res.status(400).json({ error: 'Invalid ID' });
+        }
+
+        const userId = req.user.userId;
+
+        // Verify ownership
+        const exhibition = await prisma.exhibition.findFirst({
+            where: { id: exhibitionId, project: { ownerId: userId } }
+        });
+        if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
+
+        const version = await prisma.exhibitionVersion.findFirst({
+            where: { id: versionId, exhibition_id: exhibitionId }
+        });
+        if (!version) return res.status(404).json({ error: 'Version not found' });
+
+        if (version.is_published) {
+            return res.json({ success: true, message: 'Already published' });
+        }
+
+        // Unpublish all other versions of this exhibition, then publish this one
+        await prisma.$transaction([
+            prisma.exhibitionVersion.updateMany({
+                where: { exhibition_id: exhibitionId, is_published: true },
+                data: { is_published: false },
+            }),
+            prisma.exhibitionVersion.update({
+                where: { id: versionId },
+                data: { is_published: true, published_at: new Date() },
+            }),
+        ]);
+
+        res.json({ success: true, message: 'Version published' });
+    } catch (e) {
+        console.error('Failed to publish version:', e);
+        res.status(500).json({ error: 'Failed to publish version' });
+    }
+});
+
+// PATCH /exhibitions/:exhibitionId/versions/:versionId/feature — set as featured (admin only)
+versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/feature', authenticate, async (req: any, res) => {
+    try {
+        if (req.user.role !== 'admin') {
+            return res.status(403).json({ error: 'Admin access required' });
+        }
+
+        const versionId = parseInt(req.params.versionId, 10);
+        if (isNaN(versionId)) return res.status(400).json({ error: 'Invalid ID' });
+
+        const version = await prisma.exhibitionVersion.findUnique({ where: { id: versionId } });
+        if (!version) return res.status(404).json({ error: 'Version not found' });
+        if (!version.is_published) {
+            return res.status(400).json({ error: 'Cannot feature an unpublished version' });
+        }
+
+        // Unfeature all, then feature this one
+        await prisma.$transaction([
+            prisma.exhibitionVersion.updateMany({
+                where: { is_featured: true },
+                data: { is_featured: false },
+            }),
+            prisma.exhibitionVersion.update({
+                where: { id: versionId },
+                data: { is_featured: true },
+            }),
+        ]);
+
+        res.json({ success: true, message: 'Version featured' });
+    } catch (e) {
+        console.error('Failed to feature version:', e);
+        res.status(500).json({ error: 'Failed to feature version' });
     }
 });

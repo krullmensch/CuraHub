@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useState, Suspense, useMemo } from 'react';
+import { Canvas } from '@react-three/fiber';
+import { useGLTF, Center, OrbitControls, Environment } from '@react-three/drei';
+import * as THREE from 'three';
 import { useAuthStore } from '../store/authStore';
 import {
   Dialog,
@@ -17,9 +20,11 @@ interface AssetData {
     filename: string;
     mimetype: string;
     size: number;
+    type?: string;
     width?: number;
     height?: number;
     dpi?: number;
+    thumbnailPath?: string | null;
     metadata?: {
         widthCm?: number;
         heightCm?: number;
@@ -40,6 +45,26 @@ interface MetadataDialogProps {
   asset: AssetData;
   onSave: (data: { id: number, width: number, height: number }) => void;
   onCancel: () => void;
+}
+
+function InteractiveModel({ url }: { url: string }) {
+  const { scene } = useGLTF(url);
+  const clonedScene = useMemo(() => {
+    const clone = scene.clone(true);
+    clone.traverse((child) => {
+      if ((child as THREE.Mesh).isMesh) {
+        child.castShadow = false;
+        child.receiveShadow = false;
+      }
+    });
+    return clone;
+  }, [scene]);
+
+  return (
+    <Center>
+      <primitive object={clonedScene} />
+    </Center>
+  );
 }
 
 export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps) => {
@@ -140,18 +165,53 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
 
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           <div className="flex justify-center mb-4 bg-black/20 rounded-lg p-2">
-             <img 
-                src={getImageUrl(asset.path)} 
-                alt="Preview" 
-                className="h-48 object-contain"
-                onError={(e) => {
-                    const target = e.target as HTMLImageElement;
-                    if (!target.src.includes('localhost:3000') && !target.src.startsWith('http')) {
-                        // Fallback to direct backend URL if proxy fails or path is raw
-                         target.src = `http://localhost:3000${asset.path}`;
-                    }
-                }}
-             />
+             {(asset.type || 'image') === 'video' ? (
+                <video
+                    src={getImageUrl(asset.path)}
+                    controls
+                    className="h-48 object-contain"
+                    poster={asset.thumbnailPath || undefined}
+                />
+             ) : (asset.type) === 'model3d' ? (
+                <div className="h-48 w-full">
+                    <Suspense fallback={
+                        <div className="flex items-center justify-center w-full h-full">
+                            <Loader2 className="h-6 w-6 animate-spin text-purple-400" />
+                        </div>
+                    }>
+                        <Canvas
+                            dpr={[1, 1.5]}
+                            style={{ width: '100%', height: '100%' }}
+                            camera={{ fov: 45, near: 0.01, far: 100, position: [0, 0.5, 2] }}
+                            gl={{ antialias: true, alpha: true }}
+                        >
+                            <ambientLight intensity={1.0} />
+                            <directionalLight position={[2, 3, 4]} intensity={1.2} />
+                            <Environment preset="warehouse" background={false} environmentIntensity={0.3} />
+                            <Suspense fallback={null}>
+                                <InteractiveModel url={getImageUrl(asset.path)} />
+                            </Suspense>
+                            <OrbitControls
+                                enablePan={false}
+                                minDistance={0.5}
+                                maxDistance={10}
+                            />
+                        </Canvas>
+                    </Suspense>
+                </div>
+             ) : (
+                <img
+                    src={getImageUrl(asset.path)}
+                    alt="Preview"
+                    className="h-48 object-contain"
+                    onError={(e) => {
+                        const target = e.target as HTMLImageElement;
+                        if (!target.src.includes('localhost:3000') && !target.src.startsWith('http')) {
+                             target.src = `http://localhost:3000${asset.path}`;
+                        }
+                    }}
+                />
+             )}
           </div>
 
           {error && <div className="text-red-500 text-sm">{error}</div>}
@@ -177,42 +237,46 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
              />
           </div>
 
-          <div className="grid grid-cols-3 gap-2">
-             <Input 
-                name="year" 
-                placeholder="Year" 
-                value={formData.year} 
+          <div className={`grid gap-2 ${asset.type === 'model3d' ? 'grid-cols-1' : 'grid-cols-3'}`}>
+             <Input
+                name="year"
+                placeholder="Year"
+                value={formData.year}
                 maxLength={4}
                 onChange={(e) => {
-                    const value = e.target.value.replace(/\D/g, ''); // Remove non-digits
+                    const value = e.target.value.replace(/\D/g, '');
                     setFormData(prev => ({ ...prev, year: value }));
                 }}
                 className="bg-zinc-900 border-zinc-700 focus:border-zinc-500"
              />
-             <div className="relative">
-                 <Input 
-                    name="width" 
-                    placeholder="Width" 
-                    type="number" 
-                    step="0.1" 
-                    value={formData.width} 
-                    onChange={handleChange}
-                    className="bg-zinc-900 border-zinc-700 focus:border-zinc-500 pr-8 no-spinner"
-                 />
-                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-zinc-500 pointer-events-none">cm</span>
-             </div>
-             <div className="relative">
-                 <Input 
-                    name="height" 
-                    placeholder="Height" 
-                    type="number" 
-                    step="0.1" 
-                    value={formData.height} 
-                    onChange={handleChange}
-                    className="bg-zinc-900 border-zinc-700 focus:border-zinc-500 pr-8 no-spinner"
-                 />
-                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-zinc-500 pointer-events-none">cm</span>
-             </div>
+             {asset.type !== 'model3d' && (
+                <>
+                    <div className="relative">
+                        <Input
+                            name="width"
+                            placeholder="Width"
+                            type="number"
+                            step="0.1"
+                            value={formData.width}
+                            onChange={handleChange}
+                            className="bg-zinc-900 border-zinc-700 focus:border-zinc-500 pr-8 no-spinner"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-zinc-500 pointer-events-none">cm</span>
+                    </div>
+                    <div className="relative">
+                        <Input
+                            name="height"
+                            placeholder="Height"
+                            type="number"
+                            step="0.1"
+                            value={formData.height}
+                            onChange={handleChange}
+                            className="bg-zinc-900 border-zinc-700 focus:border-zinc-500 pr-8 no-spinner"
+                        />
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-zinc-500 pointer-events-none">cm</span>
+                    </div>
+                </>
+             )}
           </div>
 
           <div className="grid gap-2">

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
-import { History, Clock, MessageSquare, Layers, ChevronUp, ChevronDown } from 'lucide-react';
+import { History, Clock, MessageSquare, Layers, ChevronUp, ChevronDown, Trash2, Globe, Star } from 'lucide-react';
 import { SaveVersionDialog } from './SaveVersionDialog';
 
 interface Version {
@@ -10,6 +10,7 @@ interface Version {
   created_at: string;
   parent_version_id: number | null;
   is_published: boolean;
+  is_featured: boolean;
   creator: { id: number; email: string };
   _count: { instances: number };
 }
@@ -30,6 +31,7 @@ export const VersionPanel = ({
   const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   const token = useAuthStore((state) => state.token);
+  const isAdmin = useAuthStore((state) => state.isAdmin);
   const activeExhibitionId = useEditorStore((state) => state.activeExhibitionId);
   const activeVersionId = useEditorStore((state) => state.activeVersionId);
   const setActiveVersion = useEditorStore((state) => state.setActiveVersion);
@@ -65,9 +67,61 @@ export const VersionPanel = ({
     triggerRefresh();
   };
 
+  const handleDeleteVersion = async (e: React.MouseEvent, versionId: number) => {
+    e.stopPropagation();
+    if (!confirm('Are you sure you want to delete this version? This cannot be undone.')) return;
+
+    if (!token || !activeExhibitionId) return;
+    try {
+      const res = await fetch(`/api/exhibitions/${activeExhibitionId}/versions/${versionId}`, {
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        if (activeVersionId === versionId) {
+          setActiveVersion(null);
+          triggerRefresh();
+        }
+        fetchVersions();
+      } else {
+        const err = await res.json();
+        alert(`Failed to delete version: ${err.error || 'Unknown error'}`);
+      }
+    } catch (err) {
+      console.error('Failed to delete version:', err);
+      alert('Network error while deleting version.');
+    }
+  };
+
   const onVersionSaved = () => {
     setShowSaveDialog(false);
     fetchVersions();
+  };
+
+  const handlePublish = async (e: React.MouseEvent, versionId: number) => {
+    e.stopPropagation();
+    if (!token || !activeExhibitionId) return;
+    try {
+      const res = await fetch(`/api/exhibitions/${activeExhibitionId}/versions/${versionId}/publish`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) fetchVersions();
+      else alert((await res.json()).error || 'Failed to publish');
+    } catch { alert('Network error'); }
+  };
+
+  const handleFeature = async (e: React.MouseEvent, versionId: number) => {
+    e.stopPropagation();
+    if (!token || !activeExhibitionId) return;
+    try {
+      const res = await fetch(`/api/exhibitions/${activeExhibitionId}/versions/${versionId}/feature`, {
+        method: 'PATCH',
+        headers: { 'Authorization': `Bearer ${token}` },
+      });
+      if (res.ok) fetchVersions();
+      else alert((await res.json()).error || 'Failed to feature');
+    } catch { alert('Network error'); }
   };
 
   const formatDate = (dateStr: string) => {
@@ -158,7 +212,7 @@ export const VersionPanel = ({
                   }`}
                 >
                   <div className="flex-1 text-left p-4 h-full flex flex-col justify-start">
-                    <div className="flex items-center gap-2 mb-3">
+                    <div className="flex items-center gap-2 mb-3 pr-6">
                         <div className={`shrink-0 w-2.5 h-2.5 rounded-full ${
                           isActive 
                             ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]' 
@@ -167,6 +221,44 @@ export const VersionPanel = ({
                         <span className={`text-xs font-medium uppercase tracking-wider ${isActive ? 'text-blue-400' : 'text-zinc-500'}`}>
                           {isActive ? 'Active Version' : index === 0 ? 'Latest' : `Snapshot`}
                         </span>
+                        {version.is_featured && (
+                          <span className="ml-auto text-[10px] font-medium text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Star className="h-3 w-3" /> Featured
+                          </span>
+                        )}
+                        {version.is_published && !version.is_featured && (
+                          <span className="ml-auto text-[10px] font-medium text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                            <Globe className="h-3 w-3" /> Published
+                          </span>
+                        )}
+                    </div>
+
+                    <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {!version.is_published && (
+                        <button
+                          onClick={(e) => handlePublish(e, version.id)}
+                          className="p-1.5 text-zinc-500 hover:text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
+                          title="Publish"
+                        >
+                          <Globe className="h-4 w-4" />
+                        </button>
+                      )}
+                      {isAdmin && version.is_published && !version.is_featured && (
+                        <button
+                          onClick={(e) => handleFeature(e, version.id)}
+                          className="p-1.5 text-zinc-500 hover:text-yellow-400 hover:bg-yellow-400/10 rounded-md transition-colors"
+                          title="Feature on Homepage"
+                        >
+                          <Star className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button
+                        onClick={(e) => handleDeleteVersion(e, version.id)}
+                        className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors"
+                        title="Delete Version"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
                     </div>
 
                     <div className="flex items-start gap-2 mb-auto pb-2">

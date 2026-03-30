@@ -24,6 +24,29 @@ const authenticate = (req: any, res: any, next: any) => {
     }
 };
 
+// --- Helpers ---
+const BLOCKED_SLUGS = ['login', 'register', 'project', 'exhibition', 'admin', 'assets', 'api', 'public'];
+
+function generateBaseSlug(name: string): string {
+    let slug = name
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '')
+        .slice(0, 80);
+    if (!slug) slug = 'project';
+    if (BLOCKED_SLUGS.includes(slug)) slug = slug + '-project';
+    return slug;
+}
+
+// Resolve :id param as numeric ID or slug
+function resolveProjectWhere(param: string, userId: number) {
+    const numId = parseInt(param, 10);
+    if (!isNaN(numId) && String(numId) === param) {
+        return { id: numId, ownerId: userId };
+    }
+    return { slug: param, ownerId: userId };
+}
+
 // --- Schemas ---
 const createProjectSchema = z.object({
     name: z.string().min(1).max(100),
@@ -58,15 +81,13 @@ projectsRouter.get('/', authenticate, async (req: any, res) => {
     }
 });
 
-// GET /projects/:id — get a single project with its exhibitions and latest version
+// GET /projects/:id — get a single project by ID or slug
 projectsRouter.get('/:id', authenticate, async (req: any, res) => {
     try {
-        const projectId = parseInt(req.params.id, 10);
-        if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
-
         const userId = req.user.userId;
+        const where = resolveProjectWhere(req.params.id, userId);
         const project = await prisma.project.findFirst({
-            where: { id: projectId, ownerId: userId },
+            where,
             include: {
                 exhibitions: {
                     include: {
@@ -95,23 +116,34 @@ projectsRouter.post('/', authenticate, async (req: any, res) => {
         const data = createProjectSchema.parse(req.body);
         const userId = req.user.userId;
 
-        // Generate a slug from the project name
-        const slug = data.name
-            .toLowerCase()
-            .replace(/[^a-z0-9]+/g, '-')
-            .replace(/(^-|-$)/g, '')
-            + '-' + Date.now();
+        // Generate project slug
+        const baseSlug = generateBaseSlug(data.name);
+        let projectSlug = baseSlug;
+        let suffix = 2;
+        while (await prisma.project.findFirst({ where: { slug: projectSlug } })) {
+            projectSlug = `${baseSlug}-${suffix}`;
+            suffix++;
+        }
+
+        // Generate exhibition slug (may differ if collision)
+        let exhibitionSlug = baseSlug;
+        suffix = 2;
+        while (await prisma.exhibition.findUnique({ where: { slug: exhibitionSlug } })) {
+            exhibitionSlug = `${baseSlug}-${suffix}`;
+            suffix++;
+        }
 
         const project = await prisma.project.create({
             data: {
                 name: data.name,
+                slug: projectSlug,
                 description: data.description,
                 ownerId: userId,
                 // Auto-create default exhibition with initial draft version
                 exhibitions: {
                     create: {
                         title: data.name,
-                        slug,
+                        slug: exhibitionSlug,
                         room_id: 1, // Default room
                         versions: {
                             create: {
@@ -148,20 +180,16 @@ projectsRouter.post('/', authenticate, async (req: any, res) => {
 // PUT /projects/:id — update project name/description
 projectsRouter.put('/:id', authenticate, async (req: any, res) => {
     try {
-        const projectId = parseInt(req.params.id, 10);
-        if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
-
         const data = updateProjectSchema.parse(req.body);
         const userId = req.user.userId;
 
         // Verify ownership
-        const existing = await prisma.project.findFirst({
-            where: { id: projectId, ownerId: userId }
-        });
+        const where = resolveProjectWhere(req.params.id, userId);
+        const existing = await prisma.project.findFirst({ where });
         if (!existing) return res.status(404).json({ error: 'Project not found' });
 
         const updated = await prisma.project.update({
-            where: { id: projectId },
+            where: { id: existing.id },
             data: {
                 name: data.name,
                 description: data.description,
@@ -181,16 +209,14 @@ projectsRouter.put('/:id', authenticate, async (req: any, res) => {
 // DELETE /projects/:id — delete project (cascades to exhibitions, versions, instances)
 projectsRouter.delete('/:id', authenticate, async (req: any, res) => {
     try {
-        const projectId = parseInt(req.params.id, 10);
-        if (isNaN(projectId)) return res.status(400).json({ error: 'Invalid project ID' });
-
         const userId = req.user.userId;
 
         // Verify ownership
-        const existing = await prisma.project.findFirst({
-            where: { id: projectId, ownerId: userId }
-        });
+        const where = resolveProjectWhere(req.params.id, userId);
+        const existing = await prisma.project.findFirst({ where });
         if (!existing) return res.status(404).json({ error: 'Project not found' });
+
+        const projectId = existing.id;
 
         // Fetch associated assets to delete their physical files
         const assets = await prisma.asset.findMany({

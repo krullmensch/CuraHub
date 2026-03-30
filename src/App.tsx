@@ -1,7 +1,8 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route } from 'react-router-dom';
 import { ViewerPage } from './pages/ViewerPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { HomePage } from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { EditorLayout } from './components/EditorLayout';
 import { AssetLibraryPage } from './pages/AssetLibraryPage';
@@ -12,7 +13,7 @@ function App() {
   return (
     <>
       <Routes>
-        <Route path="/" element={<Navigate to="/project" replace />} />
+        <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/register" element={<RegisterPage />} />
         
@@ -22,12 +23,21 @@ function App() {
         {/* Protected Routes */}
         <Route element={<ProtectedRoute />}>
            <Route element={<EditorLayout />}>
-              <Route path="/project/:projectId/assets" element={<AssetLibraryPage />} />
-              {/* Project editor — projectId selected via ProjectSelector in header */}
+              <Route path="/:projectSlug/assets" element={<AssetLibraryPage />} />
+              {/* Project editor — projectSlug selected via ProjectSelector in header */}
               <Route path="/project" element={null} />
-              <Route path="/project/:projectId/edit" element={null} />
+              <Route path="/:projectSlug/edit" element={null} />
            </Route>
         </Route>
+
+        {/* 404 */}
+        <Route path="*" element={
+          <div className="h-screen w-screen flex flex-col items-center justify-center bg-zinc-950 text-white">
+            <h1 className="text-6xl font-bold mb-4">404</h1>
+            <p className="text-zinc-400 mb-6">Diese Seite existiert nicht.</p>
+            <a href="/" className="text-blue-500 hover:text-blue-400 underline">Zurück zur Startseite</a>
+          </div>
+        } />
       </Routes>
       <Toaster />
     </>

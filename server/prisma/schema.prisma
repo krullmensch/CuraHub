@@ -21,6 +21,7 @@ model User {
 model Project {
   id          Int          @id @default(autoincrement())
   name        String
+  slug        String       @unique
   description String?      @db.Text
   ownerId     Int
   owner       User         @relation(fields: [ownerId], references: [id])
@@ -50,11 +51,14 @@ model ExhibitionVersion {
   created_at          DateTime   @default(now())
   comment             String?
   is_published        Boolean    @default(false)
+  is_featured         Boolean    @default(false)
+  published_at        DateTime?
 
   // Content JSON for legacy/cache, but using relational for Phase 3
   data                Json?      
   
   instances           ArtworkInstance[]
+  walls               ModularWall[]
 }
 
 model Artwork {
@@ -76,21 +80,24 @@ model Artwork {
 }
 
 model Asset {
-  id        Int      @id @default(autoincrement())
-  filename  String
-  path      String   // Relative path or URL
-  mimetype  String
-  size      Int
-  width     Int?     // Original pixel width
-  height    Int?     // Original pixel height
-  dpi       Int?     // Original DPI
-  metadata  Json?    // Any extra extracted metadata
-  
+  id            Int      @id @default(autoincrement())
+  filename      String
+  path          String   // Relative path or URL
+  mimetype      String
+  size          Int
+  type          String   @default("image") // "image", "video", "model3d"
+  width         Int?     // Original pixel width
+  height        Int?     // Original pixel height
+  dpi           Int?     // Original DPI
+  duration      Float?   // Video duration in seconds
+  thumbnailPath String?  // Poster frame (video) or placeholder path
+  metadata      Json?    // Any extra extracted metadata
+
   projectId Int?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  
+
   artwork   Artwork?
-  
+
   createdAt DateTime @default(now())
 }
 
@@ -103,6 +110,10 @@ model ArtworkInstance {
   version     ExhibitionVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
   versionId   Int
 
+  // Optional parent wall (artwork moves with this wall)
+  wall        ModularWall?      @relation(fields: [wallId], references: [id], onDelete: SetNull)
+  wallId      Int?
+
   // Transform (stored as individual floats for querying, or could be JSON)
   position_x  Float
   position_y  Float
@@ -114,5 +125,51 @@ model ArtworkInstance {
   scale_y     Float             @default(1.0)
   scale_z     Float             @default(1.0)
 
+  medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d"
+
   createdAt   DateTime          @default(now())
+}
+
+model ModularWall {
+  id          Int               @id @default(autoincrement())
+
+  version     ExhibitionVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  versionId   Int
+
+  label       String?           // Optional curator-assigned name
+
+  // Transform
+  position_x  Float             @default(0)
+  position_y  Float             @default(0)
+  position_z  Float             @default(0)
+  rotation_x  Float             @default(0)
+  rotation_y  Float             @default(0)
+  rotation_z  Float             @default(0)
+
+  // Dimensions (meters)
+  width       Float             @default(2.0)
+  height      Float             @default(2.5)
+  thickness   Float             @default(0.12)
+
+  color       String            @default("#ffffff")
+  isLocked    Boolean           @default(false)
+
+  // Artworks placed on this wall
+  instances   ArtworkInstance[]
+
+  createdAt   DateTime          @default(now())
+}
+
+model RestrictionZone {
+  id          Int      @id @default(autoincrement())
+  label       String?
+  // Bounding box dimensions (world-space unrotated) and optionally rotated
+  min_x       Float
+  min_y       Float
+  min_z       Float
+  max_x       Float
+  max_y       Float
+  max_z       Float
+  rotation_y  Float    @default(0)
+  createdAt   DateTime @default(now())
 }

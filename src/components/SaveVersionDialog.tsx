@@ -34,18 +34,37 @@ export const SaveVersionDialog = ({ onSave, onCancel }: SaveVersionDialogProps) 
         body: JSON.stringify({
           comment: comment.trim(),
           sourceVersionId: activeVersionId,
-          instances: useEditorStore.getState().localInstances.map(inst => ({
-            artworkId: inst.artworkId !== undefined ? inst.artworkId : (inst.artwork.id !== undefined ? inst.artwork.id : undefined),
-            assetId: inst.assetId,
-            position_x: inst.position_x,
-            position_y: inst.position_y,
-            position_z: inst.position_z,
-            rotation_x: inst.rotation_x,
-            rotation_y: inst.rotation_y,
-            rotation_z: inst.rotation_z,
-            scale_x: inst.scale_x,
-            scale_y: inst.scale_y,
-            scale_z: inst.scale_z,
+          instances: (() => {
+            const walls = useEditorStore.getState().localWalls;
+            return useEditorStore.getState().localInstances.map(inst => ({
+              artworkId: inst.artworkId !== undefined ? inst.artworkId : (inst.artwork.id !== undefined ? inst.artwork.id : undefined),
+              assetId: inst.assetId,
+              wallId: inst.wallId ?? null,
+              wallIndex: inst.wallId ? walls.findIndex(w => w.id === inst.wallId) : null,
+              position_x: inst.position_x,
+              position_y: inst.position_y,
+              position_z: inst.position_z,
+              rotation_x: inst.rotation_x,
+              rotation_y: inst.rotation_y,
+              rotation_z: inst.rotation_z,
+              scale_x: inst.scale_x,
+              scale_y: inst.scale_y,
+              scale_z: inst.scale_z,
+            }));
+          })(),
+          walls: useEditorStore.getState().localWalls.map(w => ({
+            label: w.label ?? null,
+            position_x: w.position_x,
+            position_y: w.position_y,
+            position_z: w.position_z,
+            rotation_x: w.rotation_x,
+            rotation_y: w.rotation_y,
+            rotation_z: w.rotation_z,
+            width: w.width,
+            height: w.height,
+            thickness: w.thickness,
+            color: w.color,
+            isLocked: w.isLocked,
           }))
         }),
       });
@@ -100,7 +119,7 @@ export const SaveVersionDialog = ({ onSave, onCancel }: SaveVersionDialogProps) 
             autoFocus
           />
           <p className="text-xs text-gray-600 mt-1.5">
-            A snapshot of all current artwork placements will be saved.
+            A snapshot of all current artwork placements and modular walls will be saved.
           </p>
 
           {error && (

@@ -5,10 +5,11 @@ import { UploadDropzone } from './UploadDropzone';
 import { MetadataDialog } from './MetadataDialog';
 import { useEditorStore } from '../store/editorStore';
 import { Button } from '@/components/ui/button';
-import { LogOut } from 'lucide-react';
+import { LogOut, BookOpen } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { VersionPanel } from './VersionPanel';
+import { WikiModal } from './WikiModal';
 
 // ViewModeControls import causes a white screen crash (likely due to circular dependency or build issue).
 // Temporarily disabled to allow the app to run.
@@ -24,13 +25,13 @@ export const EditorLayout = () => {
   const viewMode = useEditorStore((state) => state.plannerViewMode);
   const navigate = useNavigate();
   const location = useLocation();
-  const activeProjectId = useEditorStore((state) => state.activeProjectId);
+  const activeProjectSlug = useEditorStore((state) => state.activeProjectSlug);
   const [uploadedAsset, setUploadedAsset] = useState<any | null>(null);
   const [leftOpen, setLeftOpen] = useState(true);
   const rightOpen = useEditorStore((state) => state.rightSidebarOpen);
-  const selectedInstanceId = useEditorStore((state) => state.selectedInstanceId);
   const toggleRight = useEditorStore((state) => state.toggleRightSidebar);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [wikiOpen, setWikiOpen] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -64,6 +65,7 @@ export const EditorLayout = () => {
   const isActive = (path: string) => location.pathname.includes(path);
   const isAssetRoute = location.pathname.includes('/assets');
 
+
   return (
     <div className="h-full w-full flex flex-col bg-zinc-950">
       <header className="relative z-30 border-b border-zinc-800 p-3 bg-zinc-900 flex justify-between items-center">
@@ -72,17 +74,25 @@ export const EditorLayout = () => {
             <ProjectSelector />
             <nav className="flex gap-4 ml-2 text-sm font-medium">
                 <Link 
-                    to={activeProjectId ? `/project/${activeProjectId}/edit` : "/project"} 
-                    className={`transition-colors ${isActive('/project') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                    to={activeProjectSlug ? `/${activeProjectSlug}/edit` : "/project"} 
+                    className={`transition-colors ${isActive('/edit') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                 >
                     Editor
                 </Link>
                 <Link 
-                    to={activeProjectId ? `/project/${activeProjectId}/assets` : "/project"} 
+                    to={activeProjectSlug ? `/${activeProjectSlug}/assets` : "/project"} 
                     className={`transition-colors ${isActive('/assets') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                 >
                     Assets
                 </Link>
+                <a 
+                    href="#"
+                    onClick={(e) => { e.preventDefault(); setWikiOpen(true); }}
+                    className="transition-colors text-gray-400 hover:text-white flex items-center gap-1"
+                >
+                    <BookOpen className="h-3.5 w-3.5" />
+                    Wiki
+                </a>
             </nav>
         </div>
         
@@ -130,7 +140,7 @@ export const EditorLayout = () => {
                       isOpen={versionsOpen} 
                       onToggle={() => setVersionsOpen(!versionsOpen)} 
                       leftSidebarOpen={leftOpen}
-                      rightSidebarOpen={rightOpen && !!selectedInstanceId}
+                      rightSidebarOpen={rightOpen}
                     />
                 </>
             )}
@@ -150,6 +160,9 @@ export const EditorLayout = () => {
              </div>
          )}
       </div>
+
+      {/* Wiki Modal */}
+      <WikiModal isOpen={wikiOpen} onClose={() => setWikiOpen(false)} />
     </div>
   );
 };

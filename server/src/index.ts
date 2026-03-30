@@ -9,6 +9,9 @@ import { instancesRouter } from './routes/instances';
 import { assetsRouter } from './routes/assets';
 import { projectsRouter } from './routes/projects';
 import { versionsRouter } from './routes/versions';
+import { wallsRouter } from './routes/walls';
+import { restrictionsRouter } from './routes/restrictions';
+import { publicRouter } from './routes/public';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -26,6 +29,9 @@ app.use('/artworks', artworksRouter);
 app.use('/instances', instancesRouter);
 app.use('/projects', projectsRouter);
 app.use('/', versionsRouter); // Mounted at root since routes are /exhibitions/:id/versions
+app.use('/walls', wallsRouter);
+app.use('/restrictions', restrictionsRouter);
+app.use('/public', publicRouter);
 
 app.get('/', (req, res) => {
   res.send('CuraHub API Phase 5');

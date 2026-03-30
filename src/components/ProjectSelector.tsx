@@ -7,6 +7,7 @@ import { Plus, ChevronDown, Search, FolderOpen, Trash2, AlertTriangle } from 'lu
 interface Project {
   id: number;
   name: string;
+  slug: string;
   description: string | null;
   exhibitions: { id: number; title: string; slug: string; versions?: { id: number }[] }[];
   _count: { assets: number };
@@ -44,14 +45,14 @@ export const ProjectSelector = () => {
         const currentProjectId = useEditorStore.getState().activeProjectId;
         if (!currentProjectId && data.length > 0) {
           
-          // Check current URL to see if user is requesting a specific project
+          // Check current URL to see if user is requesting a specific project by slug
           const path = window.location.pathname;
-          const match = path.match(/\/project\/(\d+)/);
-          const requestedId = match ? parseInt(match[1], 10) : null;
-          
+          const slugMatch = path.match(/^\/([^/]+)\/(edit|assets)/);
+          const requestedSlug = slugMatch ? slugMatch[1] : null;
+
           let project = data[0];
-          if (requestedId) {
-            const matchedProject = data.find((p: Project) => p.id === requestedId);
+          if (requestedSlug) {
+            const matchedProject = data.find((p: Project) => p.slug === requestedSlug);
             if (matchedProject) project = matchedProject;
           }
 
@@ -68,13 +69,13 @@ export const ProjectSelector = () => {
               }
             } catch { /* ignore */ }
           }
-          setActiveProject(project.id, project.name, exhibition?.id ?? null, versionId);
+          setActiveProject(project.id, project.name, project.slug, exhibition?.id ?? null, versionId);
           triggerRefresh();
-          
+
           if (path.includes('/assets')) {
-            navigate(`/project/${project.id}/assets`, { replace: true });
+            navigate(`/${project.slug}/assets`, { replace: true });
           } else {
-            navigate(`/project/${project.id}/edit`, { replace: true });
+            navigate(`/${project.slug}/edit`, { replace: true });
           }
         }
       }
@@ -121,14 +122,14 @@ export const ProjectSelector = () => {
       }
     }
 
-    setActiveProject(project.id, project.name, exhibition?.id ?? null, versionId);
+    setActiveProject(project.id, project.name, project.slug, exhibition?.id ?? null, versionId);
     triggerRefresh();
     setIsOpen(false);
     setSearch('');
     
     // Only navigate to the editor if we are not on the assets page
     if (!location.pathname.includes('/assets')) {
-      navigate(`/project/${project.id}/edit`);
+      navigate(`/${project.slug}/edit`);
     }
   };
 
@@ -154,16 +155,17 @@ export const ProjectSelector = () => {
         const exhibition = project.exhibitions?.[0];
         const version = exhibition?.versions?.[0];
         setActiveProject(
-          project.id, 
-          project.name, 
-          exhibition?.id ?? null, 
+          project.id,
+          project.name,
+          project.slug,
+          exhibition?.id ?? null,
           version?.id ?? null
         );
         triggerRefresh();
         
         // Only navigate to the editor if we are not on the assets page
         if (!location.pathname.includes('/assets')) {
-          navigate(`/project/${project.id}/edit`);
+          navigate(`/${project.slug}/edit`);
         }
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -190,7 +192,7 @@ export const ProjectSelector = () => {
       if (res.ok) {
         // Clear active project if deleted
         if (activeProjectId === projectToDelete.id) {
-          setActiveProject(null, null, null, null);
+          setActiveProject(null, null, null, null, null);
           navigate('/project'); // Redirect to safety
         }
         setProjectToDelete(null);
@@ -224,7 +226,7 @@ export const ProjectSelector = () => {
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 mt-1 w-72 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
+        <div className="absolute top-full left-0 mt-1 w-80 bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl z-50 overflow-hidden">
           {/* Search */}
           <div className="p-2 border-b border-zinc-800">
             <div className="relative">
@@ -288,13 +290,13 @@ export const ProjectSelector = () => {
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
                   onKeyDown={(e) => e.key === 'Enter' && createProject()}
-                  className="flex-1 px-2.5 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
+                  className="flex-1 min-w-0 px-3 py-1.5 bg-zinc-800 border border-zinc-700 rounded text-sm text-white placeholder-gray-500 focus:outline-none focus:border-blue-500"
                   autoFocus
                 />
                 <button
                   onClick={createProject}
                   disabled={loading || !newName.trim()}
-                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-sm text-white font-medium transition-colors"
+                  className="shrink-0 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-sm text-white font-medium transition-colors"
                 >
                   {loading ? '...' : 'Create'}
                 </button>

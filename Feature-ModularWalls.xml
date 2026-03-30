@@ -1,0 +1,162 @@
+<feature id="modular-walls">
+  <title>Modular Walls</title>
+  <description>
+    Add a new runtime-generated modular wall system independent of the Satellit GLB model.
+    Curators can create, position, rotate, and lock free-standing partition walls inside the exhibition room.
+    Walls are parametric (BoxGeometry), support artwork placement on their surfaces,
+    and their state is persisted per ExhibitionVersion so each version captures a unique wall layout.
+    Walls are intended to be arranged during the initial exhibition setup phase and can be locked
+    to prevent accidental movement during artwork placement.
+  </description>
+
+  <dependencies>
+    <dependsOn>phase4.2</dependsOn> <!-- Transform Gizmos &amp; Editing -->
+    <dependsOn>phase5</dependsOn>   <!-- Project Management &amp; Versioning -->
+  </dependencies>
+
+  <inScope>
+    <item>Runtime-generated modular walls as BoxGeometry meshes (not from GLB)</item>
+    <item>Wall creation via toolbar button (adds a wall at a default position in the scene)</item>
+    <item>Wall positioning and rotation via existing TransformControls (translate + rotate)</item>
+    <item>Wall lock/unlock toggle per wall (locked walls cannot be moved)</item>
+    <item>Configurable wall dimensions: width, height, thickness</item>
+    <item>Wall material/color selection (white default, optional color picker)</item>
+    <item>Artwork raycasting on modular wall surfaces (same placement flow as room walls)</item>
+    <item>Artworks parented to modular walls (move with the wall when unlocked and repositioned)</item>
+    <item>Wall state persistence as part of ExhibitionVersion snapshots</item>
+    <item>Wall deletion with confirmation (removes wall and detaches/deletes placed artworks)</item>
+    <item>Physics colliders for modular walls (first-person collision in viewer mode)</item>
+    <item>Visual distinction: subtle outline or label to differentiate modular walls from room walls</item>
+  </inScope>
+
+  <outOfScope>
+    <item>Modification of the Satellit GLB model or its React component</item>
+    <item>Snap-together wall modules or L/T-junction prefabs (future enhancement)</item>
+    <item>Wall-to-wall collision detection (walls may overlap; curator is responsible)</item>
+    <item>Constraint zone enforcement for walls (Phase 8 — can be integrated later)</item>
+    <item>Custom wall textures or materials beyond solid colors</item>
+    <item>Curved or non-rectangular wall shapes</item>
+  </outOfScope>
+
+  <dataModel>
+    <entity name="ModularWall">
+      <field name="id" type="autoincrement int" />
+      <field name="versionId" type="foreignKey(ExhibitionVersion)" note="Wall layout is per version" />
+      <field name="label" type="string optional" note="Optional curator-assigned name, e.g. 'Partition A'" />
+      <field name="position_x" type="float" />
+      <field name="position_y" type="float" />
+      <field name="position_z" type="float" />
+      <field name="rotation_x" type="float" default="0" />
+      <field name="rotation_y" type="float" default="0" />
+      <field name="rotation_z" type="float" default="0" />
+      <field name="width" type="float" default="2.0" note="Meters" />
+      <field name="height" type="float" default="2.5" note="Meters" />
+      <field name="thickness" type="float" default="0.12" note="Meters" />
+      <field name="color" type="string" default="#ffffff" />
+      <field name="isLocked" type="boolean" default="false" />
+      <field name="createdAt" type="datetime" />
+    </entity>
+
+    <relationship>
+      ArtworkInstance may optionally reference a ModularWall via a nullable wallId field.
+      When wallId is set, the artwork's position is stored relative to the wall's local coordinate system.
+      Moving the wall recalculates artwork world positions on the frontend.
+    </relationship>
+  </dataModel>
+
+  <apiDesign>
+    <endpoint method="GET" path="/api/walls?versionId=:id" auth="required"
+      description="List all modular walls for a version" />
+    <endpoint method="POST" path="/api/walls" auth="required"
+      description="Create a new wall (body: versionId, position, rotation, dimensions, color)" />
+    <endpoint method="PATCH" path="/api/walls/:id" auth="required"
+      description="Update wall transform, dimensions, color, or lock state" />
+    <endpoint method="DELETE" path="/api/walls/:id" auth="required"
+      description="Delete wall and optionally cascade-detach artworks" />
+  </apiDesign>
+
+  <technicalGuidance>
+    <database>
+      <task>Add ModularWall model to schema.prisma with all fields from the data model above</task>
+      <task>Add optional wallId foreign key to ArtworkInstance model</task>
+      <task>Run Prisma migration</task>
+      <task>Update version creation (POST /exhibitions/:id/versions) to deep-copy ModularWall records alongside ArtworkInstances</task>
+    </database>
+
+    <backend>
+      <task>Create walls.ts route file with CRUD endpoints</task>
+      <task>Add auth middleware to all wall endpoints</task>
+      <task>On wall DELETE: set wallId=null on associated ArtworkInstances (detach, don't delete artworks)</task>
+      <task>In version snapshot: include wall data in the version creation payload from frontend</task>
+      <task>Register wallsRouter in server/src/index.ts</task>
+    </backend>
+
+    <frontend>
+      <section name="ModularWall3D Component">
+        <task>Create ModularWall3D.tsx rendering a BoxGeometry mesh with configurable width/height/thickness</task>
+        <task>Apply MeshStandardMaterial with configurable color; receiveShadow and castShadow</task>
+        <task>Add name="ModularWall" to mesh for raycaster filtering</task>
+        <task>When wall isLocked=true, show a small lock icon indicator (drei Html) and disable TransformControls</task>
+        <task>Wrap in RigidBody type="fixed" for first-person collision</task>
+      </section>
+
+      <section name="ModularWalls Container">
+        <task>Create ModularWalls.tsx that fetches walls for the active version and renders ModularWall3D instances</task>
+        <task>Maintain local wall state in editorStore (similar pattern to localInstances for artworks)</task>
+        <task>Support selection: clicking a wall selects it, showing TransformControls (translate + rotate only)</task>
+        <task>Include wall state in version save payload</task>
+      </section>
+
+      <section name="Artwork-on-Wall Integration">
+        <task>Extend ArtworkPlacement raycaster to also test against meshes named "ModularWall"</task>
+        <task>When artwork is placed on a modular wall, store the wallId and compute position relative to wall center</task>
+        <task>In PlacedArtworks/SelectableInstance, if artwork has a wallId, parent it under the wall's Group so it moves together</task>
+      </section>
+
+      <section name="Editor Store Updates">
+        <task>Add localWalls: ModularWallData[] to editorStore</task>
+        <task>Add wall-specific actions: addWall, updateWall, deleteWall, toggleWallLock</task>
+        <task>Add selectedWallId state (mutually exclusive with selectedInstanceId)</task>
+        <task>Include walls in undo/redo history alongside instances</task>
+      </section>
+
+      <section name="UI Controls">
+        <task>Add "Add Wall" button to ControlsSidebar or a new wall toolbar section</task>
+        <task>In PropertiesPanel: show wall properties (dimensions, color, lock toggle) when a wall is selected</task>
+        <task>Add wall list to a sidebar section or the existing ControlsSidebar</task>
+        <task>Show lock/unlock toggle button per wall in the properties panel</task>
+      </section>
+
+      <section name="Version Integration">
+        <task>When saving a version (SaveVersionDialog), include wall state in the POST payload</task>
+        <task>When loading a version, fetch walls alongside instances</task>
+        <task>When switching versions, replace localWalls with the loaded version's walls</task>
+      </section>
+    </frontend>
+  </technicalGuidance>
+
+  <implementationNotes>
+    <note>The Satellit GLB and its React component (Satellit.tsx) must NOT be modified</note>
+    <note>Modular walls are added to the Scene alongside the Satellit component, not inside it</note>
+    <note>Wall Y position defaults to height/2 so the wall sits on the floor (origin is center of BoxGeometry)</note>
+    <note>Default wall dimensions: 2.0m wide × 2.5m tall × 0.12m thick (realistic partition wall)</note>
+    <note>Rotation should be constrained to Y-axis only for simplicity (walls don't tilt)</note>
+    <note>Locked walls should have a distinct visual indicator (e.g., slightly different border or subtle lock icon)</note>
+    <note>Consider limiting the maximum number of modular walls per version (e.g., 20) for performance</note>
+  </implementationNotes>
+
+  <acceptanceCriteria>
+    <criterion>Curator can add a new modular wall to the scene via a toolbar button</criterion>
+    <criterion>Modular wall appears as a white rectangular partition at floor level</criterion>
+    <criterion>Curator can select, move (translate), and rotate the wall using TransformControls</criterion>
+    <criterion>Curator can adjust wall dimensions (width, height, thickness) in the PropertiesPanel</criterion>
+    <criterion>Curator can lock a wall to prevent movement; locked walls show a visual lock indicator</criterion>
+    <criterion>Curator can drag an image from the AssetSidebar and drop it onto a modular wall surface</criterion>
+    <criterion>Artwork placed on a modular wall moves with the wall when the wall is repositioned</criterion>
+    <criterion>Wall state (positions, dimensions, lock status) is saved as part of version snapshots</criterion>
+    <criterion>Loading a different version restores modular walls to their saved positions</criterion>
+    <criterion>Deleting a wall detaches any artworks placed on it (artworks are not deleted, but lose their wall parent)</criterion>
+    <criterion>In first-person viewer mode, the player collides with modular walls</criterion>
+    <criterion>Modular walls do not require any changes to the Satellit GLB or its component</criterion>
+  </acceptanceCriteria>
+</feature>

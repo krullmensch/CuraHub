@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileIcon, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { ModelPreviewCard } from './ModelPreviewCard';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/store/editorStore';
@@ -16,9 +17,11 @@ interface Asset {
   filename: string;
   path: string;
   mimetype: string;
+  type?: string;
   width: number;
   height: number;
   dpi?: number;
+  thumbnailPath?: string | null;
   artwork?: {
     id: number;
     title: string;
@@ -57,6 +60,12 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     }, [toast, activeProjectId]);
 
     const handleDragStart = (e: React.DragEvent, asset: Asset) => {
+        // Replace browser drag ghost with an invisible image
+        const emptyImg = document.createElement('canvas');
+        emptyImg.width = 1;
+        emptyImg.height = 1;
+        e.dataTransfer.setDragImage(emptyImg, 0, 0);
+
         e.dataTransfer.setData('asset-id', asset.id.toString());
         e.dataTransfer.setData('asset-data', JSON.stringify(asset));
         e.dataTransfer.effectAllowed = 'copy';
@@ -69,10 +78,12 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
         setDragging(true, {
             id,
             type: isArtwork ? 'artwork' : 'asset',
+            assetType: (asset.type as 'image' | 'video' | 'model3d') || 'image',
             width: asset.width,
             height: asset.height,
             dpi: asset.dpi || 72,
-            url: asset.path
+            url: asset.type === 'video' && asset.thumbnailPath ? asset.thumbnailPath : asset.path,
+            videoUrl: asset.type === 'video' ? asset.path : undefined,
         });
     };
 
@@ -119,13 +130,28 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                     className="group relative aspect-square bg-zinc-900 rounded-md overflow-hidden border border-zinc-800 cursor-grab active:cursor-grabbing hover:border-zinc-600 transition-colors"
                                     title={asset.artwork?.title || asset.filename}
                                 >
-                                    {asset.mimetype.startsWith('image/') ? (
-                                        <img 
-                                            src={asset.path} 
-                                            alt={asset.filename} 
+                                    {(asset.type || 'image') === 'image' ? (
+                                        <img
+                                            src={asset.path}
+                                            alt={asset.filename}
                                             className="w-full h-full object-cover"
-                                            draggable={false} // Prevent browser native image drag, let the wrapper div handle it
+                                            draggable={false}
                                         />
+                                    ) : asset.type === 'video' ? (
+                                        <div className="relative w-full h-full flex items-center justify-center bg-zinc-800">
+                                            {asset.thumbnailPath ? (
+                                                <img src={asset.thumbnailPath} alt={asset.filename} className="w-full h-full object-cover" draggable={false} />
+                                            ) : null}
+                                            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                <div className="bg-black/50 rounded-full p-1.5">
+                                                    <Play className="h-4 w-4 text-white fill-white" />
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ) : asset.type === 'model3d' ? (
+                                        <div className="flex items-center justify-center h-full bg-zinc-800">
+                                            <ModelPreviewCard url={asset.path} compact />
+                                        </div>
                                     ) : (
                                         <div className="flex items-center justify-center h-full">
                                             <FileIcon className="h-6 w-6 text-zinc-600" />

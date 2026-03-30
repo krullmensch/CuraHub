@@ -8,6 +8,7 @@ import { useEditorStore, type ArtworkInstanceData } from '../store/editorStore';
 interface SelectableInstanceProps {
     instance: ArtworkInstanceData;
     selected: boolean;
+    isEditor?: boolean;
 }
 
 export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProps>(

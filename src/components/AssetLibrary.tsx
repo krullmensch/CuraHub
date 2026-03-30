@@ -12,7 +12,8 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { useToast } from '@/hooks/use-toast';
-import { Trash2, FileIcon, Loader2, Edit, CloudUpload } from 'lucide-react';
+import { Trash2, FileIcon, Loader2, Edit, CloudUpload, Play } from 'lucide-react';
+import { ModelPreviewCard } from './ModelPreviewCard';
 import { MetadataDialog } from './MetadataDialog';
 
 interface Asset {
@@ -21,12 +22,15 @@ interface Asset {
   path: string;
   mimetype: string;
   size: number;
+  type?: string;
   width: number;
   height: number;
   dpi: number;
+  duration?: number | null;
+  thumbnailPath?: string | null;
   createdAt: string;
-  artwork?: { // Updated interface to match MetadataDialog expectations
-      id: number; 
+  artwork?: {
+      id: number;
       title: string;
       artist?: string;
       year?: string;
@@ -40,6 +44,12 @@ interface Asset {
       projectId?: string;
   };
 }
+
+const formatDuration = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = Math.floor(seconds % 60);
+    return `${m}:${s.toString().padStart(2, '0')}`;
+};
 
 export const AssetLibrary = () => {
   const [assets, setAssets] = useState<Asset[]>([]);
@@ -223,16 +233,34 @@ export const AssetLibrary = () => {
                 <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
                     {assets.map(asset => {
                         const isSelected = selectedIds.includes(asset.id);
+                        const ext = asset.filename.split('.').pop()?.toLowerCase();
+                        const isModel = asset.type === 'model3d' || ext === 'glb' || ext === 'gltf';
+                        const isVideo = asset.type === 'video';
                         return (
-                        <Card 
-                            key={asset.id} 
+                        <Card
+                            key={asset.id}
                             className={`bg-zinc-950 overflow-hidden group transition-all cursor-pointer relative ${isSelected ? 'border-blue-500 ring-1 ring-blue-500 bg-blue-900/10' : 'border-zinc-800 hover:border-zinc-700'}`}
                             onClick={(e) => toggleSelect(asset.id, e)}
                         >
                             <div className="aspect-square relative flex items-center justify-center bg-black/40 p-2">
-                                {asset.mimetype.startsWith('image/') ? (
-                                    <img 
-                                        src={asset.path} 
+                                {isModel ? (
+                                    <ModelPreviewCard url={asset.path} />
+                                ) : isVideo ? (
+                                    <div className="relative w-full h-full flex items-center justify-center">
+                                        {asset.thumbnailPath ? (
+                                            <img src={asset.thumbnailPath} alt={asset.filename} className="max-h-full max-w-full object-contain" />
+                                        ) : (
+                                            <div className="w-full h-full bg-zinc-800" />
+                                        )}
+                                        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                            <div className="bg-black/60 rounded-full p-2">
+                                                <Play className="h-6 w-6 text-white fill-white" />
+                                            </div>
+                                        </div>
+                                    </div>
+                                ) : (asset.type || 'image') === 'image' ? (
+                                    <img
+                                        src={asset.path}
                                         alt={asset.filename}
                                         className={`max-h-full max-w-full object-contain transition-opacity ${isSelected ? 'opacity-90' : 'opacity-100'}`}
                                     />
@@ -272,7 +300,13 @@ export const AssetLibrary = () => {
                                 </p>
                                 <div className="flex justify-between w-full text-[10px] text-gray-500">
                                     <span>{formatBytes(asset.size)}</span>
-                                    <span>{asset.width}x{asset.height} px</span>
+                                    {asset.type === 'video' && asset.duration ? (
+                                        <span>{formatDuration(asset.duration)}</span>
+                                    ) : asset.type === 'model3d' ? (
+                                        <span>.{asset.filename.split('.').pop()}</span>
+                                    ) : (
+                                        <span>{asset.width}x{asset.height} px</span>
+                                    )}
                                 </div>
                             </CardFooter>
                         </Card>
@@ -285,7 +319,7 @@ export const AssetLibrary = () => {
                  <div className="bg-blue-600 rounded-full p-1">
                     <CloudUpload className="w-3 h-3 text-white" />
                  </div>
-                 Drag & drop images anywhere to upload
+                 Drag & drop files anywhere to upload
             </div>
 
             {/* Delete Confirmation Dialog */}

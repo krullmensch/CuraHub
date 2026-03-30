@@ -63,6 +63,15 @@ assetsRouter.delete('/:id', async (req, res) => {
             console.warn(`File not found on disk: ${filepath}`);
         }
 
+        // Also delete thumbnail if present (video poster frames)
+        if (asset.thumbnailPath) {
+            const thumbFilename = path.basename(asset.thumbnailPath);
+            const thumbPath = path.join(__dirname, '../../uploads', thumbFilename);
+            if (fs.existsSync(thumbPath)) {
+                fs.unlinkSync(thumbPath);
+            }
+        }
+
         res.json({ message: 'Asset deleted successfully' });
 
     } catch (error) {

@@ -1,41 +1,87 @@
-<!-- phase6.xml -->
-<phase>
-  <id>phase6</id>
-  <name>Public Viewer and Publishing</name>
+<?xml version="1.0" encoding="UTF-8"?>
+<phase id="6" name="Public Exhibition Viewer">
+
   <goal>
-    Expose published exhibition versions via public URLs without login and separate viewer vs. planner modes.
+    Öffentlich zugängliche ViewerPage, die eine publizierte Ausstellung als
+    immersives Three.js-Erlebnis rendert. Kein Login erforderlich.
+    Dient als sharebarer Link für Museumsbesucher.
   </goal>
-  <basedOnPrdSections>
-    <section>functionalRequirements.viewerMode</section>
-    <section>functionalRequirements.versioningAndCollaboration</section>
-    <section>apiDesign.exhibitionsAndVersions</section>
-  </basedOnPrdSections>
-  <scope>
-    <in>
-      <item>Publish flag for versions</item>
-      <item>Public viewer route /exhibition/:slug serving the published version</item>
-      <item>Viewer-only UI (no editing tools)</item>
-      <item>Crosshair + info overlay for artworks</item>
-    </in>
-    <out>
-      <item>No videos/3D models yet (still only 2D from earlier phases, unless Phase7 is already done)</item>
-      <item>Viewing is open to all, but editing remains restricted to @hsbi.de accounts</item>
-    </out>
-  </scope>
-  <requirements>
-    <backend>
-      <item>Add PATCH /versions/:id/publish to set a version as published and unset others for the same exhibition.</item>
-      <item>Implement GET /exhibitions/:slug/published to return the published version state without requiring authentication.</item>
-    </backend>
-    <frontend>
-      <item>In planner, allow curator/admin to mark a version as published.</item>
-      <item>Implement viewer route /exhibition/:slug that loads the published version without requiring auth.</item>
-      <item>Hide all editing controls in viewer; keep only navigation, crosshair, and info overlays.</item>
-      <item>Viewer should not show any indication of the @hsbi.de email restriction (only curators need to know this).</item>
-    </frontend>
-  </requirements>
-  <successCriteria>
-    <item>A public user can open /exhibition/:slug, walk through the room, and see info for artworks.</item>
-    <item>Curators with @hsbi.de accounts can change which version is publicly visible by toggling "published".</item>
-  </successCriteria>
+
+  <routing>
+    <route path="/exhibition/:slug" component="ViewerPage" auth="public" />
+    <note>
+      Slug wird beim Erstellen des Projekts auto-generiert aus dem Projektnamen.
+      Beispiel: "Moderne Skulpturen 2026" → "moderne-skulpturen-2026".
+      Slugs sind immutable — auch wenn der Anzeigename geändert wird.
+      Jedes Projekt hat genau eine aktive Exhibition.
+      Beim Publishen einer neuen Version wird die vorherige ersetzt (gleiche URL).
+    </note>
+  </routing>
+
+  <slug-generation>
+    <rule>Generiert aus dem Projektnamen zum Erstellungszeitpunkt</rule>
+    <rule>Lowercase, hyphenated, URL-safe (Sonderzeichen entfernen)</rule>
+    <rule>Max. 80 Zeichen</rule>
+    <rule>Bei Kollision: numerisches Suffix anhängen (-2, -3, …)</rule>
+    <rule>Nach Erstellung nicht mehr änderbar</rule>
+    <blocklist>login, register, project, exhibition, admin, assets, api</blocklist>
+  </slug-generation>
+
+  <publish-logic>
+    <description>
+      Wenn ein Curator eine Version publisht:
+      1. ProjectVersion.published = true, publishedAt = now
+      2. Alle anderen Versionen desselben Projekts: published = false
+      3. /exhibition/:slug liefert immer die aktuell publishte Version
+      4. Kein publizierter Stand → 404
+    </description>
+    <db-fields>
+      <field>ProjectVersion.published: Boolean (default: false)</field>
+      <field>ProjectVersion.publishedAt: DateTime (nullable)</field>
+    </db-fields>
+  </publish-logic>
+
+  <viewer-component>
+    <name>ViewerPage</name>
+    <description>
+      Fullscreen Three.js Canvas. Kein App-Shell, keine Sidebar.
+      Reine Viewer-Erfahrung mit minimalem UI-Overlay.
+    </description>
+    <tech-stack>
+      <library>Three.js via react-three-fiber + @react-three/drei</library>
+      <camera>OrbitControls oder custom First-Person-Camera je nach Ausstellungstyp</camera>
+      <loading>React Suspense + Ladescreen während Scene-Assets geladen werden</loading>
+    </tech-stack>
+    <ui-overlay>
+      <element>Ausstellungstitel (oben links, subtil)</element>
+      <element>Navigationshints (unten, fade-out nach 3s)</element>
+      <element>Info-Panel für angeklickte Objekte (optional, on demand)</element>
+    </ui-overlay>
+    <data-fetching>
+      <endpoint>GET /api/exhibitions/:slug</endpoint>
+      <returns>Scene-Graph, Asset-URLs, Kamera-Startposition, Metadaten</returns>
+    </data-fetching>
+  </viewer-component>
+
+  <error-states>
+    <state trigger="slug nicht gefunden">
+      404 — "Diese Ausstellung existiert nicht."
+    </state>
+    <state trigger="keine Version publiziert">
+      404 — "Diese Ausstellung ist aktuell nicht öffentlich."
+    </state>
+    <state trigger="Scene-Ladefehler">
+      Inline-Error mit Retry-Button
+    </state>
+  </error-states>
+
+  <acceptance-criteria>
+    <criterion>GET /exhibition/:slug rendert die publishte Scene ohne Auth</criterion>
+    <criterion>Nicht-publishte Projekte → 404</criterion>
+    <criterion>Neue Version publishen → URL zeigt sofort neuen Stand</criterion>
+    <criterion>Slug bei Projekterstellung auto-generiert, danach nicht änderbar</criterion>
+    <criterion>Reserved Slugs bei Projekterstellung geblockt</criterion>
+    <criterion>Ladescreen sichtbar während Assets fetched werden</criterion>
+  </acceptance-criteria>
+
 </phase>

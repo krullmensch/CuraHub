@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useEditorStore, PlannerViewMode } from '../store/editorStore';
+import { useEditorStore, type PlannerViewMode } from '../store/editorStore';
 
 export const ViewModeControls = () => {
     const viewMode = useEditorStore(state => state.plannerViewMode);
