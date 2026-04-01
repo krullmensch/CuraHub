@@ -1,26 +1,10 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import jwt from 'jsonwebtoken';
+import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 
 export const wallsRouter = Router();
 const prisma = new PrismaClient();
-
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
-
-// Auth middleware (shared pattern)
-const authenticate = (req: any, res: any, next: any) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token' });
-    const token = authHeader.split(' ')[1];
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-        req.user = decoded;
-        next();
-    } catch (e) {
-        res.status(401).json({ error: 'Invalid token' });
-    }
-};
 
 // Validation schemas
 const createWallSchema = z.object({
@@ -60,11 +44,11 @@ wallsRouter.get('/', authenticate, async (req: any, res) => {
         const versionId = parseInt(req.query.versionId as string, 10);
         if (isNaN(versionId)) return res.status(400).json({ error: 'versionId query param required' });
 
-        // Verify user has access (version belongs to one of their projects)
+        // Verify user has access (owner or collaborator)
         const version = await prisma.exhibitionVersion.findFirst({
             where: {
                 id: versionId,
-                exhibition: { project: { ownerId: req.user.userId } }
+                exhibition: exhibitionAccessFilter(req.user.userId)
             }
         });
         if (!version) return res.status(404).json({ error: 'Version not found' });
@@ -86,11 +70,11 @@ wallsRouter.post('/', authenticate, async (req: any, res) => {
     try {
         const data = createWallSchema.parse(req.body);
 
-        // Verify user has access to the version
+        // Verify user has access to the version (owner or collaborator)
         const version = await prisma.exhibitionVersion.findFirst({
             where: {
                 id: data.versionId,
-                exhibition: { project: { ownerId: req.user.userId } }
+                exhibition: exhibitionAccessFilter(req.user.userId)
             }
         });
         if (!version) return res.status(404).json({ error: 'Version not found' });
@@ -137,11 +121,11 @@ wallsRouter.patch('/:id', authenticate, async (req: any, res) => {
 
         const data = updateWallSchema.parse(req.body);
 
-        // Verify user has access
+        // Verify user has access (owner or collaborator)
         const existing = await prisma.modularWall.findFirst({
             where: {
                 id: wallId,
-                version: { exhibition: { project: { ownerId: req.user.userId } } }
+                version: { exhibition: exhibitionAccessFilter(req.user.userId) }
             }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });
@@ -167,11 +151,11 @@ wallsRouter.delete('/:id', authenticate, async (req: any, res) => {
         const wallId = parseInt(req.params.id, 10);
         if (isNaN(wallId)) return res.status(400).json({ error: 'Invalid wall ID' });
 
-        // Verify user has access
+        // Verify user has access (owner or collaborator)
         const existing = await prisma.modularWall.findFirst({
             where: {
                 id: wallId,
-                version: { exhibition: { project: { ownerId: req.user.userId } } }
+                version: { exhibition: exhibitionAccessFilter(req.user.userId) }
             }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });

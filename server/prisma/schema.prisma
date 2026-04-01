@@ -11,11 +11,13 @@ model User {
   id            Int      @id @default(autoincrement())
   email         String   @unique              // {hsbiUsername}@hsbi.de
   password_hash String?                       // null for HSBI-authenticated users
-  role          String   @default("user")     // "user" or "admin"
+  role          String   @default("user")     // "user" | "curator" | "prof" | "admin"
   createdAt     DateTime @default(now())
 
-  exhibitions   ExhibitionVersion[]
-  projects      Project[]
+  exhibitions      ExhibitionVersion[]
+  projects         Project[]
+  collaborations   ExhibitionCollaborator[] @relation("CollaboratorUser")
+  sentInvitations  ExhibitionCollaborator[] @relation("CollaboratorInviter")
 }
 
 model Project {
@@ -32,13 +34,27 @@ model Project {
 }
 
 model Exhibition {
-  id          Int                 @id @default(autoincrement())
-  title       String
-  slug        String              @unique
-  room_id     Int                 // Placeholder for now
-  projectId   Int
-  project     Project             @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  versions    ExhibitionVersion[]
+  id            Int                      @id @default(autoincrement())
+  title         String
+  slug          String                   @unique
+  room_id       Int                      // Placeholder for now
+  projectId     Int
+  project       Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions      ExhibitionVersion[]
+  collaborators ExhibitionCollaborator[]
+}
+
+model ExhibitionCollaborator {
+  id           Int        @id @default(autoincrement())
+  exhibitionId Int
+  exhibition   Exhibition @relation(fields: [exhibitionId], references: [id], onDelete: Cascade)
+  userId       Int
+  user         User       @relation("CollaboratorUser", fields: [userId], references: [id], onDelete: Cascade)
+  invitedById  Int
+  invitedBy    User       @relation("CollaboratorInviter", fields: [invitedById], references: [id])
+  createdAt    DateTime   @default(now())
+
+  @@unique([exhibitionId, userId])
 }
 
 model ExhibitionVersion {

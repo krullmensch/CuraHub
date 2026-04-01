@@ -1,26 +1,10 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import jwt from 'jsonwebtoken';
+import { authenticate, requireAdmin, exhibitionAccessFilter } from '../lib/middleware';
 
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
-
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
-
-// Shared auth middleware
-const authenticate = (req: any, res: any, next: any) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token' });
-    const token = authHeader.split(' ')[1];
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-        req.user = decoded;
-        next();
-    } catch(e) {
-        res.status(401).json({ error: 'Invalid token' });
-    }
-};
 
 const createVersionSchema = z.object({
     comment: z.string().min(1).max(500),
@@ -62,11 +46,11 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (r
         const exhibitionId = parseInt(req.params.exhibitionId, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Invalid exhibition ID' });
 
-        // Verify user has access (exhibition belongs to one of their projects)
+        // Verify user has access (owner or collaborator)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                project: { ownerId: req.user.userId }
+                ...exhibitionAccessFilter(req.user.userId)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -104,11 +88,11 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticat
             return res.status(400).json({ error: 'Invalid ID' });
         }
 
-        // Verify ownership via project
+        // Verify user has access (owner or collaborator)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                project: { ownerId: req.user.userId }
+                ...exhibitionAccessFilter(req.user.userId)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -147,11 +131,11 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
         const data = createVersionSchema.parse(req.body);
         const userId = req.user.userId;
 
-        // Verify ownership
+        // Verify user has access (owner or collaborator)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                project: { ownerId: userId }
+                ...exhibitionAccessFilter(userId)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -352,11 +336,11 @@ versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenti
 
         const userId = req.user.userId;
 
-        // Verify ownership
+        // Verify user has access (owner or collaborator)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                project: { ownerId: userId }
+                ...exhibitionAccessFilter(userId)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -390,9 +374,9 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', a
 
         const userId = req.user.userId;
 
-        // Verify ownership
+        // Verify user has access (owner or collaborator)
         const exhibition = await prisma.exhibition.findFirst({
-            where: { id: exhibitionId, project: { ownerId: userId } }
+            where: { id: exhibitionId, ...exhibitionAccessFilter(userId) }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
 
@@ -425,12 +409,8 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', a
 });
 
 // PATCH /exhibitions/:exhibitionId/versions/:versionId/feature — set as featured (admin only)
-versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/feature', authenticate, async (req: any, res) => {
+versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/feature', authenticate, requireAdmin, async (req: any, res) => {
     try {
-        if (req.user.role !== 'admin') {
-            return res.status(403).json({ error: 'Admin access required' });
-        }
-
         const versionId = parseInt(req.params.versionId, 10);
         if (isNaN(versionId)) return res.status(400).json({ error: 'Invalid ID' });
 

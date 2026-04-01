@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
+import { authenticate, requireProf, roleAtLeast, AppRole } from '../lib/middleware';
 
 export const authRouter = Router();
 const prisma = new PrismaClient();
@@ -97,5 +98,48 @@ authRouter.get('/me', async (req, res) => {
         res.json({ id: user.id, email: user.email, role: user.role });
     } catch {
         res.status(401).json({ error: 'Invalid token' });
+    }
+});
+
+// ─── Role Elevation ───────────────────────────────────────────────────────────
+
+const elevateRoleSchema = z.object({
+    role: z.enum(['user', 'curator', 'prof', 'admin']),
+});
+
+// PATCH /auth/users/:id/role — elevate a user's role
+// Prof can promote user → curator. Admin can set any role.
+authRouter.patch('/users/:id/role', authenticate, requireProf, async (req: any, res) => {
+    try {
+        const targetId = parseInt(req.params.id, 10);
+        if (isNaN(targetId)) return res.status(400).json({ error: 'Ungültige Benutzer-ID' });
+
+        const { role: newRole } = elevateRoleSchema.parse(req.body);
+        const callerRole = req.user.role as AppRole;
+
+        // Prof can only elevate to curator or lower
+        if (callerRole === 'prof' && !roleAtLeast('curator', newRole as AppRole)) {
+            return res.status(403).json({ error: 'Profs können nur die Rolle "curator" vergeben' });
+        }
+        // Prof cannot demote below curator, only elevate to curator
+        if (callerRole === 'prof' && newRole !== 'curator') {
+            return res.status(403).json({ error: 'Profs können nur die Rolle "curator" vergeben' });
+        }
+
+        const target = await prisma.user.findUnique({ where: { id: targetId } });
+        if (!target) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+
+        const updated = await prisma.user.update({
+            where: { id: targetId },
+            data: { role: newRole },
+            select: { id: true, email: true, role: true },
+        });
+
+        res.json(updated);
+    } catch (error) {
+        if (error instanceof z.ZodError) {
+            return res.status(400).json({ error: 'Ungültige Rolle' });
+        }
+        res.status(500).json({ error: 'Rollenänderung fehlgeschlagen' });
     }
 });

@@ -5,6 +5,7 @@ import { HomePage } from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { EditorLayout } from './components/EditorLayout';
 import { AssetLibraryPage } from './pages/AssetLibraryPage';
+import KeinZugriffPage from './pages/KeinZugriffPage';
 import { Toaster } from "@/components/ui/toaster";
 import './App.css';
 
@@ -14,11 +15,12 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/kein-zugriff" element={<KeinZugriffPage />} />
         {/* Public Viewer */}
         <Route path="/exhibition/:slug" element={<ViewerPage />} />
 
-        {/* Protected Routes */}
-        <Route element={<ProtectedRoute />}>
+        {/* Protected Routes — curator role required */}
+        <Route element={<ProtectedRoute requiredRole="curator" />}>
            <Route element={<EditorLayout />}>
               <Route path="/:projectSlug/assets" element={<AssetLibraryPage />} />
               {/* Project editor — projectSlug selected via ProjectSelector in header */}

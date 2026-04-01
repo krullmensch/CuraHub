@@ -1,28 +1,12 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import jwt from 'jsonwebtoken';
 import fs from 'fs';
 import path from 'path';
+import { authenticate, requireCurator } from '../lib/middleware';
 
 export const projectsRouter = Router();
 const prisma = new PrismaClient();
-
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
-
-// Shared auth middleware (duplicated for simplicity)
-const authenticate = (req: any, res: any, next: any) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token' });
-    const token = authHeader.split(' ')[1];
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-        req.user = decoded;
-        next();
-    } catch(e) {
-        res.status(401).json({ error: 'Invalid token' });
-    }
-};
 
 // --- Helpers ---
 const BLOCKED_SLUGS = ['login', 'register', 'project', 'exhibition', 'admin', 'assets', 'api', 'public'];
@@ -111,7 +95,7 @@ projectsRouter.get('/:id', authenticate, async (req: any, res) => {
 });
 
 // POST /projects — create a new project (auto-creates exhibition + initial version)
-projectsRouter.post('/', authenticate, async (req: any, res) => {
+projectsRouter.post('/', authenticate, requireCurator, async (req: any, res) => {
     try {
         const data = createProjectSchema.parse(req.body);
         const userId = req.user.userId;
@@ -178,7 +162,7 @@ projectsRouter.post('/', authenticate, async (req: any, res) => {
 });
 
 // PUT /projects/:id — update project name/description
-projectsRouter.put('/:id', authenticate, async (req: any, res) => {
+projectsRouter.put('/:id', authenticate, requireCurator, async (req: any, res) => {
     try {
         const data = updateProjectSchema.parse(req.body);
         const userId = req.user.userId;
@@ -207,7 +191,7 @@ projectsRouter.put('/:id', authenticate, async (req: any, res) => {
 });
 
 // DELETE /projects/:id — delete project (cascades to exhibitions, versions, instances)
-projectsRouter.delete('/:id', authenticate, async (req: any, res) => {
+projectsRouter.delete('/:id', authenticate, requireCurator, async (req: any, res) => {
     try {
         const userId = req.user.userId;
 

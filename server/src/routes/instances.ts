@@ -1,26 +1,10 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import jwt from 'jsonwebtoken';
+import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 
 export const instancesRouter = Router();
 const prisma = new PrismaClient();
-
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
-
-// Middleware to check auth (duplicated for simplicity, ideally shared)
-const authenticate = (req: any, res: any, next: any) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader) return res.status(401).json({ error: 'No token' });
-    const token = authHeader.split(' ')[1];
-    try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
-        req.user = decoded;
-        next();
-    } catch(e) {
-        res.status(401).json({ error: 'Invalid token' });
-    }
-};
 
 const instanceSchema = z.object({
   versionId: z.number(),
@@ -38,11 +22,11 @@ instancesRouter.post('/', authenticate, async (req: any, res) => {
         const data = instanceSchema.parse(req.body);
         const userId = req.user.userId;
 
-        // 1. Verify version exists and user has access
+        // 1. Verify version exists and user has access (owner or collaborator)
         const version = await prisma.exhibitionVersion.findFirst({
             where: {
                 id: data.versionId,
-                exhibition: { project: { ownerId: userId } }
+                exhibition: exhibitionAccessFilter(userId)
             }
         });
 
@@ -126,11 +110,11 @@ instancesRouter.get('/', authenticate, async (req: any, res) => {
             return res.status(400).json({ error: 'versionId query parameter is required' });
         }
 
-        // Verify user has access to this version
+        // Verify user has access to this version (owner or collaborator)
         const version = await prisma.exhibitionVersion.findFirst({
             where: {
                 id: versionId,
-                exhibition: { project: { ownerId: userId } }
+                exhibition: exhibitionAccessFilter(userId)
             }
         });
 
@@ -170,16 +154,15 @@ instancesRouter.patch('/:id', authenticate, async (req: any, res) => {
         const data = patchInstanceSchema.parse(req.body);
         const userId = req.user.userId;
 
-        // Verify ownership: instance version's exhibition's project must belong to user
-        const existing = await prisma.artworkInstance.findUnique({
-            where: { id: instanceId },
-            include: { version: { include: { exhibition: { include: { project: true } } } } }
+        // Verify user has access (owner or collaborator)
+        const existing = await prisma.artworkInstance.findFirst({
+            where: {
+                id: instanceId,
+                version: { exhibition: exhibitionAccessFilter(userId) }
+            }
         });
 
-        if (!existing) return res.status(404).json({ error: 'Instance not found' });
-        if (existing.version.exhibition.project.ownerId !== userId) {
-            return res.status(403).json({ error: 'Not authorized to modify this instance' });
-        }
+        if (!existing) return res.status(404).json({ error: 'Instance not found or access denied' });
 
         // Build update payload
         const updateData: Record<string, number | string | null> = {};
@@ -227,16 +210,15 @@ instancesRouter.delete('/:id', authenticate, async (req: any, res) => {
 
         const userId = req.user.userId;
 
-        // Verify ownership via project
-        const existing = await prisma.artworkInstance.findUnique({
-            where: { id: instanceId },
-            include: { version: { include: { exhibition: { include: { project: true } } } } }
+        // Verify user has access (owner or collaborator)
+        const existing = await prisma.artworkInstance.findFirst({
+            where: {
+                id: instanceId,
+                version: { exhibition: exhibitionAccessFilter(userId) }
+            }
         });
 
-        if (!existing) return res.status(404).json({ error: 'Instance not found' });
-        if (existing.version.exhibition.project.ownerId !== userId) {
-            return res.status(403).json({ error: 'Not authorized to delete this instance' });
-        }
+        if (!existing) return res.status(404).json({ error: 'Instance not found or access denied' });
 
         await prisma.artworkInstance.delete({ where: { id: instanceId } });
         res.json({ success: true, id: instanceId });
