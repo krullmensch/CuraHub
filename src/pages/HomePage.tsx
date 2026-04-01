@@ -72,20 +72,12 @@ export const HomePage = () => {
               Dashboard
             </Link>
           ) : (
-            <>
-              <Link
-                to="/login"
-                className="text-zinc-400 hover:text-white transition-colors"
-              >
-                Login
-              </Link>
-              <Link
-                to="/register"
-                className="border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white px-4 py-1.5 rounded-full text-xs font-medium transition-all"
-              >
-                Register
-              </Link>
-            </>
+            <Link
+              to="/login"
+              className="border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white px-4 py-1.5 rounded-full text-xs font-medium transition-all"
+            >
+              Login
+            </Link>
           )}
         </div>
       </nav>
@@ -229,9 +221,9 @@ export const HomePage = () => {
           </p>
           <p>
             Kuratieren erfordert einen{' '}
-            <span className="text-zinc-500">@hsbi.de</span> Account.{' '}
-            <Link to="/register" className="text-zinc-400 hover:text-white transition-colors underline underline-offset-2">
-              Registrieren
+            <span className="text-zinc-500">HSBI</span>-Account.{' '}
+            <Link to="/login" className="text-zinc-400 hover:text-white transition-colors underline underline-offset-2">
+              Anmelden
             </Link>
           </p>
         </div>

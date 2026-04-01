@@ -1,19 +1,18 @@
 import { useState } from 'react';
 import { useAuthStore } from '../store/authStore';
-import { useNavigate, useLocation, Link } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   Card,
   CardContent,
   CardDescription,
-  CardFooter,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
 
 export const LoginPage = () => {
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -28,16 +27,16 @@ export const LoginPage = () => {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:3000/auth/login', {
+      const response = await fetch('/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ username, password }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Login failed');
+        throw new Error(data.error || 'Anmeldung fehlgeschlagen');
       }
 
       login(data.token, data.user);
@@ -46,7 +45,7 @@ export const LoginPage = () => {
       if (err instanceof Error) {
         setError(err.message);
       } else {
-        setError('An unexpected error occurred');
+        setError('Ein unerwarteter Fehler ist aufgetreten');
       }
     } finally {
       setIsLoading(false);
@@ -57,9 +56,9 @@ export const LoginPage = () => {
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
       <Card className="w-full max-w-sm">
         <CardHeader>
-          <CardTitle className="text-2xl">Login</CardTitle>
+          <CardTitle className="text-2xl">Anmelden</CardTitle>
           <CardDescription>
-            Enter your credentials to access CuraHub.
+            Melde dich mit deinem HSBI-Account an.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -70,41 +69,33 @@ export const LoginPage = () => {
               </div>
             )}
             <div className="grid gap-2">
-              <label htmlFor="email" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Email</label>
+              <label htmlFor="username" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Benutzername</label>
               <Input
-                id="email"
-                type="email"
-                placeholder="name.nachname@hsbi.de"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                id="username"
+                type="text"
+                placeholder="HSBI-Kennung"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
                 required
+                autoComplete="username"
               />
             </div>
             <div className="grid gap-2">
-              <div className="flex items-center">
-                 <label htmlFor="password" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Password</label>
-              </div>
+              <label htmlFor="password" className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70">Passwort</label>
               <Input
                 id="password"
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
+                autoComplete="current-password"
               />
             </div>
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? 'Logging in...' : 'Login'}
+              {isLoading ? 'Anmeldung läuft...' : 'Anmelden'}
             </Button>
           </form>
         </CardContent>
-        <CardFooter>
-          <div className="text-center text-sm w-full">
-            Don&apos;t have an account?{" "}
-            <Link to="/register" className="underline underline-offset-4 hover:text-primary">
-              Register here
-            </Link>
-          </div>
-        </CardFooter>
       </Card>
     </div>
   );

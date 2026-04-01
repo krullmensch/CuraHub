@@ -1,7 +1,6 @@
 import { Routes, Route } from 'react-router-dom';
 import { ViewerPage } from './pages/ViewerPage';
 import { LoginPage } from './pages/LoginPage';
-import { RegisterPage } from './pages/RegisterPage';
 import { HomePage } from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { EditorLayout } from './components/EditorLayout';
@@ -15,8 +14,6 @@ function App() {
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
-        <Route path="/register" element={<RegisterPage />} />
-        
         {/* Public Viewer */}
         <Route path="/exhibition/:slug" element={<ViewerPage />} />
 

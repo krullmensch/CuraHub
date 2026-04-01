@@ -4,126 +4,149 @@ import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
 
+const TEST_EMAILS = [
+    'test.user@hsbi.de',
+    'bad.user@hsbi.de',
+    'repeat.user@hsbi.de',
+    'me.test@hsbi.de',
+];
+
+async function cleanupTestUsers() {
+    await prisma.user.deleteMany({
+        where: { email: { in: TEST_EMAILS } },
+    });
+}
+
 beforeAll(async () => {
-  // Clear database before tests
-  await prisma.user.deleteMany();
+    await cleanupTestUsers();
 });
 
 afterAll(async () => {
-    await prisma.user.deleteMany();
+    await cleanupTestUsers();
     await prisma.$disconnect();
 });
 
-describe('Auth API (Phase 2)', () => {
-    
-    // T2.1
-    it('T2.1: Registration with @hsbi.de email succeeds', async () => {
-        const res = await request(app)
-            .post('/auth/register')
-            .send({
-                email: 'test.curator@hsbi.de',
-                password: 'SecurePass123!',
-                role: 'curator'
-            });
-        
-        expect([200, 201]).toContain(res.status);
-        expect(res.body.email).toBe('test.curator@hsbi.de');
-        expect(res.body).not.toHaveProperty('password');
-        expect(res.body).not.toHaveProperty('password_hash');
+afterEach(() => {
+    jest.restoreAllMocks();
+});
 
-        const user = await prisma.user.findUnique({ where: { email: 'test.curator@hsbi.de' } });
-        expect(user).toBeTruthy();
-        expect(user?.password_hash).not.toBe('SecurePass123!');
-    });
+// Helper: mock HSBI fetch to simulate successful login (empty response body)
+function mockHSBISuccess() {
+    jest.spyOn(global, 'fetch').mockImplementation(
+        () => Promise.resolve(new Response('', { status: 200 }))
+    );
+}
 
-    // T2.2
-    it('T2.2: Registration with non-@hsbi.de email is rejected', async () => {
-        const domains = ['user@gmail.com', 'user@yahoo.com', 'user@hsbi.com'];
-        
-        for (const email of domains) {
-            const res = await request(app)
-                .post('/auth/register')
-                .send({
-                    email,
-                    password: 'SecurePass123!'
-                });
-            expect(res.status).toBe(400); 
-            // Depending on implementation, might be 422, but code shows 400 for zod error
-            const user = await prisma.user.findUnique({ where: { email } });
-            expect(user).toBeNull();
-        }
-    });
+// Helper: mock HSBI fetch to simulate failed login (HTML content in body)
+function mockHSBIFailure() {
+    jest.spyOn(global, 'fetch').mockImplementation(
+        () => Promise.resolve(new Response('<html>Login failed</html>', { status: 200 }))
+    );
+}
 
-    // T2.3
-    it('T2.3: Duplicate email registration is prevented', async () => {
-        // Ensure user exists from T2.1 or create new
-        const email = 'duplicate@hsbi.de';
-        await request(app).post('/auth/register').send({ email, password: 'SecurePass123!' });
-        
-        const res = await request(app)
-            .post('/auth/register')
-            .send({
-                email,
-                password: 'OtherPassword'
-            });
-        
-        expect(res.status).toBe(400); // Code returns 400 for 'User already exists'
-        
-        const count = await prisma.user.count({ where: { email } });
-        expect(count).toBe(1);
-    });
+describe('Auth API — HSBI Login', () => {
 
-    // T2.4
-    it('T2.4: Login with valid credentials returns token', async () => {
-        const email = 'login.test@hsbi.de';
-        const password = 'TestPass123!';
-        
-        await request(app).post('/auth/register').send({ email, password });
+    it('Login with valid HSBI credentials succeeds and creates user', async () => {
+        mockHSBISuccess();
 
         const res = await request(app)
             .post('/auth/login')
-            .send({ email, password });
-            
+            .send({ username: 'test.user', password: 'hsbi-pass' });
+
         expect(res.status).toBe(200);
         expect(res.body).toHaveProperty('token');
-        expect(typeof res.body.token).toBe('string');
+        expect(res.body.user).toMatchObject({
+            email: 'test.user@hsbi.de',
+            role: 'user',
+        });
+
+        // Verify user was created in DB
+        const user = await prisma.user.findUnique({ where: { email: 'test.user@hsbi.de' } });
+        expect(user).toBeTruthy();
+        expect(user?.role).toBe('user');
+        expect(user?.password_hash).toBeNull();
     });
 
-    // T2.5
-    it('T2.5: Login with incorrect password is rejected', async () => {
-        const email = 'login.fail@hsbi.de';
-        const password = 'CorrectPass';
-        await request(app).post('/auth/register').send({ email, password });
+    it('Login with invalid HSBI credentials returns 401', async () => {
+        mockHSBIFailure();
 
         const res = await request(app)
             .post('/auth/login')
-            .send({ email, password: 'WrongPassword' });
+            .send({ username: 'bad.user', password: 'wrong-pass' });
 
         expect(res.status).toBe(401);
         expect(res.body).not.toHaveProperty('token');
+
+        // Verify no user was created
+        const user = await prisma.user.findUnique({ where: { email: 'bad.user@hsbi.de' } });
+        expect(user).toBeNull();
     });
 
-    // T2.7
-    it('T2.7: /auth/me returns user data with valid token', async () => {
-        const email = 'me.test@hsbi.de';
-        const password = 'SecurePass123!';
-        await request(app).post('/auth/register').send({ email, password });
-        
-        const loginRes = await request(app).post('/auth/login').send({ email, password });
+    it('Second login returns same user (no duplicate)', async () => {
+        mockHSBISuccess();
+
+        const res1 = await request(app)
+            .post('/auth/login')
+            .send({ username: 'repeat.user', password: 'pass1' });
+        expect(res1.status).toBe(200);
+        const userId1 = res1.body.user.id;
+
+        const res2 = await request(app)
+            .post('/auth/login')
+            .send({ username: 'repeat.user', password: 'pass2' });
+        expect(res2.status).toBe(200);
+        const userId2 = res2.body.user.id;
+
+        expect(userId1).toBe(userId2);
+
+        // Only one user in DB with this email
+        const count = await prisma.user.count({ where: { email: 'repeat.user@hsbi.de' } });
+        expect(count).toBe(1);
+    });
+
+    it('Login with empty username returns 400', async () => {
+        const res = await request(app)
+            .post('/auth/login')
+            .send({ username: '', password: 'pass' });
+
+        expect(res.status).toBe(400);
+    });
+
+    it('Login with empty password returns 400', async () => {
+        const res = await request(app)
+            .post('/auth/login')
+            .send({ username: 'user', password: '' });
+
+        expect(res.status).toBe(400);
+    });
+
+    it('/auth/me returns user data with valid token', async () => {
+        mockHSBISuccess();
+
+        const loginRes = await request(app)
+            .post('/auth/login')
+            .send({ username: 'me.test', password: 'pass' });
         const token = loginRes.body.token;
 
         const res = await request(app)
             .get('/auth/me')
             .set('Authorization', `Bearer ${token}`);
-            
+
         expect(res.status).toBe(200);
-        expect(res.body.email).toBe(email);
+        expect(res.body.email).toBe('me.test@hsbi.de');
         expect(res.body).not.toHaveProperty('password');
+        expect(res.body).not.toHaveProperty('password_hash');
     });
 
-    // T2.8
-    it('T2.8: /auth/me rejects requests without token', async () => {
+    it('/auth/me rejects requests without token', async () => {
         const res = await request(app).get('/auth/me');
+        expect(res.status).toBe(401);
+    });
+
+    it('/auth/me rejects requests with invalid token', async () => {
+        const res = await request(app)
+            .get('/auth/me')
+            .set('Authorization', 'Bearer invalid-token-here');
         expect(res.status).toBe(401);
     });
 });

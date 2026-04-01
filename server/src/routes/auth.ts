@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
-import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 
@@ -9,74 +8,94 @@ const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
 
-// Validation Schemas
-const registerSchema = z.object({
-  email: z.string().email().refine(val => val.endsWith('@hsbi.de'), {
-    message: "Email must be an @hsbi.de address",
-  }),
-  password: z.string().min(6),
-});
-
+// Validation Schema
 const loginSchema = z.object({
-  email: z.string().email(),
-  password: z.string(),
+  username: z.string().min(1),
+  password: z.string().min(1),
 });
 
-// Register
-authRouter.post('/register', async (req, res) => {
-  try {
-    const { email, password } = registerSchema.parse(req.body);
+// ─── HSBI Validation ─────────────────────────────────────────────────────────
+// Sends credentials to the HSBI SSO endpoint. The password is NEVER stored or logged.
 
-    const existingUser = await prisma.user.findUnique({ where: { email } });
-    if (existingUser) {
-      return res.status(400).json({ error: 'User already exists' });
-    }
+export async function validateHSBI(username: string, password: string): Promise<boolean> {
+  const body = new URLSearchParams({
+    option: 'credential',
+    doauth: 'auth',
+    target: 'https://www.hsbi.de/intern?weiterleitung',
+    Ecom_User_ID: username,
+    Ecom_Password: password,
+  });
 
-    const password_hash = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: { email, password_hash, role: 'curator' },
-    });
+  const response = await fetch('https://www.hsbi.de/cms-ajax-login', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+      'X-Requested-With': 'XMLHttpRequest',
+      'Origin': 'https://www.hsbi.de',
+      'Referer': 'https://www.hsbi.de/login',
+    },
+    body: body.toString(),
+    redirect: 'manual',
+  });
 
-    res.json({ id: user.id, email: user.email });
-  } catch (error) {
-     if (error instanceof z.ZodError) {
-        return res.status(400).json({ error: (error as any).errors[0].message });
-     }
-     res.status(500).json({ error: 'Internal server error' });
+  const text = await response.text();
+
+  // Successful login: empty body OR redirect (302)
+  if (text.trim() === '' || response.status === 302 || response.redirected) {
+    return true;
   }
-});
 
-// Login
+  // Failed login: 200 OK with HTML content in the body
+  return false;
+}
+
+// ─── Login ───────────────────────────────────────────────────────────────────
+
 authRouter.post('/login', async (req, res) => {
   try {
-    const { email, password } = loginSchema.parse(req.body);
+    const { username, password } = loginSchema.parse(req.body);
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user) return res.status(401).json({ error: 'Invalid credentials' });
+    // Validate against HSBI
+    const isValid = await validateHSBI(username, password);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Ungültige Anmeldedaten' });
+    }
 
-    const isValid = await bcrypt.compare(password, user.password_hash);
-    if (!isValid) return res.status(401).json({ error: 'Invalid credentials' });
+    // Construct email from HSBI username
+    const email = `${username}@hsbi.de`;
+
+    // Upsert user: find existing or create on first login
+    let user = await prisma.user.findUnique({ where: { email } });
+    if (!user) {
+      user = await prisma.user.create({
+        data: { email, role: 'user' },
+      });
+    }
 
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '365d' });
     res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (error) {
-     res.status(500).json({ error: 'Login failed' });
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: 'Benutzername und Passwort sind erforderlich' });
+    }
+    res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
   }
 });
 
-// Me
+// ─── Me ──────────────────────────────────────────────────────────────────────
+
 authRouter.get('/me', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ error: 'No token provided' });
 
     const token = authHeader.split(' ')[1];
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as any;
+        const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; role: string };
         const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
         if (!user) return res.status(401).json({ error: 'User not found' });
-        
+
         res.json({ id: user.id, email: user.email, role: user.role });
-    } catch (e) {
+    } catch {
         res.status(401).json({ error: 'Invalid token' });
     }
 });
