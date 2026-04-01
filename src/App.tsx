@@ -6,6 +6,7 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 import { EditorLayout } from './components/EditorLayout';
 import { AssetLibraryPage } from './pages/AssetLibraryPage';
 import KeinZugriffPage from './pages/KeinZugriffPage';
+import { ExhibitionsPage } from './pages/ExhibitionsPage';
 import { Toaster } from "@/components/ui/toaster";
 import './App.css';
 
@@ -16,6 +17,8 @@ function App() {
         <Route path="/" element={<HomePage />} />
         <Route path="/login" element={<LoginPage />} />
         <Route path="/kein-zugriff" element={<KeinZugriffPage />} />
+        <Route path="/exhibitions" element={<ExhibitionsPage />} />
+        <Route path="/exhibition" element={<ExhibitionsPage />} />
         {/* Public Viewer */}
         <Route path="/exhibition/:slug" element={<ViewerPage />} />
 

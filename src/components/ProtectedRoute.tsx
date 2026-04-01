@@ -1,5 +1,6 @@
 import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useAuthStore, AppRole } from '../store/authStore';
+import { useAuthStore } from '../store/authStore';
+import type { AppRole } from '../store/authStore';
 
 const ROLE_HIERARCHY: Record<AppRole, number> = {
   user: 0,

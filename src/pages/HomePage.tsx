@@ -64,10 +64,13 @@ export const HomePage = () => {
           Cura<span className="font-semibold">Hub</span>
         </Link>
         <div className="flex items-center gap-6 text-sm">
+          <Link to="/exhibition" className="text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
+            Ausstellungen
+          </Link>
           {isAuthenticated ? (
             <Link
               to="/project"
-              className="text-zinc-400 hover:text-white transition-colors"
+              className="text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
             >
               Dashboard
             </Link>
