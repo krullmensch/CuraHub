@@ -38,8 +38,8 @@ Mounted at `/admin` in `server/src/index.ts`. `requireAdmin` middleware applied 
 #### `GET /admin/users/:id/exhibitions` response shape
 ```ts
 {
-  owned: Array<{ id: number; title: string; slug: string; projectName: string }>;
-  collaborating: Array<{ id: number; title: string; slug: string; projectName: string }>;
+  owned: Array<{ id: number; title: string; projectName: string }>;
+  collaborating: Array<{ id: number; title: string; projectName: string }>;
 }
 ```
 
