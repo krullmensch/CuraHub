@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Trash2, Layers, ArrowLeft } from 'lucide-react';
 import { UserExhibitionsModal } from '../components/UserExhibitionsModal';
+import { useToast } from '@/hooks/use-toast';
 
 type AppRole = 'user' | 'curator' | 'prof' | 'admin';
 
@@ -31,29 +32,33 @@ const ROLE_LABELS: Record<AppRole, string> = {
 export const UsersPage = () => {
   const token = useAuthStore((s) => s.token);
   const currentUser = useAuthStore((s) => s.user);
+  const { toast } = useToast();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [modalUser, setModalUser] = useState<{ id: number; email: string } | null>(null);
 
-  const fetchUsers = async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch('/admin/users', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error();
-      setUsers(await res.json());
-    } catch {
-      setError('Benutzer konnten nicht geladen werden.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => { fetchUsers(); }, []);
+  useEffect(() => {
+    let cancelled = false;
+    const run = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch('/admin/users', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok) throw new Error();
+        if (!cancelled) setUsers(await res.json());
+      } catch {
+        if (!cancelled) setError('Benutzer konnten nicht geladen werden.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    run();
+    return () => { cancelled = true; };
+  }, [token]);
 
   const handleRoleChange = async (userId: number, newRole: AppRole) => {
     try {
@@ -70,7 +75,7 @@ export const UsersPage = () => {
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
       );
     } catch {
-      alert('Rollenänderung fehlgeschlagen.');
+      toast({ title: 'Fehler', description: 'Rollenänderung fehlgeschlagen.', variant: 'destructive' });
     }
   };
 
@@ -84,7 +89,7 @@ export const UsersPage = () => {
       setUsers((prev) => prev.filter((u) => u.id !== userId));
       setConfirmDeleteId(null);
     } catch {
-      alert('Benutzer konnte nicht gelöscht werden.');
+      toast({ title: 'Fehler', description: 'Benutzer konnte nicht gelöscht werden.', variant: 'destructive' });
     }
   };
 
@@ -102,7 +107,9 @@ export const UsersPage = () => {
 
       <div className="pt-24 px-8 pb-16 max-w-5xl mx-auto">
         <h1 className="font-display text-3xl font-light text-white mb-2">Benutzerverwaltung</h1>
-        <p className="text-zinc-500 text-sm mb-10">{users.length} registrierte Benutzer</p>
+        {!loading && (
+          <p className="text-zinc-500 text-sm mb-10">{users.length} registrierte Benutzer</p>
+        )}
 
         {loading && (
           <div className="text-zinc-500 text-sm">Wird geladen…</div>
@@ -157,7 +164,7 @@ export const UsersPage = () => {
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-2 justify-end">
                           <button
-                            onClick={() => setModalUser({ id: u.id, email: u.email })}
+                            onClick={() => { setModalUser({ id: u.id, email: u.email }); setConfirmDeleteId(null); }}
                             className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
                           >
                             <Layers className="w-3 h-3" />
