@@ -13,6 +13,7 @@ import { wallsRouter } from './routes/walls';
 import { restrictionsRouter } from './routes/restrictions';
 import { exhibitionsRouter } from './routes/exhibitions';
 import { publicRouter } from './routes/public';
+import { adminRouter } from './routes/admin';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,6 +34,7 @@ app.use('/', versionsRouter); // Mounted at root since routes are /exhibitions/:
 app.use('/walls', wallsRouter);
 app.use('/restrictions', restrictionsRouter);
 app.use('/exhibitions', exhibitionsRouter);
+app.use('/admin', adminRouter);
 app.use('/public', publicRouter);
 
 app.get('/', (req, res) => {
