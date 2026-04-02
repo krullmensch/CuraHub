@@ -7,6 +7,7 @@ import { EditorLayout } from './components/EditorLayout';
 import { AssetLibraryPage } from './pages/AssetLibraryPage';
 import KeinZugriffPage from './pages/KeinZugriffPage';
 import { ExhibitionsPage } from './pages/ExhibitionsPage';
+import { UsersPage } from './pages/UsersPage';
 import { Toaster } from "@/components/ui/toaster";
 import './App.css';
 
@@ -30,6 +31,11 @@ function App() {
               <Route path="/project" element={null} />
               <Route path="/:projectSlug/edit" element={null} />
            </Route>
+        </Route>
+
+        {/* Protected Routes — admin only */}
+        <Route element={<ProtectedRoute requiredRole="admin" />}>
+          <Route path="/users" element={<UsersPage />} />
         </Route>
 
         {/* 404 */}

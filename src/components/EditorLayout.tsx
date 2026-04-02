@@ -85,7 +85,7 @@ export const EditorLayout = () => {
                 >
                     Assets
                 </Link>
-                <a 
+                <a
                     href="#"
                     onClick={(e) => { e.preventDefault(); setWikiOpen(true); }}
                     className="transition-colors text-gray-400 hover:text-white flex items-center gap-1"
@@ -93,6 +93,14 @@ export const EditorLayout = () => {
                     <BookOpen className="h-3.5 w-3.5" />
                     Wiki
                 </a>
+                {user?.role === 'admin' && (
+                    <Link
+                        to="/users"
+                        className="transition-colors text-gray-400 hover:text-white"
+                    >
+                        Benutzerverwaltung
+                    </Link>
+                )}
             </nav>
         </div>
         
