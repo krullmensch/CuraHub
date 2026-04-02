@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useAuthStore } from '../store/authStore';
 import { X, Trash2, UserMinus } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
 interface ExhibitionEntry {
   id: number;
   title: string;
-  slug: string;
   projectName: string;
 }
 
@@ -22,6 +22,9 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
   const [collaborating, setCollaborating] = useState<ExhibitionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  const [pendingRevokeId, setPendingRevokeId] = useState<number | null>(null);
+  const { toast } = useToast();
 
   useEffect(() => {
     const fetchExhibitions = async () => {
@@ -53,7 +56,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
       if (!res.ok) throw new Error();
       setOwned((prev) => prev.filter((e) => e.id !== id));
     } catch {
-      alert('Ausstellung konnte nicht gelöscht werden.');
+      toast({ title: 'Fehler', description: 'Ausstellung konnte nicht gelöscht werden.', variant: 'destructive' });
     }
   };
 
@@ -66,7 +69,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
       if (!res.ok) throw new Error();
       setCollaborating((prev) => prev.filter((e) => e.id !== exhibitionId));
     } catch {
-      alert('Zugang konnte nicht entzogen werden.');
+      toast({ title: 'Fehler', description: 'Zugang konnte nicht entzogen werden.', variant: 'destructive' });
     }
   };
 
@@ -111,13 +114,30 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
                           <p className="text-zinc-200 text-sm">{e.title}</p>
                           <p className="text-zinc-600 text-xs mt-0.5">{e.projectName}</p>
                         </div>
-                        <button
-                          onClick={() => handleDeleteExhibition(e.id)}
-                          className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded transition-all"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          Löschen
-                        </button>
+                        {pendingDeleteId === e.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => { handleDeleteExhibition(e.id); setPendingDeleteId(null); }}
+                              className="text-xs text-red-400 hover:text-red-300 border border-red-800 hover:border-red-600 px-3 py-1.5 rounded transition-all"
+                            >
+                              Bestätigen
+                            </button>
+                            <button
+                              onClick={() => setPendingDeleteId(null)}
+                              className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1.5 rounded transition-colors"
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setPendingDeleteId(e.id)}
+                            className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded transition-all"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                            Löschen
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -139,13 +159,30 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
                           <p className="text-zinc-200 text-sm">{e.title}</p>
                           <p className="text-zinc-600 text-xs mt-0.5">{e.projectName}</p>
                         </div>
-                        <button
-                          onClick={() => handleRevokeAccess(e.id)}
-                          className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-orange-400 border border-zinc-700 hover:border-orange-800 px-3 py-1.5 rounded transition-all"
-                        >
-                          <UserMinus className="w-3 h-3" />
-                          Zugang entziehen
-                        </button>
+                        {pendingRevokeId === e.id ? (
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => { handleRevokeAccess(e.id); setPendingRevokeId(null); }}
+                              className="text-xs text-orange-400 hover:text-orange-300 border border-orange-800 hover:border-orange-600 px-3 py-1.5 rounded transition-all"
+                            >
+                              Bestätigen
+                            </button>
+                            <button
+                              onClick={() => setPendingRevokeId(null)}
+                              className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1.5 rounded transition-colors"
+                            >
+                              Abbrechen
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setPendingRevokeId(e.id)}
+                            className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-orange-400 border border-zinc-700 hover:border-orange-800 px-3 py-1.5 rounded transition-all"
+                          >
+                            <UserMinus className="w-3 h-3" />
+                            Zugang entziehen
+                          </button>
+                        )}
                       </li>
                     ))}
                   </ul>

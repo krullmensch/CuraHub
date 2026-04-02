@@ -71,7 +71,6 @@ adminRouter.get('/users/:id/exhibitions', async (req, res) => {
         select: {
           id: true,
           title: true,
-          slug: true,
           project: { select: { name: true } },
         },
       }),
@@ -80,16 +79,14 @@ adminRouter.get('/users/:id/exhibitions', async (req, res) => {
         select: {
           id: true,
           title: true,
-          slug: true,
           project: { select: { name: true } },
         },
       }),
     ]);
 
-    const map = (e: { id: number; title: string; slug: string; project: { name: string } }) => ({
+    const map = (e: { id: number; title: string; project: { name: string } }) => ({
       id: e.id,
       title: e.title,
-      slug: e.slug,
       projectName: e.project.name,
     });
 
