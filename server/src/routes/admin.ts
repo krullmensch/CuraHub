@@ -30,25 +30,27 @@ adminRouter.get('/users', async (_req, res) => {
 
 // ─── DELETE /admin/users/:id ──────────────────────────────────────────────────
 
-adminRouter.delete('/users/:id', async (req: any, res) => {
+adminRouter.delete('/users/:id', async (req, res) => {
   try {
     const targetId = parseInt(req.params.id, 10);
     if (isNaN(targetId)) return res.status(400).json({ error: 'Ungültige Benutzer-ID' });
 
     // Prevent self-deletion
-    if (req.user.userId === targetId) {
+    if (req.user!.userId === targetId) {
       return res.status(400).json({ error: 'Du kannst deinen eigenen Account nicht löschen' });
     }
 
     const user = await prisma.user.findUnique({ where: { id: targetId } });
     if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
 
-    // 1. Clear non-cascading invitedById FK
-    await prisma.exhibitionCollaborator.deleteMany({ where: { invitedById: targetId } });
-    // 2. Delete all projects (cascades → Exhibition → ExhibitionVersion → ArtworkInstance + ModularWall)
-    await prisma.project.deleteMany({ where: { ownerId: targetId } });
-    // 3. Delete user (ExhibitionCollaborator where userId cascades via schema)
-    await prisma.user.delete({ where: { id: targetId } });
+    await prisma.$transaction(async (tx) => {
+      // 1. Clear non-cascading invitedById FK
+      await tx.exhibitionCollaborator.deleteMany({ where: { invitedById: targetId } });
+      // 2. Delete all projects (cascades → Exhibition → ExhibitionVersion → ArtworkInstance + ModularWall)
+      await tx.project.deleteMany({ where: { ownerId: targetId } });
+      // 3. Delete user (ExhibitionCollaborator where userId cascades via schema)
+      await tx.user.delete({ where: { id: targetId } });
+    });
 
     res.json({ success: true });
   } catch {
