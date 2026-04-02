@@ -176,16 +176,3 @@ model ModularWall {
   createdAt   DateTime          @default(now())
 }
 
-model RestrictionZone {
-  id          Int      @id @default(autoincrement())
-  label       String?
-  // Bounding box dimensions (world-space unrotated) and optionally rotated
-  min_x       Float
-  min_y       Float
-  min_z       Float
-  max_x       Float
-  max_y       Float
-  max_z       Float
-  rotation_y  Float    @default(0)
-  createdAt   DateTime @default(now())
-}

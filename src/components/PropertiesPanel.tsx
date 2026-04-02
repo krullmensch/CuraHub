@@ -21,7 +21,6 @@ import {
     Focus,
     Lock,
     Unlock,
-    ShieldAlert,
     Play,
     Pause,
     Volume2,
@@ -87,7 +86,6 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const [activeTab, setActiveTab] = useState<RightTab>('controls');
     const selectedId = useEditorStore((state) => state.selectedInstanceId);
     const selectedWallId = useEditorStore((state) => state.selectedWallId);
-    const selectedZoneId = useEditorStore((state) => state.selectedZoneId);
     const transformMode = useEditorStore((state) => state.transformMode);
     const setTransformMode = useEditorStore((state) => state.setTransformMode);
     const selectInstance = useEditorStore((state) => state.selectInstance);
@@ -99,14 +97,14 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
     // Sync active tab to properties when something is selected
     useEffect(() => {
-        if (selectedId || selectedWallId || selectedZoneId) {
+        if (selectedId || selectedWallId) {
             // Use setTimeout to avoid synchronous setState warning in some linters/react versions
             const timer = setTimeout(() => {
                 setActiveTab('properties');
             }, 0);
             return () => clearTimeout(timer);
         }
-    }, [selectedId, selectedWallId, selectedZoneId]);
+    }, [selectedId, selectedWallId]);
 
     const [transform, setTransform] = useState<TransformData>({
         position: { x: 0, y: 0, z: 0 },
@@ -272,8 +270,8 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         { mode: 'scale', icon: Maximize2, label: 'Scale (S)' },
     ];
 
-    const hasPropertiesContent = selectedId || selectedWallId || selectedZoneId;
-    const headerAccent = activeTab === 'properties' && selectedZoneId ? 'bg-red-600' : 'bg-blue-600';
+    const hasPropertiesContent = selectedId || selectedWallId;
+    const headerAccent = 'bg-blue-600';
 
     return (
         <>
@@ -299,7 +297,6 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
                 {activeTab === 'properties' && (
                     hasPropertiesContent ? (
-                        selectedZoneId ? <ZonePropertiesContent /> :
                         selectedWallId ? <WallPropertiesContent /> :
                         <ArtworkPropertiesContent
                             transform={displayTransform}
@@ -322,7 +319,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                         />
                     ) : (
                         <div className="flex-1 flex items-center justify-center p-4">
-                            <p className="text-zinc-500 text-xs text-center italic">Select an artwork, wall, or zone to view its properties.</p>
+                            <p className="text-zinc-500 text-xs text-center italic">Select an artwork or wall to view its properties.</p>
                         </div>
                     )
                 )}
@@ -342,35 +339,13 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 const ControlsTabContent = () => {
     const showTraverses = useEditorStore((state) => state.showTraverses);
     const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
-    const addRestrictionZone = useEditorStore((state) => state.addRestrictionZone);
-    const isAdmin = useAuthStore((state) => state.isAdmin);
-    const token = useAuthStore((state) => state.token);
-    const { toast } = useToast();
-
-    const handleAddZone = async () => {
-        if (!token) return;
-        try {
-            const res = await fetch('/api/restrictions', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ label: 'New Zone', min_x: 5, min_y: 0, min_z: -1, max_x: 7, max_y: 3.5, max_z: 1 }),
-            });
-            if (!res.ok) throw new Error('Failed to create zone');
-            const zone = await res.json();
-            addRestrictionZone(zone);
-            toast({ title: 'Zone Created', description: 'New restriction zone added.' });
-        } catch (e: unknown) {
-            const error = e as Error;
-            toast({ variant: 'destructive', title: 'Error', description: error.message });
-        }
-    };
 
     return (
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
                     <span className="text-zinc-300 text-sm">Traverses</span>
-                    <Button 
+                    <Button
                         variant={showTraverses ? "default" : "secondary"}
                         size="sm"
                         onClick={toggleTraverses}
@@ -379,25 +354,6 @@ const ControlsTabContent = () => {
                         {showTraverses ? "Visible" : "Hidden"}
                     </Button>
                 </div>
-
-                {isAdmin && (
-                    <>
-                        <Separator className="bg-zinc-800" />
-                        <div>
-                            <span className="text-red-400 text-xs font-medium uppercase tracking-wider flex items-center gap-1">
-                                <ShieldAlert className="h-3 w-3" /> Admin
-                            </span>
-                            <Button
-                                variant="secondary"
-                                size="sm"
-                                onClick={handleAddZone}
-                                className="w-full mt-2 h-8 text-xs bg-red-950/50 text-red-300 hover:bg-red-900/50 border border-red-800/40"
-                            >
-                                Add Restriction Zone
-                            </Button>
-                        </div>
-                    </>
-                )}
             </div>
         </div>
     );
@@ -594,7 +550,6 @@ const WallPropertiesContent = () => {
     const localInstances = useEditorStore((state) => state.localInstances);
     const updateWall = useEditorStore((state) => state.updateWall);
     const toggleWallLock = useEditorStore((state) => state.toggleWallLock);
-    const token = useAuthStore((state) => state.token);
     const { toast } = useToast();
     const wall = localWalls.find(w => w.id === selectedWallId);
     if (!wall) return null;
@@ -654,68 +609,3 @@ const WallPropertiesContent = () => {
     );
 };
 
-const ZonePropertiesContent = () => {
-    const selectedZoneId = useEditorStore((state) => state.selectedZoneId);
-    const zones = useEditorStore((state) => state.restrictionZones);
-    const updateRestrictionZone = useEditorStore((state) => state.updateRestrictionZone);
-    const deleteRestrictionZone = useEditorStore((state) => state.deleteRestrictionZone);
-    const selectZone = useEditorStore((state) => state.selectZone);
-    const token = useAuthStore((state) => state.token);
-    const { toast } = useToast();
-    const zone = zones.find(z => z.id === selectedZoneId);
-    if (!zone) return null;
-    const toFixed = (v: number, d = 2) => v.toFixed(d);
-
-    const handleBoundsChange = (key: string, raw: string) => {
-        const v = parseFloat(raw);
-        if (isNaN(v)) return;
-        updateRestrictionZone(zone.id, { [key]: v });
-        if (token) fetch(`/api/restrictions/${zone.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ [key]: v }) });
-    };
-
-    return (
-        <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
-            <div className="space-y-2">
-                <Label className="text-xs text-zinc-400 uppercase tracking-wider">Label</Label>
-                <Input type="text" value={zone.label || ''} onChange={(e) => {
-                    updateRestrictionZone(zone.id, { label: e.target.value || null });
-                    if (token) fetch(`/api/restrictions/${zone.id}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` }, body: JSON.stringify({ label: e.target.value || null }) });
-                }} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
-            </div>
-            <Separator className="bg-zinc-800" />
-            <div className="space-y-2">
-                <Label className="text-xs text-zinc-400 uppercase tracking-wider">Min Bounds</Label>
-                <div className="grid grid-cols-3 gap-2">
-                    {(['min_x', 'min_y', 'min_z'] as const).map(k => (
-                        <div key={k} className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">{k.split('_')[1]}</Label>
-                            <NumericInput step="0.1" value={toFixed(zone[k])} onChange={(raw) => handleBoundsChange(k, raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
-                        </div>
-                    ))}
-                </div>
-            </div>
-            <div className="space-y-2">
-                <Label className="text-xs text-zinc-400 uppercase tracking-wider">Max Bounds</Label>
-                <div className="grid grid-cols-3 gap-2">
-                    {(['max_x', 'max_y', 'max_z'] as const).map(k => (
-                        <div key={k} className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">{k.split('_')[1]}</Label>
-                            <NumericInput step="0.1" value={toFixed(zone[k])} onChange={(raw) => handleBoundsChange(k, raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
-                        </div>
-                    ))}
-                </div>
-            </div>
-            <Separator className="bg-zinc-800" />
-            <Button variant="destructive" size="sm" onClick={async () => {
-                if (!token) return;
-                try {
-                    const res = await fetch(`/api/restrictions/${zone.id}`, { method: 'DELETE', headers: { 'Authorization': `Bearer ${token}` } });
-                    if (!res.ok) throw new Error();
-                    deleteRestrictionZone(zone.id);
-                    selectZone(null);
-                    toast({ title: 'Zone Deleted' });
-                } catch { toast({ variant: 'destructive', title: 'Error' }); }
-            }} className="w-full text-xs"><Trash2 className="h-4 w-4 mr-2" /> Delete Zone</Button>
-        </div>
-    );
-};

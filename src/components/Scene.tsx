@@ -4,7 +4,6 @@ import { RigidBody } from '@react-three/rapier';
 import { Satellit } from './Satellit';
 import { PlacedArtworks } from './PlacedArtworks';
 import { ModularWallsController } from './ModularWallsController';
-import { RestrictionZones } from './RestrictionZones';
 import { PlannerCameraSystem } from './PlannerCameraSystem';
 import { FPVArtworkRaycaster } from './FPVArtworkRaycaster';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../store/editorStore';
@@ -62,7 +61,6 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls }: ScenePr
             <Suspense fallback={null}>
                 <PlacedArtworks viewerInstances={viewerInstances} isEditor={isEditor} />
                 <ModularWallsController viewerWalls={viewerWalls} isEditor={isEditor} />
-                {isEditor && <RestrictionZones />}
             </Suspense>
 
             <FPVArtworkRaycaster isEditor={isEditor} />

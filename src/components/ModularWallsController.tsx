@@ -188,7 +188,6 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
     const activeVersionId = useEditorStore((state) => state.activeVersionId);
     const transformMode = useEditorStore((state) => state.transformMode);
     const setIsTransforming = useEditorStore((state) => state.setIsTransforming);
-    const restrictionZones = useEditorStore((state) => state.restrictionZones);
 
     const { scene } = useThree();
 
@@ -311,50 +310,6 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
     // Only allow translate and rotate for walls
     const wallTransformMode = transformMode === 'scale' ? 'translate' : transformMode;
 
-    // Restriction Zone Collision — full SAT OBB vs OBB test in XZ plane
-    const isIntersectingZone = useCallback((cx: number, cz: number, rotY: number) => {
-        const wallCorners = getWallCorners(cx, cz, rotY);
-
-        return restrictionZones.some(zone => {
-            // Fast vertical reject: wall occupies Y=[0, WALL_HEIGHT]
-            if (0 > zone.max_y || WALL_HEIGHT < zone.min_y) return false;
-
-            const zoneCx = (zone.min_x + zone.max_x) / 2;
-            const zoneCz = (zone.min_z + zone.max_z) / 2;
-            const zoneHalfW = (zone.max_x - zone.min_x) / 2;
-            const zoneHalfD = (zone.max_z - zone.min_z) / 2;
-            const zoneCorners = getWallCorners(zoneCx, zoneCz, zone.rotation_y || 0, zoneHalfW, zoneHalfD);
-
-            // 4 SAT axes: 2 from wall OBB edges + 2 from zone OBB edges
-            const axes: THREE.Vector2[] = [
-                [wallCorners[0], wallCorners[1]],
-                [wallCorners[0], wallCorners[2]],
-                [zoneCorners[0], zoneCorners[1]],
-                [zoneCorners[0], zoneCorners[2]],
-            ].map(([p1, p2]) => {
-                const edge = new THREE.Vector2(p2.x - p1.x, p2.y - p1.y);
-                return new THREE.Vector2(-edge.y, edge.x).normalize();
-            });
-
-            for (const axis of axes) {
-                let minA = Infinity, maxA = -Infinity;
-                let minB = Infinity, maxB = -Infinity;
-                for (const c of wallCorners) {
-                    const proj = c.dot(axis);
-                    if (proj < minA) minA = proj;
-                    if (proj > maxA) maxA = proj;
-                }
-                for (const c of zoneCorners) {
-                    const proj = c.dot(axis);
-                    if (proj < minB) minB = proj;
-                    if (proj > maxB) maxB = proj;
-                }
-                if (maxA <= minB || maxB <= minA) return false;
-            }
-            return true;
-        });
-    }, [restrictionZones]);
-
     // ─── Real-time clamping during drag ─────────────────────────────
     const handleTransformChange = useCallback(() => {
         if (!selectedWallId || !selectedWallRef) return;
@@ -390,18 +345,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
             return;
         }
 
-        // 3. Check restriction zone collision
-        if (isIntersectingZone(pos.x, pos.z, rot.y)) {
-            const last = lastValidTransforms.current.get(selectedWallId);
-            if (last) {
-                pos.x = last.x;
-                pos.z = last.z;
-                rot.y = last.ry;
-            }
-            return;
-        }
-
-        // 4. Valid placement — propagate delta to child artworks, then update last known good position
+        // 3. Valid placement — propagate delta to child artworks, then update last known good position
         const prev = lastValidTransforms.current.get(selectedWallId);
         if (prev) {
             const dx = pos.x - prev.x;
@@ -441,7 +385,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
         }
 
         lastValidTransforms.current.set(selectedWallId, { x: pos.x, z: pos.z, ry: rot.y });
-    }, [selectedWallId, selectedWallRef, isWithinRoom, isIntersectingZone]);
+    }, [selectedWallId, selectedWallRef, isWithinRoom]);
 
     // Persist to store + backend on mouse-up
     const handleTransformEnd = useCallback(() => {

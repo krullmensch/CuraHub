@@ -62,18 +62,6 @@ export interface ModularWallData {
     isLocked: boolean;
 }
 
-export interface RestrictionZoneData {
-    id: number;
-    label?: string | null;
-    min_x: number;
-    min_y: number;
-    min_z: number;
-    max_x: number;
-    max_y: number;
-    max_z: number;
-    rotation_y: number;
-}
-
 interface OrbitCameraState {
   position: [number, number, number];
   target: [number, number, number];
@@ -151,10 +139,6 @@ interface EditorState {
   localWalls: ModularWallData[];
   selectedWallId: number | null;
 
-  // Restriction Zones State
-  restrictionZones: RestrictionZoneData[];
-  selectedZoneId: number | null;
-
   // FPV Artwork Info
   fpvHoveredInfo: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null;
 
@@ -203,13 +187,6 @@ interface EditorState {
   deleteWall: (id: number) => void;
   toggleWallLock: (id: number) => void;
   selectWall: (id: number | null) => void;
-
-  // Restriction Zones Actions
-  setRestrictionZones: (zones: RestrictionZoneData[]) => void;
-  addRestrictionZone: (zone: RestrictionZoneData) => void;
-  updateRestrictionZone: (id: number, updates: Partial<RestrictionZoneData>) => void;
-  deleteRestrictionZone: (id: number) => void;
-  selectZone: (id: number | null) => void;
 
   // FPV Actions
   setFpvHoveredInfo: (info: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null) => void;
@@ -272,10 +249,6 @@ export const useEditorStore = create<EditorState>((set) => ({
   // Modular Walls defaults
   localWalls: [],
   selectedWallId: null,
-
-  // Restriction Zones
-  restrictionZones: [],
-  selectedZoneId: null,
 
   // FPV
   fpvHoveredInfo: null,
@@ -471,21 +444,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     ),
     hasUnsavedChanges: true,
   })),
-  selectWall: (id) => set({ selectedWallId: id, selectedInstanceId: null, selectedZoneId: null }),
-
-  // Restriction Zones actions
-  setRestrictionZones: (zones) => set({ restrictionZones: zones }),
-  addRestrictionZone: (zone) => set((state) => ({
-    restrictionZones: [...state.restrictionZones, zone],
-  })),
-  updateRestrictionZone: (id, updates) => set((state) => ({
-    restrictionZones: state.restrictionZones.map(z => z.id === id ? { ...z, ...updates } : z),
-  })),
-  deleteRestrictionZone: (id) => set((state) => ({
-    restrictionZones: state.restrictionZones.filter(z => z.id !== id),
-    selectedZoneId: state.selectedZoneId === id ? null : state.selectedZoneId,
-  })),
-  selectZone: (id) => set({ selectedZoneId: id, selectedInstanceId: null, selectedWallId: null }),
+  selectWall: (id) => set({ selectedWallId: id, selectedInstanceId: null }),
 
   // FPV actions
   setFpvHoveredInfo: (info) => set({ fpvHoveredInfo: info }),

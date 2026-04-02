@@ -90,7 +90,6 @@ export const ArtworkPlacement = () => {
     const draggedAsset = useEditorStore((state) => state.dragState.draggedAsset);
     const dragPosition = useEditorStore((state) => state.dragState.dragPosition);
     const setValidPlacement = useEditorStore((state) => state.setValidPlacement);
-    const restrictionZones = useEditorStore((state) => state.restrictionZones);
 
     const { camera, scene } = useThree();
     const raycaster = useRef(new THREE.Raycaster());
@@ -101,29 +100,6 @@ export const ArtworkPlacement = () => {
         quaternion: THREE.Quaternion;
         isValid: boolean;
     } | null>(null);
-
-    // Collision check helper (handles rotated RestrictionZones OBBs)
-    const isInsideRestriction = (pos: THREE.Vector3) => {
-        return restrictionZones.some(zone => {
-            const cx = (zone.min_x + zone.max_x) / 2;
-            const cy = (zone.min_y + zone.max_y) / 2;
-            const cz = (zone.min_z + zone.max_z) / 2;
-            const w = zone.max_x - zone.min_x;
-            const h = zone.max_y - zone.min_y;
-            const d = zone.max_z - zone.min_z;
-
-            const localPos = new THREE.Vector3(pos.x - cx, pos.y - cy, pos.z - cz);
-            if (zone.rotation_y) {
-                localPos.applyAxisAngle(new THREE.Vector3(0, 1, 0), -zone.rotation_y);
-            }
-
-            return (
-                localPos.x >= -w / 2 && localPos.x <= w / 2 &&
-                localPos.y >= -h / 2 && localPos.y <= h / 2 &&
-                localPos.z >= -d / 2 && localPos.z <= d / 2
-            );
-        });
-    };
 
     useFrame(() => {
         if (!isDragging || !draggedAsset || !dragPosition) {
@@ -153,8 +129,7 @@ export const ArtworkPlacement = () => {
 
             if (floorHit) {
                 const position = floorHit.point.clone();
-                const isRestricted = isInsideRestriction(position);
-                const isValid = !isRestricted;
+                const isValid = true;
 
                 setGhostState({
                     position,
@@ -206,8 +181,6 @@ export const ArtworkPlacement = () => {
 
             const position = point.clone().add(faceNormal.multiplyScalar(0.01));
 
-            const isRestricted = isInsideRestriction(position);
-
             let isUnlockedWall = false;
             if (wallHit.object.name === "ModularWall") {
                 const hitWallId = wallHit.object.userData.wallId as number | undefined;
@@ -217,7 +190,7 @@ export const ArtworkPlacement = () => {
                 }
             }
 
-            const isValid = isVertical && !isRestricted && !isUnlockedWall;
+            const isValid = isVertical && !isUnlockedWall;
 
             setGhostState({
                 position,
