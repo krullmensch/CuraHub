@@ -1,73 +1,64 @@
-# React + TypeScript + Vite
+# CuraHub
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+CuraHub ist eine Plattform zur Planung und Visualisierung von Ausstellungen in einem digitalen Raum. Ich habe das Projekt während meines Studiums entwickelt, um Kuratoren Werkzeuge für die virtuelle Raumgestaltung zur Verfügung zu stellen. Das System nutzt das Modell "Satellit" als Basisraum und erlaubt die Platzierung von Kunstwerken sowie die Erstellung modularer Wände.
 
-Currently, two official plugins are available:
+## Kernfunktionen
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 3D-Editor und Visualisierung
+- Raumplanung durch interaktive Platzierung von Objekten an Wänden (Raycasting).
+- Modulare Wand-Elemente mit Anpassung der Position, Rotation und Dimension.
+- Multi-Mode Kamera für den Wechsel zwischen Planer-Ansicht (Orbit/Top-Down) und First-Person-Perspektive.
+- Physik-Engine Rapier für die Kollisionsabfrage und realistische Fortbewegung im Raum.
 
-## React Compiler
+### Asset-Pipeline
+- Support für Bilder, Videos (MP4) und 3D-Modelle (GLB/GLTF).
+- Automatisierte Skalierung und Kompression von Bildern mit Sharp.
+- Video-Transcoding und Extraktion von Thumbnails via FFmpeg.
+- Extraktion von physischen Dimensionen und Metadaten zur korrekten Maßstabsdarstellung.
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+### Architektur und Sicherheit
+- Integration von HSBI SSO zur Authentifizierung mit Hochschul-Accounts.
+- Rollenbasiertes Rechtesystem (RBAC) mit den Stufen User, Curator, Prof und Admin.
+- Versionskontrolle für Ausstellungsentwürfe mit Veröffentlichungs-Workflow.
 
-## Expanding the ESLint configuration
+## Technischer Stack
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+Ich habe für CuraHub einen modernen Full-Stack gewählt:
+- Frontend: React, TypeScript, Vite.
+- 3D-Rendering: Three.js, React Three Fiber (R3F), React Three Drei.
+- State-Management: Zustand.
+- Backend: Node.js, Express, Prisma ORM.
+- Datenbank: MariaDB (via Docker).
+- Styling: TailwindCSS, shadcn/ui.
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+## Projektstruktur
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```text
+├── server/               # Express Backend & Prisma Schema
+│   ├── prisma/           # Datenbank-Migrationen und Seeding
+│   └── src/              # API-Routen, Middleware und Asset-Logik
+├── src/                  # React Frontend
+│   ├── components/       # 3D-Komponenten und UI-Elemente
+│   ├── store/            # Zustand-Stores (Editor, Auth)
+│   └── pages/            # Routen-Views (Editor, Dashboard, Public)
+└── public/               # Statische Assets und 3D-Modelle (GLB)
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Setup
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Voraussetzungen
+Du brauchst Node.js (v18+), Docker für die Datenbank und FFmpeg für die Video-Verarbeitung auf deinem System.
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+### Installation
+1. Repository klonen.
+2. Dependencies im Hauptverzeichnis und im server-Ordner installieren: `npm install && cd server && npm install`.
+3. Docker-Container für die Datenbank starten: `docker-compose up -d`.
+4. Umgebungsvariablen in `server/.env` setzen (DATABASE_URL, JWT_SECRET).
+5. Prisma-Migrationen ausführen: `npx prisma migrate dev`.
+
+### Start
+- Server: `cd server && npm run dev`
+- Frontend: `npm run dev`
+
+## Entwicklung (AI-Driven Development)
+Das Projekt nutzt einen KI-gestützten Workflow. Die KI diente als Junior-Entwickler für die Implementierung technischer Details und Boilerplate-Code, während ich die Architektur entworfen und die logische Struktur des Codes validiert habe. Dieser Ansatz ermöglichte eine schnelle Umsetzung komplexer 3D-Features in einem modernen Tech-Stack.
