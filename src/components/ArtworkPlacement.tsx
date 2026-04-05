@@ -59,22 +59,23 @@ const GhostPreview = ({ url, width, height, dpi, position, quaternion, isValid }
 };
 
 // Ghost preview for 3D models — simple translucent box
+// name="__ghost__" is used to exclude this mesh from raycaster intersections
 const ModelGhostPreview = ({ position, isValid }: { position: THREE.Vector3; isValid: boolean }) => {
     return (
-        <group position={position}>
-            <mesh>
+        <group position={position} name="__ghost__">
+            <mesh name="__ghost__">
                 <boxGeometry args={[0.5, 0.5, 0.5]} />
                 <meshBasicMaterial
-                    color={isValid ? "#a78bfa" : "#f87171"}
+                    color={isValid ? "#4ade80" : "#f87171"}
                     transparent
                     opacity={0.4}
                     wireframe={false}
                 />
             </mesh>
-            <mesh>
+            <mesh name="__ghost__">
                 <boxGeometry args={[0.5, 0.5, 0.5]} />
                 <meshBasicMaterial
-                    color={isValid ? "#7c3aed" : "#ef4444"}
+                    color={isValid ? "#22c55e" : "#ef4444"}
                     wireframe
                     transparent
                     opacity={0.8}
@@ -115,31 +116,45 @@ export const ArtworkPlacement = () => {
         // Setup Raycaster from NDC
         raycaster.current.setFromCamera(new THREE.Vector2(dragPosition.x, dragPosition.y), camera);
 
-        // Intersect
-        const intersects = raycaster.current.intersectObjects(scene.children, true);
+        // Intersect — exclude ghost meshes and invisible objects.
+        // Three.js does NOT skip invisible meshes in raycasting, so we must filter
+        // them manually. This prevents the hidden ceiling from blocking floor hits
+        // when the camera is positioned above the room in editor mode.
+        const intersects = raycaster.current
+            .intersectObjects(scene.children, true)
+            .filter(hit => {
+                if (hit.object.name === '__ghost__') return false;
+                let obj: THREE.Object3D | null = hit.object;
+                while (obj) {
+                    if (!obj.visible) return false;
+                    obj = obj.parent;
+                }
+                return true;
+            });
 
         if (isModel) {
             // ── 3D MODEL: floor placement ──
-            const floorHit = intersects.find(hit => {
+            // A valid placement is a horizontal surface (normal.y > 0.85) at floor level (y < 0.1).
+            // We look for the closest horizontal hit regardless of height, then decide validity by y.
+            const horizontalHit = intersects.find(hit => {
                 if (!hit.face) return false;
                 const normal = hit.face.normal.clone().transformDirection(hit.object.matrixWorld).normalize();
-                // Horizontal surface (floor): normal pointing up
-                return normal.y > 0.9 || hit.object.name === "Floor";
+                return normal.y > 0.85;
             });
 
-            if (floorHit) {
-                const position = floorHit.point.clone();
-                const isValid = true;
+            if (horizontalHit) {
+                const isValid = horizontalHit.point.y < 0.1; // floor ≈ y=0; wall tops / traverses are higher
+                const position = horizontalHit.point.clone();
+                if (isValid) {
+                    // Snap to exact floor level so model always sits at y=0
+                    position.y = 0;
+                }
 
-                setGhostState({
-                    position,
-                    quaternion: new THREE.Quaternion(),
-                    isValid,
-                });
+                setGhostState({ position, quaternion: new THREE.Quaternion(), isValid });
 
                 if (isValid) {
                     setValidPlacement({
-                        position: [position.x, position.y, position.z],
+                        position: [position.x, 0, position.z],
                         rotation: [0, 0, 0],
                         scale: 1,
                         wallId: null,

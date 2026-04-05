@@ -26,10 +26,10 @@ function App() {
         {/* Protected Routes — curator role required */}
         <Route element={<ProtectedRoute requiredRole="curator" />}>
            <Route element={<EditorLayout />}>
-              <Route path="/:projectSlug/assets" element={<AssetLibraryPage />} />
+              <Route path="/exhibition/:projectSlug/assets" element={<AssetLibraryPage />} />
               {/* Project editor — projectSlug selected via ProjectSelector in header */}
               <Route path="/project" element={null} />
-              <Route path="/:projectSlug/edit" element={null} />
+              <Route path="/exhibition/:projectSlug/edit" element={null} />
            </Route>
         </Route>
 

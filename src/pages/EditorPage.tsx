@@ -7,9 +7,77 @@ import { Scene } from '../components/Scene';
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { useEditorStore } from '../store/editorStore';
 import { useToast } from '@/hooks/use-toast';
-import { useEffect } from 'react';
-import { Eye, EyeOff, Move, RotateCw, Maximize2, Magnet } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2 } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
+
+// ── Tool bar button ──────────────────────────────────────────────────────────
+
+interface ToolButtonProps {
+  icon: React.ReactNode;
+  tooltip: string;
+  active?: boolean;
+  activeColor?: string;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
+const ToolButton = ({ icon, tooltip, active, activeColor, onClick, disabled }: ToolButtonProps) => {
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <button
+        onClick={onClick}
+        disabled={disabled}
+        onMouseEnter={() => setHovered(true)}
+        onMouseLeave={() => setHovered(false)}
+        style={{
+          width: 32,
+          height: 32,
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          borderRadius: 8,
+          border: 'none',
+          background: active ? (activeColor || 'rgba(59,130,246,0.7)') : hovered && !disabled ? 'rgba(255,255,255,0.08)' : 'transparent',
+          color: disabled ? 'rgba(255,255,255,0.2)' : active ? '#fff' : 'rgba(255,255,255,0.7)',
+          cursor: disabled ? 'default' : 'pointer',
+          transition: 'background 0.15s ease, color 0.15s ease',
+          fontSize: 13,
+          fontWeight: 700,
+          fontFamily: '"Albert Sans", sans-serif',
+        }}
+      >
+        {icon}
+      </button>
+      {hovered && !disabled && (
+        <div style={{
+          position: 'absolute',
+          bottom: 'calc(100% + 8px)',
+          left: '50%',
+          transform: 'translateX(-50%)',
+          padding: '4px 10px',
+          borderRadius: 6,
+          background: 'rgba(0,0,0,0.92)',
+          border: '1px solid rgba(255,255,255,0.1)',
+          color: '#fff',
+          fontSize: 11,
+          fontWeight: 500,
+          whiteSpace: 'nowrap',
+          pointerEvents: 'none',
+          fontFamily: '"Albert Sans", sans-serif',
+        }}>
+          {tooltip}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const ToolSeparator = () => (
+  <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
+);
 
 const GL_CONFIG = {
     toneMapping: THREE.ACESFilmicToneMapping,
@@ -31,10 +99,8 @@ export const EditorPage = () => {
   const showTraverses = useEditorStore((state) => state.showTraverses);
   const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
   const selectedInstanceId = useEditorStore((state) => state.selectedInstanceId);
-  const rightSidebarOpen = useEditorStore((state) => state.rightSidebarOpen);
   const transformMode = useEditorStore((state) => state.transformMode);
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
-  const snapEnabled = useEditorStore((state) => state.snapEnabled);
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
 
@@ -136,11 +202,6 @@ export const EditorPage = () => {
           if (!cmdOrCtrl && store.selectedInstanceId) {
             setTransformAxisLock(store.transformAxisLock === 'z' ? 'none' : 'z');
           }
-          break;
-
-        // Snap toggle
-        case 'n':
-          store.setSnapEnabled(!store.snapEnabled);
           break;
 
         // Delete selected instance
@@ -301,93 +362,40 @@ export const EditorPage = () => {
            </div>
       )}
 
-      {/* Transform HUD — mode, axis lock, snap */}
-      {viewMode !== 'firstPerson' && selectedInstanceId && (
+      {/* ── Tool Bar — bottom center ── */}
+      {viewMode !== 'firstPerson' && (
         <div style={{
           position: 'absolute',
-          bottom: '20px',
-          left: '20px',
+          bottom: 20,
+          left: '50%',
+          transform: 'translateX(-50%)',
           zIndex: 15,
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
-          padding: '6px 12px',
-          borderRadius: '10px',
-          border: '1px solid rgba(255,255,255,0.15)',
+          gap: 2,
+          padding: 4,
+          borderRadius: 12,
+          border: '1px solid rgba(255,255,255,0.1)',
           background: 'rgba(0,0,0,0.6)',
-          color: 'white',
-          fontSize: '11px',
-          fontWeight: 500,
-          backdropFilter: 'blur(8px)',
-          fontFamily: '"Albert Sans", sans-serif',
+          backdropFilter: 'blur(12px)',
         }}>
-          {/* Mode icon */}
-          {transformMode === 'translate' && <Move size={14} />}
-          {transformMode === 'rotate' && <RotateCw size={14} />}
-          {transformMode === 'scale' && <Maximize2 size={14} />}
-          <span style={{ textTransform: 'capitalize' }}>{transformMode === 'translate' ? 'Grab' : transformMode}</span>
+          {/* Transform modes */}
+          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!selectedInstanceId} />
+          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!selectedInstanceId} />
+          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!selectedInstanceId} />
+
+          <ToolSeparator />
 
           {/* Axis lock */}
-          {transformAxisLock !== 'none' && (
-            <span style={{
-              marginLeft: '4px',
-              padding: '1px 6px',
-              borderRadius: '4px',
-              background: transformAxisLock === 'x' ? 'rgba(239,68,68,0.7)' :
-                           transformAxisLock === 'y' ? 'rgba(34,197,94,0.7)' :
-                           'rgba(59,130,246,0.7)',
-              fontSize: '10px',
-              fontWeight: 700,
-              textTransform: 'uppercase',
-            }}>
-              {transformAxisLock}
-            </span>
-          )}
+          <ToolButton icon="X" tooltip="Lock X (X)" active={transformAxisLock === 'x'} activeColor="rgba(239,68,68,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'x' ? 'none' : 'x')} disabled={!selectedInstanceId} />
+          <ToolButton icon="Y" tooltip="Lock Y (Y)" active={transformAxisLock === 'y'} activeColor="rgba(34,197,94,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'y' ? 'none' : 'y')} disabled={!selectedInstanceId} />
+          <ToolButton icon="Z" tooltip="Lock Z (Z)" active={transformAxisLock === 'z'} activeColor="rgba(59,130,246,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'z' ? 'none' : 'z')} disabled={!selectedInstanceId} />
 
-          {/* Snap indicator */}
-          {snapEnabled && (
-            <span style={{
-              marginLeft: '4px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '3px',
-              color: 'rgb(250, 204, 21)',
-            }}>
-              <Magnet size={12} />
-              <span style={{ fontSize: '10px' }}>Snap</span>
-            </span>
-          )}
+          <ToolSeparator />
+
+          {/* Traverses */}
+          <ToolButton icon={showTraverses ? <Eye size={16} /> : <EyeOff size={16} />} tooltip={showTraverses ? 'Traverses ausblenden' : 'Traverses einblenden'} active={showTraverses} onClick={toggleTraverses} />
         </div>
-      )}
-
-      {/* Traverses Toggle Button */}
-      {viewMode !== 'firstPerson' && (
-          <button
-            onClick={toggleTraverses}
-            title={showTraverses ? 'Hide Traverses' : 'Show Traverses'}
-            style={{
-              position: 'absolute',
-              bottom: '20px',
-              right: (selectedInstanceId && rightSidebarOpen) ? '312px' : '20px',
-              zIndex: 15,
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '8px 14px',
-              borderRadius: '10px',
-              border: '1px solid rgba(255,255,255,0.15)',
-              background: showTraverses ? 'rgba(59,130,246,0.8)' : 'rgba(0,0,0,0.6)',
-              color: 'white',
-              fontSize: '12px',
-              fontWeight: 500,
-              cursor: 'pointer',
-              backdropFilter: 'blur(8px)',
-              transition: 'all 0.3s ease',
-            }}
-          >
-            {showTraverses ? <Eye size={14} /> : <EyeOff size={14} />}
-            Traverses
-          </button>
       )}
     </div>
   );

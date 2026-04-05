@@ -14,52 +14,52 @@ export type AssetType = 'image' | 'video' | 'model3d';
 export type MediumType = 'frame' | 'wallpaper' | 'projector' | 'display' | 'model3d';
 
 export interface ArtworkInstanceData {
-    id: number;
-    artworkId?: number;
-    assetId?: number;
-    wallId?: number | null;
-    medium?: MediumType;
-    artwork: {
-        id?: number;
-        title?: string;
-        artist?: string | null;
-        year?: string | null;
-        description?: string | null;
-        asset: {
-            path: string;
-            width: number;
-            height: number;
-            dpi: number | null;
-            type?: AssetType;
-            thumbnailPath?: string | null;
-        }
-    };
-    position_x: number;
-    position_y: number;
-    position_z: number;
-    rotation_x: number;
-    rotation_y: number;
-    rotation_z: number;
-    scale_x: number;
-    scale_y: number;
-    scale_z: number;
+  id: number;
+  artworkId?: number;
+  assetId?: number;
+  wallId?: number | null;
+  medium?: MediumType;
+  artwork: {
+    id?: number;
+    title?: string;
+    artist?: string | null;
+    year?: string | null;
+    description?: string | null;
+    asset: {
+      path: string;
+      width: number;
+      height: number;
+      dpi: number | null;
+      type?: AssetType;
+      thumbnailPath?: string | null;
+    }
+  };
+  position_x: number;
+  position_y: number;
+  position_z: number;
+  rotation_x: number;
+  rotation_y: number;
+  rotation_z: number;
+  scale_x: number;
+  scale_y: number;
+  scale_z: number;
 }
 
 export interface ModularWallData {
-    id: number;
-    versionId?: number;
-    label?: string | null;
-    position_x: number;
-    position_y: number;
-    position_z: number;
-    rotation_x: number;
-    rotation_y: number;
-    rotation_z: number;
-    width: number;
-    height: number;
-    thickness: number;
-    color: string;
-    isLocked: boolean;
+  id: number;
+  versionId?: number;
+  label?: string | null;
+  position_x: number;
+  position_y: number;
+  position_z: number;
+  rotation_x: number;
+  rotation_y: number;
+  rotation_z: number;
+  width: number;
+  height: number;
+  thickness: number;
+  color: string;
+  isLocked: boolean;
 }
 
 interface OrbitCameraState {
@@ -89,7 +89,7 @@ interface EditorState {
   isPlacing: boolean;
   pendingArtwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string } | null;
   isDialogOpen: boolean;
-  
+
   // Camera State
   plannerViewMode: PlannerViewMode;
   orbitCameraState: OrbitCameraState;
@@ -111,14 +111,13 @@ interface EditorState {
 
   // Blender-style controls
   transformAxisLock: TransformAxisLock;
-  snapEnabled: boolean;
 
   // UI State
   rightSidebarOpen: boolean;
 
   // View State
   showTraverses: boolean;
-  
+
   // Data State
   instancesVersion: number;
 
@@ -127,6 +126,7 @@ interface EditorState {
   activeProjectName: string | null;
   activeProjectSlug: string | null;
   activeExhibitionId: number | null;
+  activeExhibitionSlug: string | null;
   activeVersionId: number | null;
 
   // Phase 6: Local State & Undo/Redo
@@ -164,13 +164,12 @@ interface EditorState {
   setFocusTarget: (focus: { target: [number, number, number]; isHoming: boolean } | null) => void;
   // Blender-style actions
   setTransformAxisLock: (axis: TransformAxisLock) => void;
-  setSnapEnabled: (enabled: boolean) => void;
   deleteSelectedInstance: () => void;
   setModalTransformActive: (active: boolean) => void;
   setActiveObjectRef: (ref: THREE.Object3D | null) => void;
   commitActiveObjectTransform: () => void;
   // Phase 5 actions
-  setActiveProject: (id: number | null, name: string | null, slug: string | null, exhibitionId: number | null, versionId: number | null) => void;
+  setActiveProject: (id: number | null, name: string | null, slug: string | null, exhibitionId: number | null, versionId: number | null, exhibitionSlug?: string | null) => void;
   setActiveVersion: (id: number | null) => void;
 
   // Phase 6 Actions
@@ -205,8 +204,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     zoom: 40
   },
   firstPersonCameraState: {
-    position: [0, 1.7, 5], // Eye level inside room
-    rotation: [0, 0, 0]
+    position: [-4, 1.7, 5], // Eye level inside room
+    rotation: [-Math.PI / 2, -Math.PI / 2, -Math.PI / 2]
   },
 
   dragState: {
@@ -229,7 +228,6 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Blender-style defaults
   transformAxisLock: 'none',
-  snapEnabled: false,
   modalTransformActive: false,
   activeObjectRef: null,
 
@@ -238,6 +236,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   activeProjectName: null,
   activeProjectSlug: null,
   activeExhibitionId: null,
+  activeExhibitionSlug: null,
   activeVersionId: null,
 
   // Phase 6 defaults
@@ -257,24 +256,24 @@ export const useEditorStore = create<EditorState>((set) => ({
   startPlacement: (artwork) => set({ isPlacing: true, pendingArtwork: artwork }),
   cancelPlacement: () => set({ isPlacing: false, pendingArtwork: null }),
   completePlacement: () => set({ isPlacing: false, pendingArtwork: null }),
-  
+
   setPlannerViewMode: (mode) => set({ plannerViewMode: mode }),
   toggleTraverses: () => set((state) => ({ showTraverses: !state.showTraverses })),
-  updateOrbitCameraState: (state) => set((prev) => ({ 
-    orbitCameraState: { ...prev.orbitCameraState, ...state } 
+  updateOrbitCameraState: (state) => set((prev) => ({
+    orbitCameraState: { ...prev.orbitCameraState, ...state }
   })),
-  updateFirstPersonCameraState: (state) => set((prev) => ({ 
-    firstPersonCameraState: { ...prev.firstPersonCameraState, ...state } 
+  updateFirstPersonCameraState: (state) => set((prev) => ({
+    firstPersonCameraState: { ...prev.firstPersonCameraState, ...state }
   })),
 
-  setDragging: (isDragging, asset) => set((state) => ({ 
-      dragState: { ...state.dragState, isDragging, draggedAsset: asset } 
+  setDragging: (isDragging, asset) => set((state) => ({
+    dragState: { ...state.dragState, isDragging, draggedAsset: asset }
   })),
-  setDragPosition: (pos) => set((state) => ({ 
-      dragState: { ...state.dragState, dragPosition: pos } 
+  setDragPosition: (pos) => set((state) => ({
+    dragState: { ...state.dragState, dragPosition: pos }
   })),
   setValidPlacement: (placement) => set((state) => ({
-      dragState: { ...state.dragState, validPlacement: placement }
+    dragState: { ...state.dragState, validPlacement: placement }
   })),
   triggerInstancesRefresh: () => set((state) => ({ instancesVersion: state.instancesVersion + 1 })),
 
@@ -288,7 +287,6 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Blender-style actions
   setTransformAxisLock: (axis) => set({ transformAxisLock: axis }),
-  setSnapEnabled: (enabled) => set({ snapEnabled: enabled }),
   deleteSelectedInstance: () => set((state) => {
     if (!state.selectedInstanceId) return state;
     const newInstances = state.localInstances.filter(inst => inst.id !== state.selectedInstanceId);
@@ -306,13 +304,13 @@ export const useEditorStore = create<EditorState>((set) => ({
   commitActiveObjectTransform: () => set((state) => {
     const ref = state.activeObjectRef;
     if (!ref) return state;
-    
+
     // If instance is selected
     if (state.selectedInstanceId) {
       const id = state.selectedInstanceId;
       const inst = state.localInstances.find(i => i.id === id);
       if (!inst) return state;
-      
+
       const newInst = {
         ...inst,
         position_x: ref.position.x,
@@ -325,7 +323,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         scale_y: ref.scale.y,
         scale_z: ref.scale.z,
       };
-      
+
       return {
         pastInstances: [...state.pastInstances, state.localInstances],
         localInstances: state.localInstances.map(i => i.id === id ? newInst : i),
@@ -333,23 +331,23 @@ export const useEditorStore = create<EditorState>((set) => ({
         hasUnsavedChanges: true,
       };
     }
-    
+
     // If wall is selected
     if (state.selectedWallId) {
       const id = state.selectedWallId;
       return {
         localWalls: state.localWalls.map(w => w.id === id ? {
-            ...w,
-            position_x: ref.position.x,
-            // Wall Y is locked to center normally, we allow it slightly but keep it stored as is or read from ref
-            position_y: ref.position.y,
-            position_z: ref.position.z,
-            rotation_y: ref.rotation.y,
+          ...w,
+          position_x: ref.position.x,
+          // Wall Y is locked to center normally, we allow it slightly but keep it stored as is or read from ref
+          position_y: ref.position.y,
+          position_z: ref.position.z,
+          rotation_y: ref.rotation.y,
         } : w),
         hasUnsavedChanges: true,
       };
     }
-    
+
     // If zone is selected (handled directly via updateRestrictionZone from Gizmo initially, 
     // but here we can do it via updating its stored OBB position)
     // Wait, zone transforms are complex: we only want to update the bounds + rotation.
@@ -358,11 +356,12 @@ export const useEditorStore = create<EditorState>((set) => ({
   }),
 
   // Phase 5 actions
-  setActiveProject: (id, name, slug, exhibitionId, versionId) => set({
+  setActiveProject: (id, name, slug, exhibitionId, versionId, exhibitionSlug = null) => set({
     activeProjectId: id,
     activeProjectName: name,
     activeProjectSlug: slug,
     activeExhibitionId: exhibitionId,
+    activeExhibitionSlug: exhibitionSlug,
     activeVersionId: versionId,
     selectedInstanceId: null, // Clear selection on project switch
   }),
@@ -410,8 +409,8 @@ export const useEditorStore = create<EditorState>((set) => ({
       selectedInstanceId: null,
     };
   }),
-  markSaved: () => set({ 
-      hasUnsavedChanges: false 
+  markSaved: () => set({
+    hasUnsavedChanges: false
   }),
 
   // Modular Walls actions
@@ -481,186 +480,186 @@ const syncToBackend = () => {
   isSyncing = true;
 
   try {
-  const headers = getAuthHeaders();
-  if (!headers) return;
+    const headers = getAuthHeaders();
+    if (!headers) return;
 
-  const state = useEditorStore.getState();
-  const { localInstances, localWalls, activeVersionId } = state;
-  if (!activeVersionId) return;
+    const state = useEditorStore.getState();
+    const { localInstances, localWalls, activeVersionId } = state;
+    if (!activeVersionId) return;
 
-  const currInstances = localInstances;
-  const currWalls = localWalls;
+    const currInstances = localInstances;
+    const currWalls = localWalls;
 
-  // ── Instance sync ──
-  const prevMap = new Map(prevInstances.map(i => [i.id, i]));
-  const currMap = new Map(currInstances.map(i => [i.id, i]));
+    // ── Instance sync ──
+    const prevMap = new Map(prevInstances.map(i => [i.id, i]));
+    const currMap = new Map(currInstances.map(i => [i.id, i]));
 
-  // New instances (in curr but not prev)
-  for (const inst of currInstances) {
-    if (!prevMap.has(inst.id)) {
-      // Skip if this temp ID is already being POSTed
-      if (syncingInstanceTempIds.has(inst.id)) continue;
+    // New instances (in curr but not prev)
+    for (const inst of currInstances) {
+      if (!prevMap.has(inst.id)) {
+        // Skip if this temp ID is already being POSTed
+        if (syncingInstanceTempIds.has(inst.id)) continue;
 
-      // Determine artwork/asset IDs
-      const artworkId = inst.artworkId ?? inst.artwork?.id;
-      const assetId = inst.assetId;
-      if (!artworkId && !assetId) continue;
+        // Determine artwork/asset IDs
+        const artworkId = inst.artworkId ?? inst.artwork?.id;
+        const assetId = inst.assetId;
+        if (!artworkId && !assetId) continue;
 
-      syncingInstanceTempIds.add(inst.id);
+        syncingInstanceTempIds.add(inst.id);
 
-      fetch('/api/instances', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          versionId: activeVersionId,
-          artworkId: artworkId || undefined,
-          assetId: assetId || undefined,
-          wallId: inst.wallId ?? null,
-          medium: inst.medium ?? 'frame',
-          position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
-          rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
-          scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
-        }),
-      }).then(res => res.ok ? res.json() : null).then(created => {
-        if (created) {
-          // Replace temp ID with real DB ID
-          const current = useEditorStore.getState();
-          useEditorStore.setState({
-            localInstances: current.localInstances.map(i =>
-              i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i
-            ),
-            // Also update undo history to reference the real ID
-            pastInstances: current.pastInstances.map(snapshot =>
-              snapshot.map(i => i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i)
-            ),
-            selectedInstanceId: current.selectedInstanceId === inst.id ? created.id : current.selectedInstanceId,
-          });
-          // Keep prevInstances in sync so the next diff doesn't re-POST the real ID
-          prevInstances = prevInstances.map(p =>
-            p.id === inst.id ? { ...p, id: created.id, artworkId: created.artworkId } : p
-          );
-          // Update the shared ref maps
-          const ref = instanceRefMap.get(inst.id);
-          if (ref) {
-            instanceRefMap.set(created.id, ref);
-            instanceRefMap.delete(inst.id);
+        fetch('/api/instances', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            versionId: activeVersionId,
+            artworkId: artworkId || undefined,
+            assetId: assetId || undefined,
+            wallId: inst.wallId ?? null,
+            medium: inst.medium ?? 'frame',
+            position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
+            rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
+            scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
+          }),
+        }).then(res => res.ok ? res.json() : null).then(created => {
+          if (created) {
+            // Replace temp ID with real DB ID
+            const current = useEditorStore.getState();
+            useEditorStore.setState({
+              localInstances: current.localInstances.map(i =>
+                i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i
+              ),
+              // Also update undo history to reference the real ID
+              pastInstances: current.pastInstances.map(snapshot =>
+                snapshot.map(i => i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i)
+              ),
+              selectedInstanceId: current.selectedInstanceId === inst.id ? created.id : current.selectedInstanceId,
+            });
+            // Keep prevInstances in sync so the next diff doesn't re-POST the real ID
+            prevInstances = prevInstances.map(p =>
+              p.id === inst.id ? { ...p, id: created.id, artworkId: created.artworkId } : p
+            );
+            // Update the shared ref maps
+            const ref = instanceRefMap.get(inst.id);
+            if (ref) {
+              instanceRefMap.set(created.id, ref);
+              instanceRefMap.delete(inst.id);
+            }
+            const videoEl = videoRefMap.get(inst.id);
+            if (videoEl) {
+              videoRefMap.set(created.id, videoEl);
+              videoRefMap.delete(inst.id);
+            }
           }
-          const videoEl = videoRefMap.get(inst.id);
-          if (videoEl) {
-            videoRefMap.set(created.id, videoEl);
-            videoRefMap.delete(inst.id);
+        }).catch(err => console.error('[AutoSync] Failed to create instance:', err))
+          .finally(() => syncingInstanceTempIds.delete(inst.id));
+      }
+    }
+
+    // Deleted instances (in prev but not curr, only for real IDs)
+    for (const prev of prevInstances) {
+      if (prev.id > 0 && !currMap.has(prev.id)) {
+        fetch(`/api/instances/${prev.id}`, { method: 'DELETE', headers })
+          .catch(err => console.error('[AutoSync] Failed to delete instance:', err));
+      }
+    }
+
+    // Updated instances (same ID, different transform or wallId)
+    for (const curr of currInstances) {
+      if (curr.id < 0) continue; // temp IDs handled above
+      const prev = prevMap.get(curr.id);
+      if (!prev) continue;
+      const posChanged = curr.position_x !== prev.position_x || curr.position_y !== prev.position_y || curr.position_z !== prev.position_z;
+      const rotChanged = curr.rotation_x !== prev.rotation_x || curr.rotation_y !== prev.rotation_y || curr.rotation_z !== prev.rotation_z;
+      const scaleChanged = curr.scale_x !== prev.scale_x || curr.scale_y !== prev.scale_y || curr.scale_z !== prev.scale_z;
+      const wallChanged = curr.wallId !== prev.wallId;
+      const mediumChanged = curr.medium !== prev.medium;
+      if (posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged) {
+        const body: Record<string, unknown> = {};
+        if (posChanged) body.position = { x: curr.position_x, y: curr.position_y, z: curr.position_z };
+        if (rotChanged) body.rotation = { x: curr.rotation_x, y: curr.rotation_y, z: curr.rotation_z };
+        if (scaleChanged) body.scale = { x: curr.scale_x, y: curr.scale_y, z: curr.scale_z };
+        if (wallChanged) body.wallId = curr.wallId ?? null;
+        if (mediumChanged) body.medium = curr.medium;
+        fetch(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) })
+          .catch(err => console.error('[AutoSync] Failed to update instance:', err));
+      }
+    }
+
+    // ── Wall sync ──
+    const prevWallMap = new Map(prevWalls.map(w => [w.id, w]));
+    const currWallMap = new Map(currWalls.map(w => [w.id, w]));
+
+    // New walls (temp negative IDs → POST)
+    for (const wall of currWalls) {
+      if (wall.id < 0 && !prevWallMap.has(wall.id)) {
+        // Skip if this temp wall ID is already being POSTed
+        if (syncingWallTempIds.has(wall.id)) continue;
+
+        syncingWallTempIds.add(wall.id);
+
+        fetch('/api/walls', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            versionId: activeVersionId,
+            label: wall.label,
+            position_x: wall.position_x, position_y: wall.position_y, position_z: wall.position_z,
+            rotation_x: wall.rotation_x, rotation_y: wall.rotation_y, rotation_z: wall.rotation_z,
+            width: wall.width, height: wall.height, thickness: wall.thickness,
+            color: wall.color, isLocked: wall.isLocked,
+          }),
+        }).then(res => res.ok ? res.json() : null).then(created => {
+          if (created) {
+            const current = useEditorStore.getState();
+            useEditorStore.setState({
+              localWalls: current.localWalls.map(w => w.id === wall.id ? { ...created } : w),
+              // Remap wallId on any instances pointing to the temp wall
+              localInstances: current.localInstances.map(i =>
+                i.wallId === wall.id ? { ...i, wallId: created.id } : i
+              ),
+              selectedWallId: current.selectedWallId === wall.id ? created.id : current.selectedWallId,
+            });
+            // Keep prevWalls in sync so the next diff doesn't re-POST the real ID
+            prevWalls = prevWalls.map(p =>
+              p.id === wall.id ? { ...created } : p
+            );
           }
-        }
-      }).catch(err => console.error('[AutoSync] Failed to create instance:', err))
-        .finally(() => syncingInstanceTempIds.delete(inst.id));
+        }).catch(err => console.error('[AutoSync] Failed to create wall:', err))
+          .finally(() => syncingWallTempIds.delete(wall.id));
+      }
     }
-  }
 
-  // Deleted instances (in prev but not curr, only for real IDs)
-  for (const prev of prevInstances) {
-    if (prev.id > 0 && !currMap.has(prev.id)) {
-      fetch(`/api/instances/${prev.id}`, { method: 'DELETE', headers })
-        .catch(err => console.error('[AutoSync] Failed to delete instance:', err));
+    // Deleted walls (real IDs only)
+    for (const prev of prevWalls) {
+      if (prev.id > 0 && !currWallMap.has(prev.id)) {
+        fetch(`/api/walls/${prev.id}`, { method: 'DELETE', headers })
+          .catch(err => console.error('[AutoSync] Failed to delete wall:', err));
+      }
     }
-  }
 
-  // Updated instances (same ID, different transform or wallId)
-  for (const curr of currInstances) {
-    if (curr.id < 0) continue; // temp IDs handled above
-    const prev = prevMap.get(curr.id);
-    if (!prev) continue;
-    const posChanged = curr.position_x !== prev.position_x || curr.position_y !== prev.position_y || curr.position_z !== prev.position_z;
-    const rotChanged = curr.rotation_x !== prev.rotation_x || curr.rotation_y !== prev.rotation_y || curr.rotation_z !== prev.rotation_z;
-    const scaleChanged = curr.scale_x !== prev.scale_x || curr.scale_y !== prev.scale_y || curr.scale_z !== prev.scale_z;
-    const wallChanged = curr.wallId !== prev.wallId;
-    const mediumChanged = curr.medium !== prev.medium;
-    if (posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged) {
-      const body: Record<string, unknown> = {};
-      if (posChanged) body.position = { x: curr.position_x, y: curr.position_y, z: curr.position_z };
-      if (rotChanged) body.rotation = { x: curr.rotation_x, y: curr.rotation_y, z: curr.rotation_z };
-      if (scaleChanged) body.scale = { x: curr.scale_x, y: curr.scale_y, z: curr.scale_z };
-      if (wallChanged) body.wallId = curr.wallId ?? null;
-      if (mediumChanged) body.medium = curr.medium;
-      fetch(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) })
-        .catch(err => console.error('[AutoSync] Failed to update instance:', err));
+    // Updated walls
+    for (const curr of currWalls) {
+      if (curr.id < 0) continue;
+      const prev = prevWallMap.get(curr.id);
+      if (!prev) continue;
+      const changed = curr.position_x !== prev.position_x || curr.position_z !== prev.position_z ||
+        curr.rotation_y !== prev.rotation_y || curr.isLocked !== prev.isLocked ||
+        curr.label !== prev.label || curr.color !== prev.color;
+      if (changed) {
+        fetch(`/api/walls/${curr.id}`, {
+          method: 'PATCH', headers,
+          body: JSON.stringify({
+            position_x: curr.position_x, position_y: curr.position_y, position_z: curr.position_z,
+            rotation_x: curr.rotation_x, rotation_y: curr.rotation_y, rotation_z: curr.rotation_z,
+            label: curr.label, color: curr.color, isLocked: curr.isLocked,
+          }),
+        }).catch(err => console.error('[AutoSync] Failed to update wall:', err));
+      }
     }
-  }
 
-  // ── Wall sync ──
-  const prevWallMap = new Map(prevWalls.map(w => [w.id, w]));
-  const currWallMap = new Map(currWalls.map(w => [w.id, w]));
-
-  // New walls (temp negative IDs → POST)
-  for (const wall of currWalls) {
-    if (wall.id < 0 && !prevWallMap.has(wall.id)) {
-      // Skip if this temp wall ID is already being POSTed
-      if (syncingWallTempIds.has(wall.id)) continue;
-
-      syncingWallTempIds.add(wall.id);
-
-      fetch('/api/walls', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          versionId: activeVersionId,
-          label: wall.label,
-          position_x: wall.position_x, position_y: wall.position_y, position_z: wall.position_z,
-          rotation_x: wall.rotation_x, rotation_y: wall.rotation_y, rotation_z: wall.rotation_z,
-          width: wall.width, height: wall.height, thickness: wall.thickness,
-          color: wall.color, isLocked: wall.isLocked,
-        }),
-      }).then(res => res.ok ? res.json() : null).then(created => {
-        if (created) {
-          const current = useEditorStore.getState();
-          useEditorStore.setState({
-            localWalls: current.localWalls.map(w => w.id === wall.id ? { ...created } : w),
-            // Remap wallId on any instances pointing to the temp wall
-            localInstances: current.localInstances.map(i =>
-              i.wallId === wall.id ? { ...i, wallId: created.id } : i
-            ),
-            selectedWallId: current.selectedWallId === wall.id ? created.id : current.selectedWallId,
-          });
-          // Keep prevWalls in sync so the next diff doesn't re-POST the real ID
-          prevWalls = prevWalls.map(p =>
-            p.id === wall.id ? { ...created } : p
-          );
-        }
-      }).catch(err => console.error('[AutoSync] Failed to create wall:', err))
-        .finally(() => syncingWallTempIds.delete(wall.id));
-    }
-  }
-
-  // Deleted walls (real IDs only)
-  for (const prev of prevWalls) {
-    if (prev.id > 0 && !currWallMap.has(prev.id)) {
-      fetch(`/api/walls/${prev.id}`, { method: 'DELETE', headers })
-        .catch(err => console.error('[AutoSync] Failed to delete wall:', err));
-    }
-  }
-
-  // Updated walls
-  for (const curr of currWalls) {
-    if (curr.id < 0) continue;
-    const prev = prevWallMap.get(curr.id);
-    if (!prev) continue;
-    const changed = curr.position_x !== prev.position_x || curr.position_z !== prev.position_z ||
-      curr.rotation_y !== prev.rotation_y || curr.isLocked !== prev.isLocked ||
-      curr.label !== prev.label || curr.color !== prev.color;
-    if (changed) {
-      fetch(`/api/walls/${curr.id}`, {
-        method: 'PATCH', headers,
-        body: JSON.stringify({
-          position_x: curr.position_x, position_y: curr.position_y, position_z: curr.position_z,
-          rotation_x: curr.rotation_x, rotation_y: curr.rotation_y, rotation_z: curr.rotation_z,
-          label: curr.label, color: curr.color, isLocked: curr.isLocked,
-        }),
-      }).catch(err => console.error('[AutoSync] Failed to update wall:', err));
-    }
-  }
-
-  // Update prev snapshots
-  prevInstances = [...currInstances];
-  prevWalls = [...currWalls];
+    // Update prev snapshots
+    prevInstances = [...currInstances];
+    prevWalls = [...currWalls];
 
   } finally {
     isSyncing = false;

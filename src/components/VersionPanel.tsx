@@ -212,54 +212,60 @@ export const VersionPanel = ({
                   }`}
                 >
                   <div className="flex-1 text-left p-4 h-full flex flex-col justify-start">
-                    <div className="flex items-center gap-2 mb-3 pr-6">
-                        <div className={`shrink-0 w-2.5 h-2.5 rounded-full ${
-                          isActive 
-                            ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]' 
-                            : index === 0 ? 'bg-green-500' : 'bg-zinc-600'
-                        }`} />
-                        <span className={`text-xs font-medium uppercase tracking-wider ${isActive ? 'text-blue-400' : 'text-zinc-500'}`}>
-                          {isActive ? 'Active Version' : index === 0 ? 'Latest' : `Snapshot`}
-                        </span>
+                    {/* Row 1: status indicator + label + inline action buttons */}
+                    <div className="flex items-center gap-2 mb-1">
+                      <div className={`shrink-0 w-2.5 h-2.5 rounded-full ${
+                        isActive
+                          ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]'
+                          : index === 0 ? 'bg-green-500' : 'bg-zinc-600'
+                      }`} />
+                      <span className={`text-xs font-medium uppercase tracking-wider ${isActive ? 'text-blue-400' : 'text-zinc-500'}`}>
+                        {isActive ? 'Active Version' : index === 0 ? 'Latest' : 'Snapshot'}
+                      </span>
+                      <div className="ml-auto flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {!version.is_published && (
+                          <button
+                            onClick={(e) => handlePublish(e, version.id)}
+                            className="p-1.5 text-zinc-500 hover:text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
+                            title="Publish"
+                          >
+                            <Globe className="h-4 w-4" />
+                          </button>
+                        )}
+                        {isAdmin && version.is_published && !version.is_featured && (
+                          <button
+                            onClick={(e) => handleFeature(e, version.id)}
+                            className="p-1.5 text-zinc-500 hover:text-yellow-400 hover:bg-yellow-400/10 rounded-md transition-colors"
+                            title="Feature on Homepage"
+                          >
+                            <Star className="h-4 w-4" />
+                          </button>
+                        )}
+                        <button
+                          onClick={(e) => handleDeleteVersion(e, version.id)}
+                          className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors"
+                          title="Delete Version"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Row 2: status badges — own row, never overlaps action buttons */}
+                    {(version.is_featured || version.is_published) && (
+                      <div className="flex items-center gap-1.5 mb-2">
                         {version.is_featured && (
-                          <span className="ml-auto text-[10px] font-medium text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                          <span className="text-[10px] font-medium text-yellow-400 bg-yellow-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
                             <Star className="h-3 w-3" /> Featured
                           </span>
                         )}
-                        {version.is_published && !version.is_featured && (
-                          <span className="ml-auto text-[10px] font-medium text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
+                        {version.is_published && (
+                          <span className="text-[10px] font-medium text-green-400 bg-green-400/10 px-1.5 py-0.5 rounded flex items-center gap-1">
                             <Globe className="h-3 w-3" /> Published
                           </span>
                         )}
-                    </div>
-
-                    <div className="absolute top-3 right-3 flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {!version.is_published && (
-                        <button
-                          onClick={(e) => handlePublish(e, version.id)}
-                          className="p-1.5 text-zinc-500 hover:text-green-400 hover:bg-green-400/10 rounded-md transition-colors"
-                          title="Publish"
-                        >
-                          <Globe className="h-4 w-4" />
-                        </button>
-                      )}
-                      {isAdmin && version.is_published && !version.is_featured && (
-                        <button
-                          onClick={(e) => handleFeature(e, version.id)}
-                          className="p-1.5 text-zinc-500 hover:text-yellow-400 hover:bg-yellow-400/10 rounded-md transition-colors"
-                          title="Feature on Homepage"
-                        >
-                          <Star className="h-4 w-4" />
-                        </button>
-                      )}
-                      <button
-                        onClick={(e) => handleDeleteVersion(e, version.id)}
-                        className="p-1.5 text-zinc-500 hover:text-red-400 hover:bg-red-400/10 rounded-md transition-colors"
-                        title="Delete Version"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                      </div>
+                    )}
 
                     <div className="flex items-start gap-2 mb-auto pb-2">
                         <MessageSquare className="h-4 w-4 text-gray-500 shrink-0 mt-0.5" />

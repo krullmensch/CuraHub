@@ -211,8 +211,12 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     }, [selectedId]);
 
     const handleInputChange = (group: 'position' | 'rotation', axis: 'x' | 'y' | 'z', rawValue: string) => {
-        const value = parseFloat(rawValue);
+        let value = parseFloat(rawValue);
         if (isNaN(value)) return;
+        // 3D models must not go below floor level
+        if (group === 'position' && axis === 'y' && instanceMedium === 'model3d') {
+            value = Math.max(0, value);
+        }
         const storeValue = group === 'rotation' ? (value * Math.PI) / 180 : value;
         const newTransform = { ...transform, [group]: { ...transform[group], [axis]: storeValue } };
         setTransform(newTransform);

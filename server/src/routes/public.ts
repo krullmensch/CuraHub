@@ -10,7 +10,7 @@ publicRouter.get('/featured', async (_req, res) => {
         const featured = await prisma.exhibitionVersion.findFirst({
             where: { is_featured: true, is_published: true },
             include: {
-                exhibition: { select: { id: true, title: true, slug: true } },
+                exhibition: { select: { id: true, title: true, slug: true, poster_path: true, start_date: true, end_date: true } },
                 creator: { select: { email: true } },
                 _count: { select: { instances: true } },
             },
@@ -41,7 +41,7 @@ publicRouter.get('/exhibitions', async (_req, res) => {
             where: { is_published: true, is_featured: false },
             orderBy: { published_at: 'desc' },
             include: {
-                exhibition: { select: { id: true, title: true, slug: true } },
+                exhibition: { select: { id: true, title: true, slug: true, poster_path: true, start_date: true, end_date: true } },
                 creator: { select: { email: true } },
                 _count: { select: { instances: true } },
             },

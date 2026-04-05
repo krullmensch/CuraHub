@@ -40,6 +40,9 @@ model Exhibition {
   room_id       Int                      // Placeholder for now
   projectId     Int
   project       Project                  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  start_date    DateTime?
+  end_date      DateTime?
+  poster_path   String?                  // Relative path to uploaded poster image
   versions      ExhibitionVersion[]
   collaborators ExhibitionCollaborator[]
 }

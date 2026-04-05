@@ -69,13 +69,13 @@ export const ProjectSelector = () => {
               }
             } catch { /* ignore */ }
           }
-          setActiveProject(project.id, project.name, project.slug, exhibition?.id ?? null, versionId);
+          setActiveProject(project.id, project.name, project.slug, exhibition?.id ?? null, versionId, exhibition?.slug ?? null);
           triggerRefresh();
 
           if (path.includes('/assets')) {
-            navigate(`/${project.slug}/assets`, { replace: true });
+            navigate(`/exhibition/${project.slug}/assets`, { replace: true });
           } else {
-            navigate(`/${project.slug}/edit`, { replace: true });
+            navigate(`/exhibition/${project.slug}/edit`, { replace: true });
           }
         }
       }
@@ -122,14 +122,14 @@ export const ProjectSelector = () => {
       }
     }
 
-    setActiveProject(project.id, project.name, project.slug, exhibition?.id ?? null, versionId);
+    setActiveProject(project.id, project.name, project.slug, exhibition?.id ?? null, versionId, exhibition?.slug ?? null);
     triggerRefresh();
     setIsOpen(false);
     setSearch('');
     
     // Only navigate to the editor if we are not on the assets page
     if (!location.pathname.includes('/assets')) {
-      navigate(`/${project.slug}/edit`);
+      navigate(`/exhibition/${project.slug}/edit`);
     }
   };
 
@@ -159,13 +159,14 @@ export const ProjectSelector = () => {
           project.name,
           project.slug,
           exhibition?.id ?? null,
-          version?.id ?? null
+          version?.id ?? null,
+          exhibition?.slug ?? null
         );
         triggerRefresh();
         
         // Only navigate to the editor if we are not on the assets page
         if (!location.pathname.includes('/assets')) {
-          navigate(`/${project.slug}/edit`);
+          navigate(`/exhibition/${project.slug}/edit`);
         }
       } else {
         const errData = await res.json().catch(() => ({}));
@@ -215,7 +216,7 @@ export const ProjectSelector = () => {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => { if (!isOpen) fetchProjects(); setIsOpen(!isOpen); }}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-sm text-white transition-colors min-w-[160px]"
       >
         <FolderOpen className="h-3.5 w-3.5 text-blue-400" />

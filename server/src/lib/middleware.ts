@@ -67,11 +67,15 @@ export const roleAtLeast = (a: AppRole, b: AppRole): boolean =>
 
 /**
  * Prisma OR filter: matches exhibitions the user owns OR is a collaborator on.
+ * Pass isAdmin=true to skip the ownership check (admins can access all exhibitions).
  * Use inside any exhibition-scoped where clause.
  */
-export const exhibitionAccessFilter = (userId: number) => ({
-  OR: [
-    { project: { ownerId: userId } },
-    { collaborators: { some: { userId } } },
-  ],
-});
+export const exhibitionAccessFilter = (userId: number, isAdmin = false) => {
+  if (isAdmin) return {} as Record<string, never>;
+  return {
+    OR: [
+      { project: { ownerId: userId } },
+      { collaborators: { some: { userId } } },
+    ],
+  };
+};

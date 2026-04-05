@@ -16,9 +16,15 @@ const IDLE_BOB_AMOUNT_X = 0.002;  // Horizontal sway amplitude
 
 export const PlayerController = ({ paused }: { paused: boolean }) => {
     const { camera } = useThree();
+    const fpState = useEditorStore(state => state.firstPersonCameraState);
     const [, getKeys] = useKeyboardControls();
     const rigidBody = useRef<RapierRigidBody>(null);
     const currentVelocity = useRef(new THREE.Vector2(0, 0)); // smoothed XZ velocity
+
+    useEffect(() => {
+        // Apply initial rotation on mount to ensure looking straight ahead
+        camera.rotation.set(0, -1.1, 0);
+    }, [camera]);
 
     useFrame((state, delta) => {
         if (!rigidBody.current) return;
@@ -91,23 +97,23 @@ export const PlayerController = ({ paused }: { paused: boolean }) => {
     });
 
     return (
-        <RigidBody 
-            ref={rigidBody} 
-            colliders={false} 
-            mass={1} 
-            type="dynamic" 
-            position={[0, 2, 0]} 
+        <RigidBody
+            ref={rigidBody}
+            colliders={false}
+            mass={1}
+            type="dynamic"
+            position={[-5.99, 0.8, 2.6]}
             enabledRotations={[false, false, false]}
             lockRotations
         >
-            <CapsuleCollider args={[0.5, 0.3]} /> 
+            <CapsuleCollider args={[0.5, 0.3]} />
         </RigidBody>
     );
 };
 
 export const Player = () => {
     const isDialogOpen = useEditorStore((state) => state.isDialogOpen);
-    
+
     const map = [
         { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
         { name: 'backward', keys: ['ArrowDown', 's', 'S'] },

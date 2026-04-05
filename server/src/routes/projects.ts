@@ -23,12 +23,13 @@ function generateBaseSlug(name: string): string {
 }
 
 // Resolve :id param as numeric ID or slug
-function resolveProjectWhere(param: string, userId: number) {
+// Pass isAdmin=true to skip ownership filter (admins can access all projects)
+function resolveProjectWhere(param: string, userId: number, isAdmin = false) {
     const numId = parseInt(param, 10);
     if (!isNaN(numId) && String(numId) === param) {
-        return { id: numId, ownerId: userId };
+        return isAdmin ? { id: numId } : { id: numId, ownerId: userId };
     }
-    return { slug: param, ownerId: userId };
+    return isAdmin ? { slug: param } : { slug: param, ownerId: userId };
 }
 
 // --- Schemas ---
@@ -44,12 +45,13 @@ const updateProjectSchema = z.object({
 
 // --- Routes ---
 
-// GET /projects — list all projects for the authenticated user
+// GET /projects — list all projects for the authenticated user (admin sees all)
 projectsRouter.get('/', authenticate, async (req: any, res) => {
     try {
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
         const projects = await prisma.project.findMany({
-            where: { ownerId: userId },
+            where: isAdmin ? {} : { ownerId: userId },
             orderBy: { updatedAt: 'desc' },
             include: {
                 exhibitions: {
@@ -65,11 +67,12 @@ projectsRouter.get('/', authenticate, async (req: any, res) => {
     }
 });
 
-// GET /projects/:id — get a single project by ID or slug
+// GET /projects/:id — get a single project by ID or slug (admin sees all)
 projectsRouter.get('/:id', authenticate, async (req: any, res) => {
     try {
         const userId = req.user.userId;
-        const where = resolveProjectWhere(req.params.id, userId);
+        const isAdmin = req.user.role === 'admin';
+        const where = resolveProjectWhere(req.params.id, userId, isAdmin);
         const project = await prisma.project.findFirst({
             where,
             include: {
@@ -161,14 +164,15 @@ projectsRouter.post('/', authenticate, requireCurator, async (req: any, res) => 
     }
 });
 
-// PUT /projects/:id — update project name/description
+// PUT /projects/:id — update project name/description (admin can update any)
 projectsRouter.put('/:id', authenticate, requireCurator, async (req: any, res) => {
     try {
         const data = updateProjectSchema.parse(req.body);
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
 
-        // Verify ownership
-        const where = resolveProjectWhere(req.params.id, userId);
+        // Verify ownership (admins bypass ownership check)
+        const where = resolveProjectWhere(req.params.id, userId, isAdmin);
         const existing = await prisma.project.findFirst({ where });
         if (!existing) return res.status(404).json({ error: 'Project not found' });
 
@@ -194,9 +198,10 @@ projectsRouter.put('/:id', authenticate, requireCurator, async (req: any, res) =
 projectsRouter.delete('/:id', authenticate, requireCurator, async (req: any, res) => {
     try {
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
 
-        // Verify ownership
-        const where = resolveProjectWhere(req.params.id, userId);
+        // Verify ownership (admins bypass ownership check)
+        const where = resolveProjectWhere(req.params.id, userId, isAdmin);
         const existing = await prisma.project.findFirst({ where });
         if (!existing) return res.status(404).json({ error: 'Project not found' });
 

@@ -46,11 +46,12 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (r
         const exhibitionId = parseInt(req.params.exhibitionId, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Invalid exhibition ID' });
 
-        // Verify user has access (owner or collaborator)
+        const isAdmin = req.user.role === 'admin';
+        // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                ...exhibitionAccessFilter(req.user.userId)
+                ...exhibitionAccessFilter(req.user.userId, isAdmin)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -88,11 +89,12 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticat
             return res.status(400).json({ error: 'Invalid ID' });
         }
 
-        // Verify user has access (owner or collaborator)
+        const isAdmin = req.user.role === 'admin';
+        // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                ...exhibitionAccessFilter(req.user.userId)
+                ...exhibitionAccessFilter(req.user.userId, isAdmin)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -130,12 +132,13 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
 
         const data = createVersionSchema.parse(req.body);
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
 
-        // Verify user has access (owner or collaborator)
+        // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                ...exhibitionAccessFilter(userId)
+                ...exhibitionAccessFilter(userId, isAdmin)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -335,12 +338,13 @@ versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenti
         }
 
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
 
-        // Verify user has access (owner or collaborator)
+        // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                ...exhibitionAccessFilter(userId)
+                ...exhibitionAccessFilter(userId, isAdmin)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -373,10 +377,11 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', a
         }
 
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
 
-        // Verify user has access (owner or collaborator)
+        // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
-            where: { id: exhibitionId, ...exhibitionAccessFilter(userId) }
+            where: { id: exhibitionId, ...exhibitionAccessFilter(userId, isAdmin) }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
 

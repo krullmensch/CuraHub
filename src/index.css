@@ -31,7 +31,6 @@ body,
 #root {
   width: 100%;
   height: 100%;
-  overflow: hidden;
   background: #000;
   font-family: 'Albert Sans', sans-serif;
 }
@@ -135,6 +134,25 @@ h1, h2, h3, h4, h5, h6 {
   input[type="number"] {
     -moz-appearance: textfield;
   }
+}
+
+/* ── React Day Picker dark theme ──────────────────── */
+.rdp-root {
+  --rdp-accent-color: #2563eb;
+  --rdp-accent-background-color: rgba(37, 99, 235, 0.2);
+  --rdp-range_start-date-background-color: #2563eb;
+  --rdp-range_end-date-background-color: #2563eb;
+  --rdp-range_middle-background-color: rgba(37, 99, 235, 0.15);
+  --rdp-range_middle-color: #e4e4e7;
+  --rdp-range_start-color: #ffffff;
+  --rdp-range_end-color: #ffffff;
+  --rdp-today-color: #60a5fa;
+  --rdp-selected-border: 2px solid #2563eb;
+  --rdp-day-height: 36px;
+  --rdp-day-width: 36px;
+  --rdp-day_button-height: 34px;
+  --rdp-day_button-width: 34px;
+  color: #d4d4d8;
 }
 
 /* ── Wiki markdown content ─────────────────────────── */

@@ -14,7 +14,6 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     const selectedId = useEditorStore((state) => state.selectedInstanceId);
     const transformMode = useEditorStore((state) => state.transformMode);
     const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
-    const snapEnabled = useEditorStore((state) => state.snapEnabled);
     const setIsTransforming = useEditorStore((state) => state.setIsTransforming);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const controlsRef = useRef<any>(null);
@@ -108,9 +107,6 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
             showX={transformAxisLock === 'none' || transformAxisLock === 'x'}
             showY={transformAxisLock === 'none' || transformAxisLock === 'y'}
             showZ={transformAxisLock === 'none' || transformAxisLock === 'z'}
-            translationSnap={snapEnabled ? 0.25 : undefined}
-            rotationSnap={snapEnabled ? Math.PI / 12 : undefined}
-            scaleSnap={snapEnabled ? 0.1 : undefined}
             onMouseDown={handleMouseDown}
             onMouseUp={handleMouseUp}
         />

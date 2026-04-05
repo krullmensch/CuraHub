@@ -2,9 +2,28 @@ import { useState, useEffect, useRef, useCallback, type CSSProperties } from 're
 import { useEditorStore, videoRefMap } from '../store/editorStore';
 import { Volume2, VolumeX } from 'lucide-react';
 
+const MouseLeftIcon = ({ size = 20, color = "white" }: { size?: number, color?: string }) => (
+    <svg 
+        width={size} 
+        height={size * 1.4} 
+        viewBox="0 0 20 28" 
+        fill="none" 
+        style={{ display: 'block' }}
+    >
+        <rect x="1" y="1" width="18" height="26" rx="9" stroke={color} strokeWidth="2"/>
+        <path d="M10 1V11" stroke={color} strokeWidth="2"/>
+        <path d="M1 11H19" stroke={color} strokeWidth="2"/>
+        <path 
+            d="M10 1C5.02944 1 1 5.02944 1 10V11H10V1Z" 
+            fill={color} 
+            fillOpacity="0.4"
+        />
+    </svg>
+);
+
 /**
  * FPV Artwork Info Overlay
- *
+...
  * Shows artwork metadata when crosshair targets an artwork.
  * Left-click toggles the panel hidden while still looking at the artwork.
  * Looking at a different artwork resets visibility.
@@ -14,6 +33,7 @@ export const ArtworkInfoOverlay = () => {
 
     const [displayInfo, setDisplayInfo] = useState<typeof fpvHoveredInfo>(null);
     const [isActive, setIsActive] = useState(false);
+    const [isLocked, setIsLocked] = useState(false);
     const [isMuted, setIsMuted] = useState(true);
     const [dismissed, setDismissed] = useState(false);
 
@@ -25,8 +45,17 @@ export const ArtworkInfoOverlay = () => {
     // Refs for mousedown handler
     const fpvHoveredInfoRef = useRef(fpvHoveredInfo);
     const dismissedRef = useRef(dismissed);
+    const isLockedRef = useRef(isLocked);
     fpvHoveredInfoRef.current = fpvHoveredInfo;
     dismissedRef.current = dismissed;
+    isLockedRef.current = isLocked;
+
+    // Track pointer lock state
+    useEffect(() => {
+        const handler = () => setIsLocked(!!document.pointerLockElement);
+        document.addEventListener('pointerlockchange', handler);
+        return () => document.removeEventListener('pointerlockchange', handler);
+    }, []);
 
     // Track displayInfo for fade-out
     useEffect(() => {
@@ -72,7 +101,7 @@ export const ArtworkInfoOverlay = () => {
     // Left-click: toggle panel visibility
     useEffect(() => {
         const onMouseDown = (e: MouseEvent) => {
-            if (e.button !== 0) return;
+            if (e.button !== 0 || !isLockedRef.current) return;
             const hovered = fpvHoveredInfoRef.current;
             if (!hovered) return;
 
@@ -284,42 +313,21 @@ export const ArtworkInfoOverlay = () => {
                 bottom: 28,
                 right: 28,
                 display: 'flex',
-                flexDirection: 'column',
-                gap: 5,
-                alignItems: 'flex-end',
+                alignItems: 'center',
+                gap: 12,
+                fontFamily: '"Albert Sans", sans-serif',
+                fontWeight: 600,
+                fontSize: 20,
+                color: 'white',
+                background: 'rgba(0, 0, 0, 0.25)',
+                border: '2px solid white',
+                borderRadius: 14,
+                padding: '8px 18px',
+                backdropFilter: 'blur(10px)',
+                letterSpacing: '0.02em',
             }}>
-                {[
-                    { key: 'Left click to toggle Info'}
-                ].map(({ key, label }) => (
-                    <div key={key} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        fontFamily: '"Albert Sans", sans-serif',
-                        fontWeight: 500,
-                        fontSize: 18,
-                        color: 'rgba(255, 255, 255, 1)',
-                        letterSpacing: '0.01em',
-                    }}>
-                        <span>{label}</span>
-                        <span style={{
-                            display: 'inline-block',
-                            background: 'rgba(0, 0, 0, 0.25)',
-                            border: '2px solid rgba(255, 255, 255, 1)',
-                            borderRadius: 10,
-                            padding: '2px 7px',
-                            fontSize: 14,
-                            fontWeight: 600,
-                            color: 'rgba(255, 255, 255, 1)',
-                            letterSpacing: '0.06em',
-                            backdropFilter: 'blur(10px)',
-                            minWidth: 32,
-                            textAlign: 'center',
-                        }}>
-                            {key}
-                        </span>
-                    </div>
-                ))}
+                <MouseLeftIcon size={18} />
+                <span>Info</span>
             </div>
         </div>
     );

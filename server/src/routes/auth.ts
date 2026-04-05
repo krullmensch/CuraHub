@@ -89,13 +89,24 @@ authRouter.get('/me', async (req, res) => {
     const authHeader = req.headers.authorization;
     if (!authHeader) return res.status(401).json({ error: 'No token provided' });
 
-    const token = authHeader.split(' ')[1];
+    const jwtToken = authHeader.split(' ')[1];
     try {
-        const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; role: string };
+        const decoded = jwt.verify(jwtToken, JWT_SECRET) as { userId: number; role: string };
         const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
         if (!user) return res.status(401).json({ error: 'User not found' });
 
-        res.json({ id: user.id, email: user.email, role: user.role });
+        // Issue a fresh token with the current DB role so role changes take
+        // effect without re-login.
+        const freshToken = jwt.sign(
+            { userId: user.id, role: user.role },
+            JWT_SECRET,
+            { expiresIn: '365d' }
+        );
+
+        res.json({
+            token: freshToken,
+            user: { id: user.id, email: user.email, role: user.role },
+        });
     } catch {
         res.status(401).json({ error: 'Invalid token' });
     }

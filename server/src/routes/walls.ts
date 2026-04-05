@@ -44,11 +44,12 @@ wallsRouter.get('/', authenticate, async (req: any, res) => {
         const versionId = parseInt(req.query.versionId as string, 10);
         if (isNaN(versionId)) return res.status(400).json({ error: 'versionId query param required' });
 
-        // Verify user has access (owner or collaborator)
+        const isAdmin = req.user.role === 'admin';
+        // Verify user has access (owner or collaborator, or admin)
         const version = await prisma.exhibitionVersion.findFirst({
             where: {
                 id: versionId,
-                exhibition: exhibitionAccessFilter(req.user.userId)
+                exhibition: exhibitionAccessFilter(req.user.userId, isAdmin)
             }
         });
         if (!version) return res.status(404).json({ error: 'Version not found' });
@@ -70,11 +71,12 @@ wallsRouter.post('/', authenticate, async (req: any, res) => {
     try {
         const data = createWallSchema.parse(req.body);
 
-        // Verify user has access to the version (owner or collaborator)
+        const isAdmin = req.user.role === 'admin';
+        // Verify user has access to the version (owner or collaborator, or admin)
         const version = await prisma.exhibitionVersion.findFirst({
             where: {
                 id: data.versionId,
-                exhibition: exhibitionAccessFilter(req.user.userId)
+                exhibition: exhibitionAccessFilter(req.user.userId, isAdmin)
             }
         });
         if (!version) return res.status(404).json({ error: 'Version not found' });
@@ -120,12 +122,13 @@ wallsRouter.patch('/:id', authenticate, async (req: any, res) => {
         if (isNaN(wallId)) return res.status(400).json({ error: 'Invalid wall ID' });
 
         const data = updateWallSchema.parse(req.body);
+        const isAdmin = req.user.role === 'admin';
 
-        // Verify user has access (owner or collaborator)
+        // Verify user has access (owner or collaborator, or admin)
         const existing = await prisma.modularWall.findFirst({
             where: {
                 id: wallId,
-                version: { exhibition: exhibitionAccessFilter(req.user.userId) }
+                version: { exhibition: exhibitionAccessFilter(req.user.userId, isAdmin) }
             }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });
@@ -151,11 +154,12 @@ wallsRouter.delete('/:id', authenticate, async (req: any, res) => {
         const wallId = parseInt(req.params.id, 10);
         if (isNaN(wallId)) return res.status(400).json({ error: 'Invalid wall ID' });
 
-        // Verify user has access (owner or collaborator)
+        const isAdmin = req.user.role === 'admin';
+        // Verify user has access (owner or collaborator, or admin)
         const existing = await prisma.modularWall.findFirst({
             where: {
                 id: wallId,
-                version: { exhibition: exhibitionAccessFilter(req.user.userId) }
+                version: { exhibition: exhibitionAccessFilter(req.user.userId, isAdmin) }
             }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });

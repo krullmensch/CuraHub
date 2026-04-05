@@ -21,12 +21,13 @@ instancesRouter.post('/', authenticate, async (req: any, res) => {
     try {
         const data = instanceSchema.parse(req.body);
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
 
-        // 1. Verify version exists and user has access (owner or collaborator)
+        // 1. Verify version exists and user has access (owner or collaborator, or admin)
         const version = await prisma.exhibitionVersion.findFirst({
             where: {
                 id: data.versionId,
-                exhibition: exhibitionAccessFilter(userId)
+                exhibition: exhibitionAccessFilter(userId, isAdmin)
             }
         });
 
@@ -104,17 +105,18 @@ instancesRouter.post('/', authenticate, async (req: any, res) => {
 instancesRouter.get('/', authenticate, async (req: any, res) => {
     try {
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
         const versionId = parseInt(req.query.versionId as string, 10);
 
         if (isNaN(versionId)) {
             return res.status(400).json({ error: 'versionId query parameter is required' });
         }
 
-        // Verify user has access to this version (owner or collaborator)
+        // Verify user has access to this version (owner or collaborator, or admin)
         const version = await prisma.exhibitionVersion.findFirst({
             where: {
                 id: versionId,
-                exhibition: exhibitionAccessFilter(userId)
+                exhibition: exhibitionAccessFilter(userId, isAdmin)
             }
         });
 
@@ -153,12 +155,13 @@ instancesRouter.patch('/:id', authenticate, async (req: any, res) => {
 
         const data = patchInstanceSchema.parse(req.body);
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
 
-        // Verify user has access (owner or collaborator)
+        // Verify user has access (owner or collaborator, or admin)
         const existing = await prisma.artworkInstance.findFirst({
             where: {
                 id: instanceId,
-                version: { exhibition: exhibitionAccessFilter(userId) }
+                version: { exhibition: exhibitionAccessFilter(userId, isAdmin) }
             }
         });
 
@@ -209,12 +212,13 @@ instancesRouter.delete('/:id', authenticate, async (req: any, res) => {
         if (isNaN(instanceId)) return res.status(400).json({ error: 'Invalid instance ID' });
 
         const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
 
-        // Verify user has access (owner or collaborator)
+        // Verify user has access (owner or collaborator, or admin)
         const existing = await prisma.artworkInstance.findFirst({
             where: {
                 id: instanceId,
-                version: { exhibition: exhibitionAccessFilter(userId) }
+                version: { exhibition: exhibitionAccessFilter(userId, isAdmin) }
             }
         });
 

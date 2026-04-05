@@ -26,3 +26,16 @@ dist-ssr
 # VitePress
 docs/.vitepress/dist
 docs/.vitepress/cache
+
+# Local cache and temporary files
+.claude/
+.vexp/
+server/.vexp/
+.vitepress/
+vexp.toml
+
+# Sample files
+Sample Files/
+
+# Web weblocs
+*.webloc
