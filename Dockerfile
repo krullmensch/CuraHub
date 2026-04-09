@@ -35,8 +35,11 @@ RUN npm run build
 
 # Production Stage
 FROM node:20-alpine
-# Runtime dependencies
-RUN apk add --no-cache openssl libc6-compat
+# Runtime dependencies: 
+# - openssl & libc6-compat for Prisma
+# - ca-certificates for external HTTPS requests (HSBI Auth)
+# - curl for debugging
+RUN apk add --no-cache openssl libc6-compat ca-certificates curl
 WORKDIR /app
 
 # Copy Frontend Build
