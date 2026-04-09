@@ -76,6 +76,7 @@ authRouter.post('/login', async (req, res) => {
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '365d' });
     res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (error) {
+    console.error('[Auth Error]:', error);
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Benutzername und Passwort sind erforderlich' });
     }
