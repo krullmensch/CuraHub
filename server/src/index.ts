@@ -24,28 +24,31 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
-app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// --- Helper for dual mounting ---
-const mount = (p: string, router: any) => {
-    app.use(p, router);
-    app.use(`/api${p}`, router);
-};
-
-// --- API Routes ---
-mount('/auth', authRouter);
-mount('/upload', uploadRouter);
-mount('/assets', assetsRouter);
-mount('/artworks', artworksRouter);
-mount('/instances', instancesRouter);
-mount('/projects', projectsRouter);
-mount('/walls', wallsRouter);
-mount('/exhibitions', exhibitionsRouter);
-mount('/admin', adminRouter);
-mount('/public', publicRouter);
-
-// Versions router handles /exhibitions/:id/versions
+// --- API Routes (Legacy/Direct) ---
+app.use('/auth', authRouter);
+app.use('/upload', uploadRouter);
+app.use('/assets', assetsRouter);
+app.use('/artworks', artworksRouter);
+app.use('/instances', instancesRouter);
+app.use('/projects', projectsRouter);
+app.use('/walls', wallsRouter);
+app.use('/exhibitions', exhibitionsRouter);
+app.use('/admin', adminRouter);
+app.use('/public', publicRouter);
 app.use('/', versionsRouter);
+
+// --- API Routes (With /api prefix for VPS/Production) ---
+app.use('/api/auth', authRouter);
+app.use('/api/upload', uploadRouter);
+app.use('/api/assets', assetsRouter);
+app.use('/api/artworks', artworksRouter);
+app.use('/api/instances', instancesRouter);
+app.use('/api/projects', projectsRouter);
+app.use('/api/walls', wallsRouter);
+app.use('/api/exhibitions', exhibitionsRouter);
+app.use('/api/admin', adminRouter);
+app.use('/api/public', publicRouter);
 app.use('/api', versionsRouter);
 
 // --- Production Frontend Serving ---
@@ -62,6 +65,7 @@ if (process.env.NODE_ENV === 'production') {
     app.use(express.static(frontendPath));
 
     // Catch-all for SPA: serve index.html for any request that isn't an API or Upload
+    // This part is ONLY active in production (VPS)
     app.get('*', (req, res, next) => {
         const skip = ['/api', '/uploads', '/auth', '/upload', '/assets', '/artworks', '/instances', '/projects', '/walls', '/exhibitions', '/admin', '/public'];
         if (skip.some(p => req.path.startsWith(p))) {
@@ -71,13 +75,13 @@ if (process.env.NODE_ENV === 'production') {
     });
 }
 
-// --- Default Route & 404 ---
+// --- Default Route ---
 app.get('/', (req, res) => {
     res.send('CuraHub API Phase 5');
 });
 
-// JSON 404 for API paths
-app.use(['/api', '/auth', '/public', '/admin'], (req, res) => {
+// JSON 404 ONLY for API paths
+app.use(['/api', '/auth', '/upload', '/assets', '/public', '/admin'], (req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
 
