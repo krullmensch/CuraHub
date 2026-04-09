@@ -24,8 +24,9 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Serve uploaded files statically
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// --- API Routes (Legacy/Direct) ---
+// --- API Routes (Direct) ---
 app.use('/auth', authRouter);
 app.use('/upload', uploadRouter);
 app.use('/assets', assetsRouter);
@@ -38,7 +39,7 @@ app.use('/admin', adminRouter);
 app.use('/public', publicRouter);
 app.use('/', versionsRouter);
 
-// --- API Routes (With /api prefix for VPS/Production) ---
+// --- API Routes (With /api prefix) ---
 app.use('/api/auth', authRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/assets', assetsRouter);
@@ -51,7 +52,7 @@ app.use('/api/admin', adminRouter);
 app.use('/api/public', publicRouter);
 app.use('/api', versionsRouter);
 
-// --- Production Frontend Serving ---
+// --- Production Frontend Serving & SPA Fallback ---
 if (process.env.NODE_ENV === 'production') {
     const possiblePaths = [
         path.resolve(__dirname, '../../dist'),
@@ -62,16 +63,21 @@ if (process.env.NODE_ENV === 'production') {
     const frontendPath = possiblePaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || possiblePaths[0];
     
     console.log(`Serving frontend from: ${frontendPath}`);
+    
+    // Serve static files from the dist folder
     app.use(express.static(frontendPath));
 
-    // Catch-all for SPA: serve index.html for any request that isn't an API or Upload
-    // This part is ONLY active in production (VPS)
-    app.get('*', (req, res, next) => {
-        const skip = ['/api', '/uploads', '/auth', '/upload', '/assets', '/artworks', '/instances', '/projects', '/walls', '/exhibitions', '/admin', '/public'];
-        if (skip.some(p => req.path.startsWith(p))) {
-            return next();
+    // SPA Fallback Middleware (instead of app.get('*'))
+    // This is more robust for Express 5
+    app.use((req, res, next) => {
+        // Only handle GET requests that don't have a file extension
+        if (req.method === 'GET' && !req.path.includes('.')) {
+            const skip = ['/api', '/uploads', '/auth', '/upload', '/assets', '/artworks', '/instances', '/projects', '/walls', '/exhibitions', '/admin', '/public'];
+            if (!skip.some(p => req.path.startsWith(p))) {
+                return res.sendFile(path.join(frontendPath, 'index.html'));
+            }
         }
-        res.sendFile(path.join(frontendPath, 'index.html'));
+        next();
     });
 }
 
@@ -80,7 +86,7 @@ app.get('/', (req, res) => {
     res.send('CuraHub API Phase 5');
 });
 
-// JSON 404 ONLY for API paths
+// JSON 404 for API paths
 app.use(['/api', '/auth', '/upload', '/assets', '/public', '/admin'], (req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
