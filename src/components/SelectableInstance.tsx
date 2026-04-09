@@ -3,7 +3,18 @@ import { useTexture } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useEditorStore, type ArtworkInstanceData } from '../store/editorStore';
+import { useEditorStore, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
+import { ModularFrame } from './ModularFrame';
+
+// Halbe_Classic_Alu8 frame profile depth (Z) extracted via Blender MCP.
+const FRAME_PROFILE_DEPTH = 0.027;
+// Inset the image plane 4 mm behind the front face of the frame.
+const IMAGE_INSET_FROM_FRONT = 0.004;
+// Render so the frame's back face sits at outer-group local z = -WALL_PLACEMENT_OFFSET,
+// cancelling out the placement offset baked into stored positions so the back is
+// flush against the wall surface.
+const FRAME_Z = -WALL_PLACEMENT_OFFSET;
+const IMAGE_Z = FRAME_Z + FRAME_PROFILE_DEPTH - IMAGE_INSET_FROM_FRONT;
 
 interface SelectableInstanceProps {
     instance: ArtworkInstanceData;
@@ -38,9 +49,6 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
             selectInstance(instance.id);
         };
 
-        const frameColor = selected ? '#3b82f6' : '#222';
-        const frameEmissive = selected ? '#1d4ed8' : '#000000';
-
         return (
             <group
                 ref={ref}
@@ -49,8 +57,14 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
                 scale={[instance.scale_x, instance.scale_y, instance.scale_z]}
                 onClick={handleClick}
             >
-                {/* Artwork texture */}
-                <mesh position={[0, 0, 0.02]} castShadow={false} receiveShadow={false}>
+                {/* Modular Halbe frame around the picture — wrapped so we can offset
+                    the entire frame back so it sits flush on the wall. */}
+                <group position={[0, 0, FRAME_Z]}>
+                    <ModularFrame width={width} height={height} />
+                </group>
+
+                {/* Image plane, inset 4mm behind the front face of the frame */}
+                <mesh position={[0, 0, IMAGE_Z]} castShadow={false} receiveShadow={false}>
                     <planeGeometry args={[width, height]} />
                     <meshStandardMaterial
                         map={texture}
@@ -60,15 +74,19 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
                         transparent={false}
                     />
                 </mesh>
-                {/* Frame */}
-                <mesh position={[0, 0, 0]}>
-                    <boxGeometry args={[width + 0.04, height + 0.04, 0.02]} />
-                    <meshStandardMaterial
-                        color={frameColor}
-                        emissive={frameEmissive}
-                        emissiveIntensity={selected ? 0.5 : 0}
-                    />
-                </mesh>
+
+                {/* Selection halo — backside-rendered enlarged box (same pattern as ModularWallMesh) */}
+                {selected && (
+                    <mesh position={[0, 0, FRAME_Z + FRAME_PROFILE_DEPTH / 2]}>
+                        <boxGeometry args={[width + 0.05, height + 0.05, FRAME_PROFILE_DEPTH + 0.01]} />
+                        <meshBasicMaterial
+                            color="#4488ff"
+                            transparent
+                            opacity={0.25}
+                            side={THREE.BackSide}
+                        />
+                    </mesh>
+                )}
             </group>
         );
     }

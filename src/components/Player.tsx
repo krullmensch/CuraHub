@@ -16,7 +16,6 @@ const IDLE_BOB_AMOUNT_X = 0.002;  // Horizontal sway amplitude
 
 export const PlayerController = ({ paused }: { paused: boolean }) => {
     const { camera } = useThree();
-    const fpState = useEditorStore(state => state.firstPersonCameraState);
     const [, getKeys] = useKeyboardControls();
     const rigidBody = useRef<RapierRigidBody>(null);
     const currentVelocity = useRef(new THREE.Vector2(0, 0)); // smoothed XZ velocity

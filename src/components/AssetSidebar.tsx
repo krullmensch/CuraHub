@@ -172,7 +172,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
             {/* Toggle Button (Visible when closed) */}
             <div 
                 className={cn(
-                    "absolute left-0 top-1/2 -translate-y-1/2 z-10 transition-transform duration-300 ease-in-out",
+                    "absolute left-0 top-[3.25rem] -translate-y-1/2 z-10 transition-transform duration-300 ease-in-out",
                     isOpen && "-translate-x-full" // Hide when open
                 )}
             >

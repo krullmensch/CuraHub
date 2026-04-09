@@ -354,7 +354,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                   {collaborators.map((c) => (
                     <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800">
                       <div className="min-w-0">
-                        <p className="text-sm text-zinc-200 truncate">{c.user.email}</p>
+                        <p className="text-sm text-zinc-200 truncate">{c.user.email.split('@')[0]}</p>
                         <p className="text-xs text-zinc-500">{roleBadge(c.user.role)}</p>
                       </div>
                       <button
@@ -393,7 +393,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                       .map(u => (
                         <div key={u.id} className="flex items-center justify-between px-2.5 py-2 rounded-md hover:bg-zinc-800 transition-colors">
                           <div className="min-w-0">
-                            <p className="text-sm text-zinc-200 truncate">{u.email}</p>
+                            <p className="text-sm text-zinc-200 truncate">{u.email.split('@')[0]}</p>
                             <p className="text-xs text-zinc-500">{roleBadge(u.role)}</p>
                           </div>
                           <button

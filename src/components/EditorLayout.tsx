@@ -238,7 +238,7 @@ export const EditorLayout = () => {
 
             {user?.email && (
                 <span className="text-xs text-gray-500 hidden sm:inline-block">
-                    {user.email}
+                    {user.email.split('@')[0]}
                 </span>
             )}
             <Button

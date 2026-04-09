@@ -11,7 +11,7 @@ const instanceSchema = z.object({
   artworkId: z.number().optional(),
   assetId: z.number().optional(),
   wallId: z.number().nullable().optional(),
-  medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d']).optional(),
+  medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer']).optional(),
   position: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   rotation: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional()
@@ -142,7 +142,7 @@ instancesRouter.get('/', authenticate, async (req: any, res) => {
 
 const patchInstanceSchema = z.object({
     wallId: z.number().nullable().optional(),
-    medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d']).optional(),
+    medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer']).optional(),
     position: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
     rotation: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
     scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),

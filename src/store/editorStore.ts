@@ -6,12 +6,19 @@ import { useAuthStore } from './authStore';
 export const instanceRefMap = new Map<number, THREE.Group>();
 export const videoRefMap = new Map<number, HTMLVideoElement>();
 
+// Distance (m) the wall-placement code stores between the wall surface and the
+// instance group origin (along the wall normal). Each wall-mounted instance
+// component must compensate by rendering its back face at local z = -WALL_PLACEMENT_OFFSET
+// so the visible back of the artwork sits flush on the wall surface for both old
+// and new instances (the offset is baked into stored positions). Single source of truth.
+export const WALL_PLACEMENT_OFFSET = 0.01;
+
 export type PlannerViewMode = 'orthographic' | 'perspective' | 'firstPerson';
 export type TransformMode = 'translate' | 'rotate' | 'scale';
 export type TransformAxisLock = 'none' | 'x' | 'y' | 'z';
 
 export type AssetType = 'image' | 'video' | 'model3d';
-export type MediumType = 'frame' | 'wallpaper' | 'projector' | 'display' | 'model3d';
+export type MediumType = 'frame' | 'wallpaper' | 'projector' | 'display' | 'model3d' | 'monitor' | 'beamer';
 
 export interface ArtworkInstanceData {
   id: number;
@@ -100,6 +107,8 @@ interface EditorState {
 
   // Selection & Transform State (Phase 4.2)
   selectedInstanceId: number | null;
+  selectedWallId: number | null;
+  selectedZoneId: number | null;
   transformMode: TransformMode;
   isTransforming: boolean;
   liveTransform: { position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } } | null;
@@ -137,7 +146,6 @@ interface EditorState {
 
   // Modular Walls State
   localWalls: ModularWallData[];
-  selectedWallId: number | null;
 
   // FPV Artwork Info
   fpvHoveredInfo: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null;
@@ -145,7 +153,7 @@ interface EditorState {
   // Actions
   setDialogOpen: (isOpen: boolean) => void;
   startPlacement: (artwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string }) => void;
-  setDragging: (isDragging: boolean, asset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string } | null) => void;
+  setDragging: (isDragging: boolean, asset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string } | null) => void;
   setDragPosition: (pos: { x: number; y: number } | null) => void;
   setValidPlacement: (placement: { position: [number, number, number]; rotation: [number, number, number]; scale: number; wallId: number | null } | null) => void;
   triggerInstancesRefresh: () => void;
@@ -157,6 +165,8 @@ interface EditorState {
   updateFirstPersonCameraState: (state: Partial<FirstPersonCameraState>) => void;
   // Phase 4.2 actions
   selectInstance: (id: number | null) => void;
+  selectWall: (id: number | null) => void;
+  selectZone: (id: number | null) => void;
   setTransformMode: (mode: TransformMode) => void;
   setIsTransforming: (v: boolean) => void;
   setLiveTransform: (t: EditorState['liveTransform']) => void;
@@ -185,7 +195,6 @@ interface EditorState {
   updateWall: (id: number, updates: Partial<ModularWallData>) => void;
   deleteWall: (id: number) => void;
   toggleWallLock: (id: number) => void;
-  selectWall: (id: number | null) => void;
 
   // FPV Actions
   setFpvHoveredInfo: (info: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null) => void;
@@ -220,6 +229,8 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Phase 4.2 defaults
   selectedInstanceId: null,
+  selectedWallId: null,
+  selectedZoneId: null,
   transformMode: 'translate',
   isTransforming: false,
   liveTransform: null,
@@ -247,7 +258,6 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Modular Walls defaults
   localWalls: [],
-  selectedWallId: null,
 
   // FPV
   fpvHoveredInfo: null,
@@ -278,7 +288,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   triggerInstancesRefresh: () => set((state) => ({ instancesVersion: state.instancesVersion + 1 })),
 
   // Phase 4.2 actions
-  selectInstance: (id) => set({ selectedInstanceId: id, selectedWallId: null }),
+  selectInstance: (id) => set({ selectedInstanceId: id, selectedWallId: null, selectedZoneId: null }),
+  selectWall: (id) => set({ selectedWallId: id, selectedInstanceId: null, selectedZoneId: null }),
+  selectZone: (id) => set({ selectedZoneId: id, selectedInstanceId: null, selectedWallId: null }),
   setTransformMode: (mode) => set({ transformMode: mode }),
   setIsTransforming: (v) => set({ isTransforming: v }),
   setLiveTransform: (t) => set({ liveTransform: t }),
@@ -443,7 +455,6 @@ export const useEditorStore = create<EditorState>((set) => ({
     ),
     hasUnsavedChanges: true,
   })),
-  selectWall: (id) => set({ selectedWallId: id, selectedInstanceId: null }),
 
   // FPV actions
   setFpvHoveredInfo: (info) => set({ fpvHoveredInfo: info }),

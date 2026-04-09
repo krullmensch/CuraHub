@@ -1,7 +1,6 @@
-import { useRef, useMemo } from 'react';
 import { useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
-import { Text } from '@react-three/drei';
+import { ModularFrame } from './ModularFrame';
 
 interface ArtworkInstanceProps {
   id: number;
@@ -19,32 +18,29 @@ interface ArtworkInstanceProps {
   };
 }
 
+// Halbe_Classic_Alu8 frame profile depth (Z) extracted via Blender MCP.
+const FRAME_PROFILE_DEPTH = 0.027;
+// Inset the image plane 4 mm behind the front face of the frame.
+const IMAGE_INSET_FROM_FRONT = 0.004;
+const IMAGE_Z = FRAME_PROFILE_DEPTH - IMAGE_INSET_FROM_FRONT;
+
 export const ArtworkInstanceMesh = ({ position, rotation, scale, artwork }: ArtworkInstanceProps) => {
-  // Load texture
-  // Note: In a production app you might want to use useTexture from drei which has suspense support better handled sometimes,
-  // or handle loading states. For now standard useLoader<TextureLoader> is fine.
   const textureUrl = `http://localhost:3000${artwork.asset.path}`;
   const texture = useLoader(THREE.TextureLoader, textureUrl);
 
-  // Geometry dimensions
-  // artwork.width/height are in cm, we convert to meters
+  // artwork.width/height are in cm, convert to meters
   const width = (artwork.width || 50) / 100;
   const height = (artwork.height || 50) / 100;
-  
-  // Frame settings
-  const frameThickness = 0.02; // 2cm frame
-  const frameDepth = 0.03; // 3cm deep
 
   return (
     <group position={position} rotation={rotation} scale={scale}>
-      
-      {/* The Artwork Canvas/Print - Simple Plane */}
-      <mesh>
-        <planeGeometry args={[width, height]} />
-        {/* Use meshBasicMaterial to ensure it's visible regardless of lighting */}
-        <meshBasicMaterial map={texture} side={THREE.DoubleSide} /> 
-      </mesh>
+      <ModularFrame width={width} height={height} />
 
+      {/* Image plane, inset 4mm behind the front face of the frame */}
+      <mesh position={[0, 0, IMAGE_Z]}>
+        <planeGeometry args={[width, height]} />
+        <meshBasicMaterial map={texture} side={THREE.DoubleSide} />
+      </mesh>
     </group>
   );
 };

@@ -144,7 +144,7 @@ model ArtworkInstance {
   scale_y     Float             @default(1.0)
   scale_z     Float             @default(1.0)
 
-  medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d"
+  medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d", "monitor", "beamer"
 
   createdAt   DateTime          @default(now())
 }

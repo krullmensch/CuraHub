@@ -5,11 +5,21 @@ import * as THREE from 'three';
 import { Scene } from '../components/Scene';
 // Player is now handled inside PlannerCameraSystem
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
-import { useEditorStore } from '../store/editorStore';
+import { useEditorStore, type MediumType } from '../store/editorStore';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2 } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
+import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
+
+// Snapshot of a pending placement awaiting user choice (used for the video drop modal)
+type DraggedAssetSnapshot = NonNullable<ReturnType<typeof useEditorStore.getState>['dragState']['draggedAsset']>;
+interface PendingVideoDrop {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  wallId: number | null;
+  draggedAsset: DraggedAssetSnapshot;
+}
 
 // ── Tool bar button ──────────────────────────────────────────────────────────
 
@@ -103,6 +113,46 @@ export const EditorPage = () => {
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
+
+  // Captured placement awaiting the user's Monitor/Beamer choice (video drops only)
+  const [pendingVideoDrop, setPendingVideoDrop] = useState<PendingVideoDrop | null>(null);
+
+  // Shared instance-creation helper used by both the immediate drop path (image / model3d)
+  // and the deferred video-drop path (after Monitor/Beamer is picked).
+  const placeInstance = (medium: MediumType, snapshot: PendingVideoDrop): number => {
+    const store = useEditorStore.getState();
+    const newInstanceId = -Date.now(); // Temporary ID until saved
+    const { draggedAsset } = snapshot;
+    const assetType = draggedAsset.assetType || 'image';
+
+    store.commitLocalChange([...store.localInstances, {
+      id: newInstanceId,
+      artworkId: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
+      assetId: draggedAsset.type === 'asset' ? draggedAsset.id : undefined,
+      wallId: snapshot.wallId,
+      medium,
+      artwork: {
+        asset: {
+          path: draggedAsset.videoUrl || draggedAsset.url,
+          width: draggedAsset.width,
+          height: draggedAsset.height,
+          dpi: draggedAsset.dpi,
+          type: assetType,
+        }
+      },
+      position_x: snapshot.position[0],
+      position_y: snapshot.position[1],
+      position_z: snapshot.position[2],
+      rotation_x: snapshot.rotation[0],
+      rotation_y: snapshot.rotation[1],
+      rotation_z: snapshot.rotation[2],
+      scale_x: 1,
+      scale_y: 1,
+      scale_z: 1,
+    }]);
+
+    return newInstanceId;
+  };
 
   // Blender-style keyboard shortcuts
   useEffect(() => {
@@ -254,9 +304,9 @@ export const EditorPage = () => {
         onDrop={async (e) => {
             e.preventDefault();
             e.stopPropagation();
-            
+
             const { isDragging, validPlacement, draggedAsset } = useEditorStore.getState().dragState;
-            
+
             // If we have a valid placement from the Raycaster (via store), place it.
             if (isDragging && validPlacement && draggedAsset) {
                 if (!useEditorStore.getState().activeVersionId) {
@@ -268,48 +318,28 @@ export const EditorPage = () => {
                 } else {
                 try {
                     const { position, rotation } = validPlacement;
-                    
-                    const store = useEditorStore.getState();
-                    const newInstanceId = -Date.now(); // Temporary ID until saved
-                    
-                    // Determine medium based on asset type
                     const assetType = draggedAsset.assetType || 'image';
-                    const medium = assetType === 'model3d' ? 'model3d' as const
-                        : assetType === 'video' ? 'display' as const
-                        : 'frame' as const;
 
-                    store.commitLocalChange([...store.localInstances, {
-                        id: newInstanceId,
-                        artworkId: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
-                        assetId: draggedAsset.type === 'asset' ? draggedAsset.id : undefined,
+                    const snapshot: PendingVideoDrop = {
+                        position,
+                        rotation,
                         wallId: validPlacement.wallId ?? null,
-                        medium,
-                        artwork: {
-                            asset: {
-                                path: draggedAsset.videoUrl || draggedAsset.url,
-                                width: draggedAsset.width,
-                                height: draggedAsset.height,
-                                dpi: draggedAsset.dpi,
-                                type: assetType,
-                            }
-                        },
-                        position_x: position[0],
-                        position_y: position[1],
-                        position_z: position[2],
-                        rotation_x: rotation[0],
-                        rotation_y: rotation[1],
-                        rotation_z: rotation[2],
-                        scale_x: 1,
-                        scale_y: 1,
-                        scale_z: 1,
-                    }]);
-                    
-                    const label = assetType === 'model3d' ? '3D Model' : assetType === 'video' ? 'Video' : 'Artwork';
-                    toast({
-                        title: `${label} Placed`,
-                        description: `Placed ${draggedAsset.url.split('/').pop()}`,
-                    });
-                    
+                        draggedAsset,
+                    };
+
+                    if (assetType === 'video') {
+                        // Defer placement until the user picks Monitor or Beamer in the modal.
+                        setPendingVideoDrop(snapshot);
+                    } else {
+                        const medium: MediumType = assetType === 'model3d' ? 'model3d' : 'frame';
+                        placeInstance(medium, snapshot);
+
+                        const label = assetType === 'model3d' ? '3D Model' : 'Artwork';
+                        toast({
+                            title: `${label} Placed`,
+                            description: `Placed ${draggedAsset.url.split('/').pop()}`,
+                        });
+                    }
                 } catch (err) {
                     console.error("Placement error:", err);
                     toast({
@@ -328,8 +358,8 @@ export const EditorPage = () => {
                         : "Cannot place here. Try a wall.",
                 });
             }
-            
-            // Reset dragging state
+
+            // Reset dragging state (the modal, if shown, owns its own captured snapshot)
             setDragging(false, null);
             setDragPosition(null);
         }}
@@ -397,6 +427,22 @@ export const EditorPage = () => {
           <ToolButton icon={showTraverses ? <Eye size={16} /> : <EyeOff size={16} />} tooltip={showTraverses ? 'Traverses ausblenden' : 'Traverses einblenden'} active={showTraverses} onClick={toggleTraverses} />
         </div>
       )}
+
+      {/* Video drop: Monitor / Beamer picker */}
+      <VideoMediumPickerDialog
+        open={!!pendingVideoDrop}
+        onOpenChange={(o) => { if (!o) setPendingVideoDrop(null); }}
+        onSelect={(medium) => {
+          if (!pendingVideoDrop) return;
+          const id = placeInstance(medium, pendingVideoDrop);
+          useEditorStore.getState().selectInstance(id);
+          toast({
+            title: 'Video platziert',
+            description: medium === 'monitor' ? 'Monitor' : 'Beamer',
+          });
+          setPendingVideoDrop(null);
+        }}
+      />
     </div>
   );
 };

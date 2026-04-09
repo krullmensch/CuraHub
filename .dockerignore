@@ -1,0 +1,15 @@
+node_modules
+dist
+.git
+.env
+Dockerfile
+docker-compose.yml
+nginx.conf
+README.md
+CLAUDE.md
+CuraHub_Project.md
+PRD.xml
+phase*.xml
+Sample Files
+docs
+# server <-- Das muss raus, damit Docker den Ordner sieht!

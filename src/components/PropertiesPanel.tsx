@@ -224,11 +224,15 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     };
 
     const handleScaleChange = (axis: 'x' | 'y' | 'z', rawValue: string) => {
+        // Monitor uses a fixed-size GLB — never let the user resize it.
+        if (instanceMedium === 'monitor') return;
         const cmValue = parseFloat(rawValue);
         if (isNaN(cmValue) || cmValue <= 0) return;
         const newScaleForAxis = cmValue / baseCm[axis];
+        // Beamer must always preserve the video aspect ratio.
+        const effectiveAspectLocked = aspectLocked || instanceMedium === 'beamer';
         let newScale: { x: number; y: number; z: number };
-        if (aspectLocked) {
+        if (effectiveAspectLocked) {
             const ratio = newScaleForAxis / transform.scale[axis];
             newScale = { x: transform.scale.x * ratio, y: transform.scale.y * ratio, z: transform.scale.z * ratio };
         } else {
@@ -257,6 +261,14 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         );
         store.commitLocalChange(updatedInstances);
     }, [selectedId]);
+
+    // Auto-promote legacy video media (display/projector/frame/wallpaper) to 'monitor' so the
+    // restricted Monitor/Beamer dropdown stays in sync with the underlying instance value.
+    useEffect(() => {
+        if (assetMeta?.type !== 'video') return;
+        if (instanceMedium === 'monitor' || instanceMedium === 'beamer') return;
+        handleMediumChange('monitor');
+    }, [assetMeta?.type, instanceMedium, handleMediumChange]);
 
     const handleFocus = () => {
         setFocusTarget({ 
@@ -329,7 +341,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                 )}
             </Card>
 
-            <div className={cn("absolute right-0 top-1/2 -translate-y-1/2 z-10 transition-transform duration-300 ease-in-out", isOpen && "translate-x-full")}>
+            <div className={cn("absolute right-0 top-[2.625rem] -translate-y-1/2 z-10 transition-transform duration-300 ease-in-out", isOpen && "translate-x-full")}>
                 <Button variant="secondary" size="sm" className="h-12 w-6 rounded-l-lg rounded-r-none bg-blue-600 border-y border-l border-blue-700 shadow-md p-0 flex items-center justify-center hover:bg-blue-500" onClick={onToggle}>
                     <ChevronLeft className="h-4 w-4 text-white" />
                 </Button>
@@ -391,6 +403,11 @@ const MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
     { value: 'model3d', label: '3D Model' },
 ];
 
+const VIDEO_MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
+    { value: 'monitor', label: 'Monitor' },
+    { value: 'beamer',  label: 'Beamer'  },
+];
+
 const ArtworkPropertiesContent = ({
     transform, transformMode, setTransformMode, modeButtons,
     toDeg, toFixed, baseCm, aspectLocked, setAspectLocked,
@@ -399,6 +416,9 @@ const ArtworkPropertiesContent = ({
 }: ArtworkPropertiesContentProps) => {
     const isModel = assetType === 'model3d';
     const isVideo = assetType === 'video';
+    const sizeLocked  = isVideo && medium === 'monitor';
+    const sizeIsBeamer = isVideo && medium === 'beamer';
+    const hideAspectToggle = sizeLocked || sizeIsBeamer;
 
     // Poll video element state for play/pause and mute UI
     const [videoPaused, setVideoPaused] = useState(true);
@@ -473,36 +493,50 @@ const ArtworkPropertiesContent = ({
             </div>
             <Separator className="bg-zinc-800" />
             <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">Size (cm)</Label>
-                    <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => setAspectLocked(!aspectLocked)} title={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}>
-                        {aspectLocked ? <Link className="h-3.5 w-3.5" /> : <Unlink className="h-3.5 w-3.5" />}
-                    </Button>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                    {([['x', 'W'], ['y', 'H']] as const).map(([axis, label]) => (
-                        <div key={axis} className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">{label}</Label>
-                            <NumericInput step="0.1" min="0.1" value={toFixed(baseCm[axis] * transform.scale[axis])} onChange={(raw) => handleScaleChange(axis, raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
-                        </div>
-                    ))}
-                </div>
-            </div>
-            <Separator className="bg-zinc-800" />
-            <div className="space-y-2">
                 <Label className="text-xs text-zinc-400 uppercase tracking-wider">Medium</Label>
                 {isModel ? (
                     <div className="text-xs text-zinc-500 bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2">3D Model</div>
+                ) : isVideo ? (
+                    <select
+                        value={medium === 'monitor' || medium === 'beamer' ? medium : 'monitor'}
+                        onChange={(e) => onMediumChange(e.target.value as MediumType)}
+                        className="w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    >
+                        {VIDEO_MEDIUM_OPTIONS.map(o => (
+                            <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                    </select>
                 ) : (
                     <select
                         value={medium}
                         onChange={(e) => onMediumChange(e.target.value as MediumType)}
                         className="w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
                     >
-                        {MEDIUM_OPTIONS.filter(o => o.value !== 'model3d').map(o => (
+                        {MEDIUM_OPTIONS.filter(o => o.value !== 'model3d' && o.value !== 'monitor' && o.value !== 'beamer').map(o => (
                             <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
                     </select>
+                )}
+            </div>
+            <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">Size (cm)</Label>
+                    {!hideAspectToggle && (
+                        <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => setAspectLocked(!aspectLocked)} title={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}>
+                            {aspectLocked ? <Link className="h-3.5 w-3.5" /> : <Unlink className="h-3.5 w-3.5" />}
+                        </Button>
+                    )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                    {([['x', 'W'], ['y', 'H']] as const).map(([axis, label]) => (
+                        <div key={axis} className="space-y-1">
+                            <Label className="text-[10px] text-zinc-500 uppercase">{label}</Label>
+                            <NumericInput step="0.1" min="0.1" value={toFixed(baseCm[axis] * transform.scale[axis])} onChange={(raw) => handleScaleChange(axis, raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" disabled={sizeLocked} />
+                        </div>
+                    ))}
+                </div>
+                {sizeLocked && (
+                    <p className="text-[10px] text-zinc-500 italic">Größe durch Modell vorgegeben</p>
                 )}
             </div>
             {isVideo && (

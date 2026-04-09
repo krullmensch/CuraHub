@@ -37,8 +37,8 @@ export const ArtworkInfoOverlay = () => {
     const [isMuted, setIsMuted] = useState(true);
     const [dismissed, setDismissed] = useState(false);
 
-    const exitTimer = useRef<ReturnType<typeof setTimeout>>();
-    const enterFrame = useRef<number>();
+    const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const enterFrame = useRef<number | null>(null);
     const descRef = useRef<HTMLDivElement>(null);
     const dismissedForId = useRef<number | null>(null);
 
@@ -86,7 +86,7 @@ export const ArtworkInfoOverlay = () => {
                 requestAnimationFrame(() => setIsActive(true));
             });
         } else {
-            requestAnimationFrame(() => setIsActive(false));
+            setIsActive(false);
             exitTimer.current = setTimeout(() => {
                 if (!fpvHoveredInfoRef.current) setDisplayInfo(null);
             }, 500);
@@ -148,8 +148,6 @@ export const ArtworkInfoOverlay = () => {
         window.addEventListener('wheel', onWheel, { passive: true });
         return () => window.removeEventListener('wheel', onWheel);
     }, []);
-
-    const a = isActive;
 
     // ── Crosshair geometry ──
     const gap = 4;
@@ -215,7 +213,7 @@ export const ArtworkInfoOverlay = () => {
                         top: -(lineWeight / 2),
                         left: extensionStart,
                         height: lineWeight,
-                        width: a ? extensionLen : 0,
+                        width: isActive ? extensionLen : 0,
                         background: 'rgba(255, 255, 255, 0.85)',
                         transition: `width 280ms cubic-bezier(0.22, 0.61, 0.36, 1)`,
                     }} />
@@ -225,9 +223,9 @@ export const ArtworkInfoOverlay = () => {
                         position: 'absolute',
                         top: -(lineWeight / 2),
                         left: panelLeft,
-                        transform: `translateX(${a ? 0 : -8}px)`,
-                        opacity: a ? 1 : 0,
-                        transition: `opacity 300ms ease-out ${a ? '140ms' : '0ms'}, transform 300ms ease-out ${a ? '140ms' : '0ms'}`,
+                        transform: `translateX(${isActive ? 0 : -8}px)`,
+                        opacity: isActive ? 1 : 0,
+                        transition: `opacity 300ms ease-out ${isActive ? '140ms' : '0ms'}, transform 300ms ease-out ${isActive ? '140ms' : '0ms'}`,
                         background: 'rgba(0, 0, 0, 0.25)',
                         border: `${lineWeight}px solid rgba(255, 255, 255, 0.85)`,
                         backdropFilter: 'blur(10px)',

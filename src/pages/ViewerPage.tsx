@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Canvas } from '@react-three/fiber';
-import { Loader, useProgress } from '@react-three/drei';
+import { useProgress } from '@react-three/drei';
 import { Physics } from '@react-three/rapier';
 import { Scene } from '../components/Scene';
 import { Player } from '../components/Player';

@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
-import { History, Clock, MessageSquare, Layers, ChevronUp, ChevronDown, Trash2, Globe, Star } from 'lucide-react';
+import { History, Clock, MessageSquare, Layers, ChevronDown, Trash2, Globe, Star } from 'lucide-react';
 import { SaveVersionDialog } from './SaveVersionDialog';
 
 interface Version {
@@ -136,19 +136,17 @@ export const VersionPanel = ({
   };
 
   // Toggle button (standalone when panel is closed)
+  // Positioned to align with the close button (ChevronDown) in the panel header:
+  // panel right edge (right-8 / right-[20rem]) + p-3 header padding + half button width ≈ right-10 / right-[20.5rem]
   const toggleButton = (
     <button
       onClick={onToggle}
-      title={isOpen ? 'Hide Versions' : 'Show Versions'}
-      className={`absolute bottom-0 left-1/2 -translate-x-1/2 w-32 h-8 bg-blue-600 border border-blue-700 border-b-0 rounded-t-xl flex items-center justify-center hover:bg-blue-500 transition-transform duration-300 z-10 shadow-[0_-4px_15px_-3px_rgba(59,130,246,0.3)] ${
-        isOpen ? 'translate-y-full opacity-0' : 'translate-y-0 opacity-100'
+      title="Versionen anzeigen"
+      className={`absolute bottom-0 ${rightSidebarOpen ? 'right-[20.25rem]' : 'right-9'} w-10 h-10 bg-blue-600 border border-blue-700 border-b-0 rounded-t-xl flex items-center justify-center hover:bg-blue-500 transition-all duration-300 z-10 shadow-[0_-4px_15px_-3px_rgba(59,130,246,0.3)] ${
+        isOpen ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
       }`}
     >
-      <div className="flex items-center gap-2 text-white font-medium text-xs">
-        <History className="h-3.5 w-3.5" />
-        <span>Versions</span>
-      </div>
-      <ChevronUp className="h-4 w-4 text-white absolute top-1 right-2 opacity-50" />
+      <History className="h-4 w-4 text-white" />
     </button>
   );
 

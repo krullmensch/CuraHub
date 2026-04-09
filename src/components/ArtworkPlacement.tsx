@@ -2,7 +2,16 @@ import { useRef, useState, useEffect, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
-import { useEditorStore } from '../store/editorStore';
+import { useEditorStore, WALL_PLACEMENT_OFFSET } from '../store/editorStore';
+import { ModularFrame } from './ModularFrame';
+
+// Halbe_Classic_Alu8 frame profile depth (Z) — matches SelectableInstance.
+const FRAME_PROFILE_DEPTH = 0.027;
+const IMAGE_INSET_FROM_FRONT = 0.004;
+// Same back-face compensation as SelectableInstance so the ghost preview
+// already shows the artwork sitting flush on the wall while dragging.
+const GHOST_FRAME_Z = -WALL_PLACEMENT_OFFSET;
+const GHOST_IMAGE_Z = GHOST_FRAME_Z + FRAME_PROFILE_DEPTH - IMAGE_INSET_FROM_FRONT;
 
 interface GhostPreviewProps {
     url: string;
@@ -37,23 +46,21 @@ const GhostPreview = ({ url, width, height, dpi, position, quaternion, isValid }
     }
 
     return (
-        <group position={position} quaternion={quaternion} scale={[scale, scale, 1]}>
-             <mesh position={[0, 0, 0.02]}>
-                 <planeGeometry args={[widthM, heightM]} />
-                 <meshBasicMaterial
-                     map={texture}
-                     transparent
-                     opacity={0.6}
-                     color={isValid ? "#4ade80" : "#f87171"}
-                     side={THREE.DoubleSide}
-                     toneMapped={false}
-                 />
-                 {/* Thin frame from previous steps */}
-                 <mesh position={[0, 0, -0.02]}>
-                     <boxGeometry args={[widthM + 0.05, heightM + 0.05, 0.01]} />
-                     <meshBasicMaterial color={isValid ? "#22c55e" : "#ef4444"} transparent opacity={0.3} />
-                 </mesh>
-             </mesh>
+        <group position={position} quaternion={quaternion} scale={[scale, scale, 1]} name="__ghost__">
+            <group position={[0, 0, GHOST_FRAME_Z]} name="__ghost__">
+                <ModularFrame width={widthM} height={heightM} />
+            </group>
+            <mesh position={[0, 0, GHOST_IMAGE_Z]} name="__ghost__">
+                <planeGeometry args={[widthM, heightM]} />
+                <meshBasicMaterial
+                    map={texture}
+                    transparent
+                    opacity={0.6}
+                    color={isValid ? "#4ade80" : "#f87171"}
+                    side={THREE.DoubleSide}
+                    toneMapped={false}
+                />
+            </mesh>
         </group>
     );
 };
@@ -123,9 +130,12 @@ export const ArtworkPlacement = () => {
         const intersects = raycaster.current
             .intersectObjects(scene.children, true)
             .filter(hit => {
-                if (hit.object.name === '__ghost__') return false;
+                // Walk the parent chain — any ancestor named __ghost__ disqualifies
+                // the hit (the ghost preview's nested ModularFrame meshes don't carry
+                // the name themselves but live under a __ghost__ group).
                 let obj: THREE.Object3D | null = hit.object;
                 while (obj) {
+                    if (obj.name === '__ghost__') return false;
                     if (!obj.visible) return false;
                     obj = obj.parent;
                 }

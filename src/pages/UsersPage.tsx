@@ -136,7 +136,7 @@ export const UsersPage = () => {
                   const isSelf = u.id === currentUser?.id;
                   return (
                     <tr key={u.id} className="border-b border-zinc-800/50 hover:bg-zinc-900/30 transition-colors">
-                      <td className="px-5 py-4 text-zinc-200">{u.email}</td>
+                      <td className="px-5 py-4 text-zinc-200">{u.email.split('@')[0]}</td>
                       <td className="px-5 py-4">
                         {isSelf ? (
                           <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ROLE_BADGE[u.role]}`}>
