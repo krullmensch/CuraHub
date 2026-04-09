@@ -26,56 +26,61 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 
-// Helper to mount router at both root and /api
-const mountRouter = (path: string, router: any) => {
-  app.use(path, router);
-  app.use(`/api${path}`, router);
-};
+// --- API Routing ---
+const apiRouter = express.Router();
 
-// API Routes
-mountRouter('/auth', authRouter);
-mountRouter('/upload', uploadRouter);
-mountRouter('/assets', assetsRouter);
-mountRouter('/artworks', artworksRouter);
-mountRouter('/instances', instancesRouter);
-mountRouter('/projects', projectsRouter);
-mountRouter('/walls', wallsRouter);
-mountRouter('/exhibitions', exhibitionsRouter);
-mountRouter('/admin', adminRouter);
-mountRouter('/public', publicRouter);
+// Mount all routes to the apiRouter
+apiRouter.use('/auth', authRouter);
+apiRouter.use('/upload', uploadRouter);
+apiRouter.use('/assets', assetsRouter);
+apiRouter.use('/artworks', artworksRouter);
+apiRouter.use('/instances', instancesRouter);
+apiRouter.use('/projects', projectsRouter);
+apiRouter.use('/walls', wallsRouter);
+apiRouter.use('/exhibitions', exhibitionsRouter);
+apiRouter.use('/admin', adminRouter);
+apiRouter.use('/public', publicRouter);
+apiRouter.use('/', versionsRouter); // Mounted at root of apiRouter
 
-// Special case for versionsRouter which is mounted at root/api root
-app.use('/', versionsRouter);
-app.use('/api', versionsRouter);
+// Mount the apiRouter at both /api and / for compatibility
+app.use('/api', apiRouter);
+app.use('/', apiRouter);
 
 // Serve frontend static files in production
 if (process.env.NODE_ENV === 'production') {
-  // Try to find dist folder in different possible locations
   const possiblePaths = [
-    path.resolve(__dirname, '../../dist'),      // Relative to src/
-    path.resolve(__dirname, '../../../dist'),     // Relative to dist/src/
+    path.resolve(__dirname, '../../dist'),      // Relative to dist/src/
+    path.resolve(__dirname, '../../../dist'),     // Relative to dist/ (if nested deeper)
     path.join(process.cwd(), '../dist'),         // Relative to server/ folder
     path.join(process.cwd(), 'dist')             // If run from root
   ];
   
   const frontendPath = possiblePaths.find(p => fs.existsSync(path.join(p, 'index.html'))) || possiblePaths[0];
-  
   console.log(`Serving frontend from: ${frontendPath}`);
+  
   app.use(express.static(frontendPath));
   
-  // Handle SPA routing: all other GET requests go to index.html
-  // Exclude everything that starts with /api, /uploads, or any of our API base paths
-  const apiPaths = ['api', 'uploads', 'auth', 'upload', 'assets', 'artworks', 'instances', 'projects', 'walls', 'exhibitions', 'admin', 'public'];
-  const spaRegex = new RegExp(`^\\/(?!(${apiPaths.join('|')})).*$`);
+  // SPA Fallback: for any GET request that isn't an API call or a static file, serve index.html
+  const apiBasePaths = ['api', 'uploads', 'auth', 'upload', 'assets', 'artworks', 'instances', 'projects', 'walls', 'exhibitions', 'admin', 'public'];
   
-  app.get(spaRegex, (req, res) => {
+  app.get('*', (req, res, next) => {
+    // Check if the request starts with any of our API paths
+    const firstSegment = req.path.split('/')[1];
+    if (apiBasePaths.includes(firstSegment)) {
+      return next(); // Pass to 404 handler below
+    }
+    // Otherwise, it's a frontend route, serve index.html
     res.sendFile(path.join(frontendPath, 'index.html'));
   });
 }
 
-app.get('/', (req, res) => {
-  // This will only be reached if not in production or if the regex above didn't match (unlikely for /)
-  res.send('CuraHub API Phase 5');
+// 404 Handler for API routes (returns JSON)
+app.use((req, res) => {
+  if (req.accepts('json') || req.path.startsWith('/api')) {
+    res.status(404).json({ error: 'Endpoint not found' });
+  } else {
+    res.status(404).send('Not found');
+  }
 });
 
 if (process.env.NODE_ENV !== 'test') {
