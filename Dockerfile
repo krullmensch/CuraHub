@@ -35,10 +35,7 @@ RUN npm run build
 
 # Production Stage
 FROM node:20-alpine
-# Runtime dependencies: 
-# - openssl & libc6-compat for Prisma
-# - ca-certificates for external HTTPS requests (HSBI Auth)
-# - curl for debugging
+# Runtime dependencies
 RUN apk add --no-cache openssl libc6-compat ca-certificates curl
 WORKDIR /app
 
@@ -62,5 +59,6 @@ RUN mkdir -p uploads
 # Expose backend port
 EXPOSE 3000
 
-# Run migrations and start
-CMD ["sh", "-c", "npx prisma migrate deploy && npm start"]
+# Run prisma db push to ensure tables exist, then start
+# We use db push instead of migrate deploy because there are no migration files yet
+CMD ["sh", "-c", "npx prisma db push && npm start"]
