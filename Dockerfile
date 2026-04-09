@@ -1,12 +1,11 @@
 # Build Stage
 FROM node:20-alpine AS build
 
-# Add dependencies for native modules and Prisma on Alpine
+# Add basic build dependencies
 RUN apk add --no-cache \
     python3 \
     make \
     g++ \
-    vips-dev \
     openssl \
     libc6-compat
 
@@ -22,17 +21,22 @@ RUN npm run build
 WORKDIR /app/server
 COPY server/package*.json ./
 COPY server/prisma ./prisma/
-RUN npm install
-# Prisma generate needs to know we are on alpine
+
+# Configure npm for sharp on Alpine/musl
+RUN npm install --include=optional
+
+# Prisma generate
 RUN npx prisma generate
+
+# Copy backend source and build
 COPY server/src ./src/
 COPY server/tsconfig.json ./
 RUN npm run build
 
 # Production Stage
 FROM node:20-alpine
-# Runtime dependencies for sharp (vips) and Prisma (openssl, libc6-compat)
-RUN apk add --no-cache vips openssl libc6-compat
+# Runtime dependencies
+RUN apk add --no-cache openssl libc6-compat
 WORKDIR /app
 
 # Copy Frontend Build

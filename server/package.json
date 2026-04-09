@@ -25,6 +25,7 @@
     "image-size": "^2.0.2",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
+    "node-addon-api": "^8.3.0",
     "sharp": "^0.34.5",
     "uuid": "^13.0.0",
     "zod": "^4.1.13"
