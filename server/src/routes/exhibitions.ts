@@ -28,7 +28,6 @@ const posterStorage = multer.diskStorage({
 const posterUpload = multer({
     storage: posterStorage,
     limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
-});
     fileFilter: (_req, file, cb) => {
         if (file.mimetype.startsWith('image/')) {
             cb(null, true);
