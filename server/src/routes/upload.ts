@@ -48,7 +48,7 @@ function detectAssetType(mimetype: string, filename: string): 'image' | 'video' 
 
 // Per-type file size limits
 const SIZE_LIMITS: Record<string, number> = {
-    image: 10 * 1024 * 1024,    // 10MB
+    image: 200 * 1024 * 1024,   // 200MB (increased from 10MB as client handles optimization)
     video: 200 * 1024 * 1024,   // 200MB
     model3d: 50 * 1024 * 1024,  // 50MB
 };

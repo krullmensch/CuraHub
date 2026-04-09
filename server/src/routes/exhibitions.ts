@@ -25,10 +25,10 @@ const posterStorage = multer.diskStorage({
         cb(null, `poster-${uniqueSuffix}${ext}`);
     },
 });
-
 const posterUpload = multer({
     storage: posterStorage,
-    limits: { fileSize: 10 * 1024 * 1024 }, // 10MB
+    limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+});
     fileFilter: (_req, file, cb) => {
         if (file.mimetype.startsWith('image/')) {
             cb(null, true);
