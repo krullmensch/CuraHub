@@ -512,15 +512,13 @@ export const AssetLibrary = () => {
   }; // end handleAssetDragStart
 
   const handleFolderDragOver = (e: React.DragEvent, folderSel: FolderSelection) => {
-    const dt = e.dataTransfer;
-    if (!dt) return; // Firefox + React 19 can deliver null dataTransfer
-    if (!dt.types.includes('asset-id') && !dt.types.includes('text/plain')) {
+    if (!e.dataTransfer.types.includes('asset-id') && !e.dataTransfer.types.includes('text/plain')) {
       // Allow files (uploads) to bubble through to UploadDropzone
-      if (dt.types.includes('Files')) return;
+      if (e.dataTransfer.types.includes('Files')) return;
     }
     e.preventDefault();
     e.stopPropagation();
-    dt.dropEffect = 'move';
+    e.dataTransfer.dropEffect = 'move';
     setDragOverFolder(folderSel);
   };
 
@@ -534,7 +532,7 @@ export const AssetLibrary = () => {
       setDragOverFolder(null);
       return;
     }
-    const idStr = e.dataTransfer?.getData('asset-id') ?? '';
+    const idStr = e.dataTransfer.getData('asset-id');
     if (!idStr) {
       setDragOverFolder(null);
       return;
