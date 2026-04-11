@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, type InputHTMLAttributes } fr
 import { useEditorStore, videoRefMap } from '../store/editorStore';
 import type { TransformMode, MediumType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
-import { useToast } from '@/hooks/use-toast';
+import { gooeyToast } from 'goey-toast';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -93,7 +93,6 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const liveTransform = useEditorStore((state) => state.liveTransform);
     const token = useAuthStore((state) => state.token);
     const activeVersionId = useEditorStore((state) => state.activeVersionId);
-    const { toast } = useToast();
 
     // Sync active tab to properties when something is selected
     useEffect(() => {
@@ -112,12 +111,12 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         scale: { x: 1, y: 1, z: 1 },
     });
     const [aspectLocked, setAspectLocked] = useState(true);
-    const [assetMeta, setAssetMeta] = useState<{ widthPx: number; heightPx: number; dpi: number; type?: string } | null>(null);
+    const [assetMeta, setAssetMeta] = useState<{ widthPx: number; heightPx: number; dpi: number; type?: string; physicalWidth?: number | null; physicalHeight?: number | null } | null>(null);
     const [instanceMedium, setInstanceMedium] = useState<MediumType>('frame');
 
     const baseCm = assetMeta ? {
-        x: (assetMeta.widthPx / assetMeta.dpi) * 2.54,
-        y: (assetMeta.heightPx / assetMeta.dpi) * 2.54,
+        x: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalWidth : (assetMeta.widthPx / assetMeta.dpi) * 2.54,
+        y: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalHeight : (assetMeta.heightPx / assetMeta.dpi) * 2.54,
         z: 0.1,
     } : { x: 1, y: 1, z: 1 };
 
@@ -149,6 +148,8 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                     heightPx: localInst.artwork.asset.height,
                     dpi: localInst.artwork.asset.dpi || 72,
                     type: localInst.artwork.asset.type,
+                    physicalWidth: localInst.artwork.width,
+                    physicalHeight: localInst.artwork.height,
                 });
             }
         }
@@ -176,6 +177,8 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                             heightPx: inst.artwork.asset.height,
                             dpi: inst.artwork.asset.dpi || 72,
                             type: inst.artwork.asset.type,
+                            physicalWidth: inst.artwork.width,
+                            physicalHeight: inst.artwork.height,
                         });
                     }
                 }
@@ -213,9 +216,15 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const handleInputChange = (group: 'position' | 'rotation', axis: 'x' | 'y' | 'z', rawValue: string) => {
         let value = parseFloat(rawValue);
         if (isNaN(value)) return;
-        // 3D models must not go below floor level
-        if (group === 'position' && axis === 'y' && instanceMedium === 'model3d') {
-            value = Math.max(0, value);
+        // Keep artwork above floor: bottom edge must not go below Y=0
+        if (group === 'position' && axis === 'y') {
+            if (instanceMedium === 'model3d') {
+                value = Math.max(0, value);
+            } else {
+                // Center is at position_y; bottom edge = position_y - halfHeight
+                const halfH = (baseCm.y / 100 * Math.abs(transform.scale.y)) / 2;
+                value = Math.max(halfH, value);
+            }
         }
         const storeValue = group === 'rotation' ? (value * Math.PI) / 180 : value;
         const newTransform = { ...transform, [group]: { ...transform[group], [axis]: storeValue } };
@@ -248,7 +257,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         const store = useEditorStore.getState();
         const updatedInstances = store.localInstances.filter(inst => inst.id !== selectedId);
         store.commitLocalChange(updatedInstances);
-        toast({ title: 'Deleted', description: 'Artwork removed from exhibition.' });
+        gooeyToast.success('Deleted', { description: 'Artwork removed from exhibition.' });
         selectInstance(null);
     };
 
@@ -461,12 +470,15 @@ const ArtworkPropertiesContent = ({
     return (
         <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
             <div className="flex gap-1">
-                {modeButtons.map(({ mode, icon: Icon, label }) => (
-                    <Button key={mode} variant={transformMode === mode ? 'default' : 'secondary'} size="sm" onClick={() => setTransformMode(mode)} className={cn("flex-1 h-9 text-xs gap-1.5", transformMode === mode ? "bg-blue-600 hover:bg-blue-500" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")} title={label}>
-                        <Icon className="h-3.5 w-3.5" />
-                        {mode.charAt(0).toUpperCase() + mode.slice(1)}
-                    </Button>
-                ))}
+                {modeButtons.map(({ mode, icon: Icon, label }) => {
+                    const isScaleDisabled = mode === 'scale' && sizeLocked;
+                    return (
+                        <Button key={mode} variant={transformMode === mode ? 'default' : 'secondary'} size="sm" onClick={() => setTransformMode(mode)} className={cn("flex-1 h-9 text-xs gap-1.5", transformMode === mode ? "bg-blue-600 hover:bg-blue-500" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700", isScaleDisabled && "opacity-40 cursor-not-allowed")} title={label} disabled={isScaleDisabled}>
+                            <Icon className="h-3.5 w-3.5" />
+                            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                        </Button>
+                    );
+                })}
             </div>
             <Separator className="bg-zinc-800" />
             <div className="space-y-2">
@@ -588,7 +600,6 @@ const WallPropertiesContent = () => {
     const localInstances = useEditorStore((state) => state.localInstances);
     const updateWall = useEditorStore((state) => state.updateWall);
     const toggleWallLock = useEditorStore((state) => state.toggleWallLock);
-    const { toast } = useToast();
     const wall = localWalls.find(w => w.id === selectedWallId);
     if (!wall) return null;
     const artworksOnWall = localInstances.filter(i => i.wallId === wall.id);
@@ -627,9 +638,7 @@ const WallPropertiesContent = () => {
                 onClick={() => {
                     // Prevent unlocking if artworks are attached
                     if (wall.isLocked && hasArtworks) {
-                        toast({
-                            variant: "destructive",
-                            title: "Cannot unlock",
+                        gooeyToast.error("Cannot unlock", {
                             description: `Remove all ${artworksOnWall.length} artwork(s) from this wall first.`,
                         });
                         return;

@@ -5,8 +5,8 @@ import * as THREE from 'three';
 import { Scene } from '../components/Scene';
 // Player is now handled inside PlannerCameraSystem
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
-import { useEditorStore, type MediumType } from '../store/editorStore';
-import { useToast } from '@/hooks/use-toast';
+import { useEditorStore, artworkMinY, type MediumType } from '../store/editorStore';
+import { gooeyToast } from 'goey-toast';
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2 } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
@@ -102,13 +102,17 @@ export const EditorPage = () => {
   const setDragging = useEditorStore((state) => state.setDragging);
   // Do not subscribe to dragState here to avoid re-renders on every mouse move/raycast
   
-  const { toast } = useToast();
   const selectInstance = useEditorStore((state) => state.selectInstance);
   const setTransformMode = useEditorStore((state) => state.setTransformMode);
   const setTransformAxisLock = useEditorStore((state) => state.setTransformAxisLock);
   const showTraverses = useEditorStore((state) => state.showTraverses);
   const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
   const selectedInstanceId = useEditorStore((state) => state.selectedInstanceId);
+  const isMonitorSelected = useEditorStore((state) => {
+    if (!state.selectedInstanceId) return false;
+    const inst = state.localInstances.find(i => i.id === state.selectedInstanceId);
+    return inst?.medium === 'monitor';
+  });
   const transformMode = useEditorStore((state) => state.transformMode);
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
   const selectWall = useEditorStore((state) => state.selectWall);
@@ -125,6 +129,14 @@ export const EditorPage = () => {
     const { draggedAsset } = snapshot;
     const assetType = draggedAsset.assetType || 'image';
 
+    // Compute minimum Y so the bottom edge of the artwork stays at or above the floor
+    const hasPhysical = draggedAsset.artworkHeight != null && draggedAsset.artworkWidth != null;
+    const baseHeightM = hasPhysical
+      ? (draggedAsset.artworkHeight! / 100)
+      : (draggedAsset.height / (draggedAsset.dpi || 72)) * 0.0254;
+    const placementMinY = medium === 'model3d' ? 0 : baseHeightM / 2; // scale = 1 at placement
+    const clampedY = Math.max(placementMinY, snapshot.position[1]);
+
     store.commitLocalChange([...store.localInstances, {
       id: newInstanceId,
       artworkId: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
@@ -132,6 +144,9 @@ export const EditorPage = () => {
       wallId: snapshot.wallId,
       medium,
       artwork: {
+        id: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
+        width: draggedAsset.artworkWidth,
+        height: draggedAsset.artworkHeight,
         asset: {
           path: draggedAsset.videoUrl || draggedAsset.url,
           width: draggedAsset.width,
@@ -141,7 +156,7 @@ export const EditorPage = () => {
         }
       },
       position_x: snapshot.position[0],
-      position_y: snapshot.position[1],
+      position_y: clampedY,
       position_z: snapshot.position[2],
       rotation_x: snapshot.rotation[0],
       rotation_y: snapshot.rotation[1],
@@ -229,6 +244,8 @@ export const EditorPage = () => {
           break;
         case 's':
           if (!cmdOrCtrl && hasSelection) { // Don't conflict with Cmd+S
+            // Monitor size is fixed by the 3D model — scaling is disabled
+            if (store.localInstances.find(i => i.id === store.selectedInstanceId)?.medium === 'monitor') break;
             e.preventDefault();
             setTransformMode('scale');
             setTransformAxisLock('none');
@@ -310,9 +327,7 @@ export const EditorPage = () => {
             // If we have a valid placement from the Raycaster (via store), place it.
             if (isDragging && validPlacement && draggedAsset) {
                 if (!useEditorStore.getState().activeVersionId) {
-                    toast({
-                        variant: "destructive",
-                        title: "No Project Selected",
+                    gooeyToast.error("No Project Selected", {
                         description: "Please select or create a project first.",
                     });
                 } else {
@@ -335,24 +350,19 @@ export const EditorPage = () => {
                         placeInstance(medium, snapshot);
 
                         const label = assetType === 'model3d' ? '3D Model' : 'Artwork';
-                        toast({
-                            title: `${label} Placed`,
+                        gooeyToast.success(`${label} Placed`, {
                             description: `Placed ${draggedAsset.url.split('/').pop()}`,
                         });
                     }
                 } catch (err) {
                     console.error("Placement error:", err);
-                    toast({
-                        variant: "destructive",
-                        title: "Placement Failed",
+                    gooeyToast.error("Placement Failed", {
                         description: "Could not place artwork.",
                     });
                 }
                 } // end else for version check
             } else if (isDragging && !validPlacement) {
-                 toast({
-                    variant: "destructive",
-                    title: "Invalid Placement",
+                 gooeyToast.error("Invalid Placement", {
                     description: draggedAsset?.assetType === 'model3d'
                         ? "Cannot place here. Try the floor."
                         : "Cannot place here. Try a wall.",
@@ -412,7 +422,7 @@ export const EditorPage = () => {
           {/* Transform modes */}
           <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!selectedInstanceId} />
           <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!selectedInstanceId} />
-          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!selectedInstanceId} />
+          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!selectedInstanceId || isMonitorSelected} />
 
           <ToolSeparator />
 
@@ -436,8 +446,7 @@ export const EditorPage = () => {
           if (!pendingVideoDrop) return;
           const id = placeInstance(medium, pendingVideoDrop);
           useEditorStore.getState().selectInstance(id);
-          toast({
-            title: 'Video platziert',
+          gooeyToast.success('Video platziert', {
             description: medium === 'monitor' ? 'Monitor' : 'Beamer',
           });
           setPendingVideoDrop(null);

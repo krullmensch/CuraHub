@@ -3,7 +3,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { useEditorStore, videoRefMap, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
+import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
 
 // Preload the monitor GLB so the first Monitor placement doesn't stall the main scene.
 useGLTF.preload('/models/Monitor65.glb');
@@ -179,6 +179,8 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             // flush with the wall surface (see <group position-z below).
             cloned.updateMatrixWorld(true);
             const bbox = new THREE.Box3().setFromObject(cloned);
+            // Cache the GLB's local bottom extent so artworkMinY() can clamp correctly
+            monitorGlbBounds.minY = bbox.min.y;
             return { monitorScene: cloned, monitorMaxZ: bbox.max.z };
         }, [monitorGltfScene, texture]);
 

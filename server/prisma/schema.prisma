@@ -29,8 +29,26 @@ model Project {
   owner       User         @relation(fields: [ownerId], references: [id])
   exhibitions Exhibition[]
   assets      Asset[]
+  folders     Folder[]
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
+}
+
+model Folder {
+  id        Int      @id @default(autoincrement())
+  name      String
+  color     String   @default("#6b7280")
+
+  projectId Int
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  assets    Asset[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, name])
+  @@index([projectId])
 }
 
 model Exhibition {
@@ -112,12 +130,20 @@ model Asset {
   thumbnailPath String?  // Poster frame (video) or placeholder path
   metadata      Json?    // Any extra extracted metadata
 
+  fileHash  String?
+
   projectId Int?
   project   Project? @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  folderId  Int?
+  folder    Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
 
   artwork   Artwork?
 
   createdAt DateTime @default(now())
+
+  @@index([folderId])
+  @@index([fileHash, projectId])
 }
 
 model ArtworkInstance {

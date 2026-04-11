@@ -8,7 +8,7 @@ import { AssetLibraryPage } from './pages/AssetLibraryPage';
 import KeinZugriffPage from './pages/KeinZugriffPage';
 import { ExhibitionsPage } from './pages/ExhibitionsPage';
 import { UsersPage } from './pages/UsersPage';
-import { Toaster } from "@/components/ui/toaster";
+import { GooeyToaster } from 'goey-toast';
 import './App.css';
 
 function App() {
@@ -47,7 +47,7 @@ function App() {
           </div>
         } />
       </Routes>
-      <Toaster />
+      <GooeyToaster position="bottom-right" theme="dark" preset="smooth" />
     </>
   );
 }

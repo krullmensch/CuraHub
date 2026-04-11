@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { v4 as uuidv4 } from 'uuid';
+import crypto from 'crypto';
 import { imageSize } from 'image-size';
 import sharp from 'sharp';
 import { PrismaClient } from '@prisma/client';
@@ -10,6 +10,10 @@ import ExifParser from 'exif-parser';
 import ffmpeg from 'fluent-ffmpeg';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
+import { NodeIO } from '@gltf-transform/core';
+import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
+import { dedup, draco, textureCompress, prune, quantize } from '@gltf-transform/functions';
+import draco3d from 'draco3dgltf';
 
 export const uploadRouter = Router();
 const prisma = new PrismaClient();
@@ -50,7 +54,7 @@ function detectAssetType(mimetype: string, filename: string): 'image' | 'video' 
 const SIZE_LIMITS: Record<string, number> = {
     image: 200 * 1024 * 1024,   // 200MB (increased from 10MB as client handles optimization)
     video: 200 * 1024 * 1024,   // 200MB
-    model3d: 50 * 1024 * 1024,  // 50MB
+    model3d: 100 * 1024 * 1024, // 100MB (source formats are larger, output is compressed)
 };
 
 // Configure storage
@@ -68,9 +72,7 @@ const storage = multer.diskStorage({
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '');
 
-    const uniqueSuffix = `${Date.now().toString().slice(-6)}-${uuidv4().split('-')[0]}`;
-
-    cb(null, `${sanitizedTitle}-${uniqueSuffix}${ext}`);
+    cb(null, `${sanitizedTitle}${ext}`);
   }
 });
 
@@ -82,7 +84,7 @@ const upload = multer({
       if (type) {
           cb(null, true);
       } else {
-          cb(new Error('Unsupported file type. Allowed: images, videos, 3D models (.glb/.gltf)'));
+          cb(new Error('Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …)'));
       }
   }
 });
@@ -153,11 +155,65 @@ uploadRouter.post('/', (req, res, next) => {
   }
 
   const projectId = req.body.projectId || req.query.projectId;
+  const folderIdRaw = req.body.folderId || req.query.folderId;
   if (projectId) {
-      console.log(`[Upload] Processing upload for Project ID: ${projectId}`);
+      console.log(`[Upload] Processing upload for Project ID: ${projectId}${folderIdRaw ? `, Folder ID: ${folderIdRaw}` : ''}`);
+  }
+
+  // Validate folder belongs to project (if both provided)
+  let folderId: number | undefined = undefined;
+  if (folderIdRaw) {
+      const parsed = parseInt(String(folderIdRaw), 10);
+      if (isNaN(parsed)) {
+          fs.unlinkSync(req.file.path);
+          return res.status(400).json({ error: 'Invalid folderId' });
+      }
+      const parsedProjectId = projectId ? parseInt(String(projectId), 10) : undefined;
+      const folder = await prisma.folder.findUnique({
+          where: { id: parsed },
+          select: { id: true, projectId: true },
+      });
+      if (!folder) {
+          fs.unlinkSync(req.file.path);
+          return res.status(404).json({ error: 'Folder not found' });
+      }
+      if (parsedProjectId !== undefined && folder.projectId !== parsedProjectId) {
+          fs.unlinkSync(req.file.path);
+          return res.status(400).json({ error: 'Folder does not belong to this project' });
+      }
+      folderId = parsed;
   }
 
   const assetType = detectAssetType(req.file.mimetype, req.file.originalname) || 'image';
+
+  // ── Duplicate detection (unless force=true) ──
+  const force = req.body.force === 'true' || req.query.force === 'true';
+  const parsedProjectId = projectId ? parseInt(String(projectId), 10) : undefined;
+
+  if (!force) {
+      const fileBuffer = fs.readFileSync(req.file.path);
+      const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+
+      const existing = await prisma.asset.findFirst({
+          where: {
+              fileHash,
+              projectId: parsedProjectId ?? null,
+          },
+          include: { artwork: true },
+      });
+
+      if (existing) {
+          fs.unlinkSync(req.file.path);
+          return res.status(409).json({
+              duplicate: true,
+              filename: req.file.originalname,
+              existing,
+          });
+      }
+
+      // Store hash on req for use in processX helpers via a side-channel
+      (req as any)._fileHash = fileHash;
+  }
 
   // Validate per-type size limit
   const sizeLimit = SIZE_LIMITS[assetType];
@@ -168,22 +224,21 @@ uploadRouter.post('/', (req, res, next) => {
       });
   }
 
+  const fileHash: string | undefined = (req as any)._fileHash;
+
   try {
       if (assetType === 'image') {
-          // ── IMAGE PROCESSING (existing pipeline, unchanged) ──
-          const asset = await processImage(req.file, projectId);
+          const asset = await processImage(req.file, projectId, folderId, fileHash);
           return res.json(asset);
       }
 
       if (assetType === 'video') {
-          // ── VIDEO PROCESSING ──
-          const asset = await processVideo(req.file, projectId);
+          const asset = await processVideo(req.file, projectId, folderId, fileHash);
           return res.json(asset);
       }
 
       if (assetType === 'model3d') {
-          // ── 3D MODEL (store as-is) ──
-          const asset = await processModel(req.file, projectId);
+          const asset = await processModel(req.file, projectId, folderId, fileHash);
           return res.json(asset);
       }
 
@@ -194,7 +249,7 @@ uploadRouter.post('/', (req, res, next) => {
 });
 
 // ── Image processing (original pipeline) ──
-async function processImage(file: Express.Multer.File, projectId: string | undefined) {
+async function processImage(file: Express.Multer.File, projectId: string | undefined, folderId?: number, fileHash?: string) {
     const buffer = fs.readFileSync(file.path);
 
     let dimensions = { width: 0, height: 0 };
@@ -234,7 +289,7 @@ async function processImage(file: Express.Multer.File, projectId: string | undef
 
     return prisma.asset.create({
         data: {
-            filename: newFilename,
+            filename: path.basename(file.originalname, path.extname(file.originalname)) + '.webp',
             path: `/uploads/${newFilename}`,
             mimetype: 'image/webp',
             size: stats.size,
@@ -242,14 +297,16 @@ async function processImage(file: Express.Multer.File, projectId: string | undef
             width: dimensions.width,
             height: dimensions.height,
             dpi,
+            fileHash,
             projectId: projectId ? parseInt(projectId as string, 10) : undefined,
+            folderId,
             metadata: { widthCm, heightCm, projectId: projectId ? String(projectId) : undefined },
         }
     });
 }
 
 // ── Video processing ──
-async function processVideo(file: Express.Multer.File, projectId: string | undefined) {
+async function processVideo(file: Express.Multer.File, projectId: string | undefined, folderId?: number, fileHash?: string) {
     console.log(`[Upload] Transcoding video: ${file.originalname}`);
 
     // Probe original for metadata
@@ -286,7 +343,7 @@ async function processVideo(file: Express.Multer.File, projectId: string | undef
 
     return prisma.asset.create({
         data: {
-            filename: mp4Filename,
+            filename: path.basename(file.originalname, path.extname(file.originalname)) + '.mp4',
             path: `/uploads/${mp4Filename}`,
             mimetype: 'video/mp4',
             size: stats.size,
@@ -295,74 +352,199 @@ async function processVideo(file: Express.Multer.File, projectId: string | undef
             height: probe.height,
             duration: Math.round(probe.duration * 10) / 10,
             thumbnailPath: hasThumbnail ? `/uploads/${thumbFilename}` : null,
+            fileHash,
             projectId: projectId ? parseInt(projectId as string, 10) : undefined,
+            folderId,
             metadata: { projectId: projectId ? String(projectId) : undefined },
         }
     });
 }
 
 // ── 3D Model processing ──
-async function convertModelToGLB(inputPath: string, outputPath: string): Promise<void> {
-    const execFileAsync = promisify(execFile);
+
+// Formats that can skip Assimp (already glTF-family)
+const GLTF_FAMILY = new Set(['.glb', '.gltf']);
+
+// Formats Assimp handles well
+const ASSIMP_FORMATS = new Set([
+    '.obj', '.fbx', '.dae', '.stl', '.ply', '.3ds', '.ase', '.blend',
+]);
+
+// Formats that need Blender as fallback (USDZ, or if Assimp fails)
+const BLENDER_FALLBACK_FORMATS = new Set(['.usdz', '.usd']);
+
+const execFileAsync = promisify(execFile);
+
+/** Stage 1a: Convert non-glTF formats to raw GLB via Assimp */
+async function convertWithAssimp(inputPath: string, outputPath: string): Promise<void> {
     try {
-        // Use assimp to convert to GLB
-        // -ai_config=FBX_PRESERVE_PIVOTS 0 helps with FBX pivot issues
-        // FbxExportMode=0 for FBX exports
-        await execFileAsync('assimp', ['export', inputPath, outputPath, '-ba', '-kac']);
-        console.log(`[Model] Converted to GLB: ${outputPath}`);
+        await execFileAsync('assimp', ['export', inputPath, outputPath, '-ba', '-kac'], {
+            timeout: 120_000,
+        });
+        console.log(`[Model] Assimp converted → ${outputPath}`);
     } catch (error: any) {
-        console.error(`[Model] Conversion failed:`, error.message);
-        throw new Error(`Failed to convert 3D model: ${error.message}. Ensure 'assimp' is installed on your system.`);
+        throw new Error(`Assimp conversion failed: ${error.message}`);
     }
 }
 
-async function processModel(file: Express.Multer.File, projectId: string | undefined) {
+/** Stage 1b: Convert via Blender headless (fallback for USDZ, or when Assimp fails) */
+async function convertWithBlender(inputPath: string, outputPath: string): Promise<void> {
+    const script = `
+import bpy, sys
+bpy.ops.wm.read_factory_settings(use_empty=True)
+ext = "${path.extname(inputPath).toLowerCase()}"
+if ext in (".usdz", ".usd"):
+    bpy.ops.wm.usd_open(filepath="${inputPath.replace(/\\/g, '/')}")
+elif ext == ".fbx":
+    bpy.ops.import_scene.fbx(filepath="${inputPath.replace(/\\/g, '/')}")
+elif ext == ".obj":
+    bpy.ops.wm.obj_import(filepath="${inputPath.replace(/\\/g, '/')}")
+elif ext == ".stl":
+    bpy.ops.wm.stl_import(filepath="${inputPath.replace(/\\/g, '/')}")
+elif ext == ".dae":
+    bpy.ops.wm.collada_import(filepath="${inputPath.replace(/\\/g, '/')}")
+elif ext == ".ply":
+    bpy.ops.wm.ply_import(filepath="${inputPath.replace(/\\/g, '/')}")
+else:
+    print(f"Unsupported format: {ext}", file=sys.stderr)
+    sys.exit(1)
+bpy.ops.export_scene.gltf(filepath="${outputPath.replace(/\\/g, '/')}", export_format='GLB')
+    `.trim();
+
+    try {
+        await execFileAsync('blender', ['--background', '--python-expr', script], {
+            timeout: 180_000,
+        });
+        console.log(`[Model] Blender converted → ${outputPath}`);
+    } catch (error: any) {
+        throw new Error(`Blender conversion failed: ${error.message}`);
+    }
+}
+
+/** Stage 2: Optimize GLB with gltf-transform (Draco compression, dedup, prune) */
+async function optimizeGLB(inputPath: string, outputPath: string): Promise<{ before: number; after: number }> {
+    const io = new NodeIO()
+        .registerExtensions(ALL_EXTENSIONS)
+        .registerDependencies({
+            'draco3d.decoder': await draco3d.createDecoderModule(),
+            'draco3d.encoder': await draco3d.createEncoderModule(),
+        });
+
+    const document = await io.read(inputPath);
+    const beforeSize = fs.statSync(inputPath).size;
+
+    // Run optimization transforms
+    await document.transform(
+        dedup(),
+        prune(),
+        quantize(),
+        draco(),
+    );
+
+    // Compress textures if sharp is available (already installed)
+    try {
+        await document.transform(
+            textureCompress({ encoder: sharp, targetFormat: 'webp', quality: 80 }),
+        );
+    } catch (err) {
+        console.warn('[Model] Texture compression skipped (no textures or error):', (err as Error).message);
+    }
+
+    await io.write(outputPath, document);
+    const afterSize = fs.statSync(outputPath).size;
+
+    console.log(`[Model] Optimized: ${(beforeSize / 1024).toFixed(0)}KB → ${(afterSize / 1024).toFixed(0)}KB (${((1 - afterSize / beforeSize) * 100).toFixed(0)}% reduction)`);
+    return { before: beforeSize, after: afterSize };
+}
+
+/** Full pipeline: convert (if needed) → optimize → save */
+async function processModel(file: Express.Multer.File, projectId: string | undefined, folderId?: number, fileHash?: string) {
     const ext = path.extname(file.originalname).toLowerCase();
-    const isGLB = ext === '.glb';
+    const baseName = path.parse(file.filename).name;
+    const isGLTF = GLTF_FAMILY.has(ext);
 
-    console.log(`[Upload] Processing 3D model: ${file.originalname}`);
+    console.log(`[Upload] Processing 3D model: ${file.originalname} (${ext})`);
 
-    let finalFilename = file.filename;
-    let finalPath = file.path;
+    // ── Stage 1: Convert to raw GLB ──
+    let rawGlbPath = file.path;
 
-    // Convert to GLB if not already
-    if (!isGLB) {
-        const glbFilename = `${path.parse(file.filename).name}.glb`;
-        const glbPath = path.join(uploadDir, glbFilename);
+    if (!isGLTF) {
+        const rawGlbFilename = `${baseName}-raw.glb`;
+        rawGlbPath = path.join(uploadDir, rawGlbFilename);
 
-        try {
-            await convertModelToGLB(file.path, glbPath);
-            finalFilename = glbFilename;
-            finalPath = glbPath;
+        let converted = false;
 
-            // Delete original file to save space
-            fs.unlinkSync(file.path);
-            console.log(`[Upload] Deleted original model file: ${file.path}`);
-        } catch (error) {
-            // Clean up converted file on error
-            if (fs.existsSync(glbPath)) {
-                fs.unlinkSync(glbPath);
+        // Try Assimp first for supported formats
+        if (ASSIMP_FORMATS.has(ext)) {
+            try {
+                await convertWithAssimp(file.path, rawGlbPath);
+                converted = true;
+            } catch (err) {
+                console.warn(`[Model] Assimp failed for ${ext}, trying Blender fallback...`, (err as Error).message);
             }
-            throw error;
+        }
+
+        // Blender fallback for USDZ or when Assimp fails
+        if (!converted) {
+            try {
+                await convertWithBlender(file.path, rawGlbPath);
+                converted = true;
+            } catch (err) {
+                // Clean up
+                if (fs.existsSync(rawGlbPath)) fs.unlinkSync(rawGlbPath);
+                throw new Error(
+                    `Could not convert ${ext} file. ` +
+                    (BLENDER_FALLBACK_FORMATS.has(ext)
+                        ? 'Ensure Blender is installed on the server.'
+                        : 'Ensure assimp and/or Blender are installed on the server.')
+                );
+            }
+        }
+
+        // Remove original upload
+        fs.unlinkSync(file.path);
+    }
+
+    // ── Stage 2: Optimize with gltf-transform ──
+    const optimizedFilename = `${baseName}.glb`;
+    const optimizedPath = path.join(uploadDir, optimizedFilename);
+
+    let compressionStats = { before: 0, after: 0 };
+    try {
+        compressionStats = await optimizeGLB(rawGlbPath, optimizedPath);
+
+        // Remove raw intermediate if it's different from the optimized output
+        if (rawGlbPath !== optimizedPath && fs.existsSync(rawGlbPath)) {
+            fs.unlinkSync(rawGlbPath);
+        }
+    } catch (err) {
+        console.warn('[Model] Optimization failed, using unoptimized GLB:', (err as Error).message);
+        // Fall back to the raw GLB
+        if (rawGlbPath !== optimizedPath) {
+            fs.renameSync(rawGlbPath, optimizedPath);
         }
     }
 
-    const stats = fs.statSync(finalPath);
+    const stats = fs.statSync(optimizedPath);
 
     return prisma.asset.create({
         data: {
-            filename: finalFilename,
-            path: `/uploads/${finalFilename}`,
+            filename: path.basename(file.originalname, ext) + '.glb',
+            path: `/uploads/${optimizedFilename}`,
             mimetype: 'model/gltf-binary',
             size: stats.size,
             type: 'model3d',
             width: null,
             height: null,
             dpi: null,
+            fileHash,
             projectId: projectId ? parseInt(projectId as string, 10) : undefined,
+            folderId,
             metadata: {
                 projectId: projectId ? String(projectId) : undefined,
                 originalFormat: ext.slice(1),
+                originalSize: compressionStats.before || undefined,
+                optimizedSize: compressionStats.after || undefined,
             },
         }
     });

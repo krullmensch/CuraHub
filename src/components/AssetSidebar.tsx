@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
-import { useToast } from '@/hooks/use-toast';
+import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/store/editorStore';
+import { type Folder, listFolders } from '@/lib/folders';
 
 interface AssetSidebarProps {
     isOpen: boolean;
@@ -25,39 +26,58 @@ interface Asset {
   artwork?: {
     id: number;
     title: string;
+    width?: number;
+    height?: number;
   } | null;
 }
+
+type FolderFilter = 'all' | number;
 
 export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [assets, setAssets] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(true);
-    const { toast } = useToast();
+    const [folders, setFolders] = useState<Folder[]>([]);
+    const [activeFilter, setActiveFilter] = useState<FolderFilter>('all');
     const setDragging = useEditorStore((state) => state.setDragging);
     const activeProjectId = useEditorStore((state) => state.activeProjectId);
 
+    const fetchAssets = useCallback(async (filter: FolderFilter) => {
+        try {
+            setLoading(true);
+            const params = new URLSearchParams();
+            if (activeProjectId) params.set('projectId', String(activeProjectId));
+            if (typeof filter === 'number') params.set('folderId', String(filter));
+            const qs = params.toString();
+            const res = await fetch(`/api/assets${qs ? `?${qs}` : ''}`);
+            if (!res.ok) throw new Error('Failed to fetch assets');
+            const data = await res.json();
+            setAssets(data);
+        } catch (err) {
+            console.error(err);
+            gooeyToast.error("Fehler", {
+                description: "Assets konnten nicht geladen werden.",
+            });
+        } finally {
+            setLoading(false);
+        }
+    }, [activeProjectId]);
+
+    // Fetch folders list
     useEffect(() => {
-        const fetchAssets = async () => {
-            try {
-                const url = activeProjectId 
-                    ? `/api/assets?projectId=${activeProjectId}` 
-                    : '/api/assets';
-                const res = await fetch(url);
-                if (!res.ok) throw new Error('Failed to fetch assets');
-                const data = await res.json();
-                setAssets(data);
-            } catch (err) {
-                console.error(err);
-                toast({
-                    variant: "destructive",
-                    title: "Error",
-                    description: "Could not load assets.",
-                });
-            } finally {
-                setLoading(false);
-            }
-        };
-        fetchAssets();
-    }, [toast, activeProjectId]);
+        if (!activeProjectId) { setFolders([]); return; }
+        listFolders(activeProjectId)
+            .then((data) => setFolders(data.folders))
+            .catch(() => { /* silently ignore — folders are optional */ });
+    }, [activeProjectId]);
+
+    // Reset filter and reload assets when project changes
+    useEffect(() => {
+        setActiveFilter('all');
+    }, [activeProjectId]);
+
+    useEffect(() => {
+        fetchAssets(activeFilter);
+    }, [activeFilter, fetchAssets]);
 
     const handleDragStart = (e: React.DragEvent, asset: Asset) => {
         // Replace browser drag ghost with an invisible image
@@ -84,6 +104,8 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
             dpi: asset.dpi || 72,
             url: asset.type === 'video' && asset.thumbnailPath ? asset.thumbnailPath : asset.path,
             videoUrl: asset.type === 'video' ? asset.path : undefined,
+            artworkWidth: asset.artwork?.width,
+            artworkHeight: asset.artwork?.height,
         });
     };
 
@@ -110,6 +132,39 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                 </CardHeader>
+                {folders.length > 0 && (
+                    <div className="flex gap-1.5 px-3 py-2 border-b border-zinc-800 overflow-x-auto no-scrollbar">
+                        <button
+                            onClick={() => setActiveFilter('all')}
+                            className={cn(
+                                'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors',
+                                activeFilter === 'all'
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                            )}
+                        >
+                            Alle
+                        </button>
+                        {folders.map((f) => (
+                            <button
+                                key={f.id}
+                                onClick={() => setActiveFilter(f.id)}
+                                className={cn(
+                                    'shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors',
+                                    activeFilter === f.id
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                                )}
+                            >
+                                <span
+                                    className="h-2 w-2 rounded-full shrink-0"
+                                    style={{ backgroundColor: f.color }}
+                                />
+                                <span className="truncate max-w-[6rem]">{f.name}</span>
+                            </button>
+                        ))}
+                    </div>
+                )}
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     {loading ? (
                          <div className="flex h-full items-center justify-center">

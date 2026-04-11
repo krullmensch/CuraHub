@@ -10,10 +10,13 @@ interface ArtworkInstanceProps {
   artwork: {
     title: string;
     artist: string;
-    width: number;
-    height: number;
+    width?: number;
+    height?: number;
     asset: {
       path: string;
+      width: number;
+      height: number;
+      dpi: number | null;
     };
   };
 }
@@ -28,9 +31,9 @@ export const ArtworkInstanceMesh = ({ position, rotation, scale, artwork }: Artw
   const textureUrl = `http://localhost:3000${artwork.asset.path}`;
   const texture = useLoader(THREE.TextureLoader, textureUrl);
 
-  // artwork.width/height are in cm, convert to meters
-  const width = (artwork.width || 50) / 100;
-  const height = (artwork.height || 50) / 100;
+  const hasPhysicalSize = artwork.width != null && artwork.height != null;
+  const width = hasPhysicalSize ? (artwork.width! / 100) : (artwork.asset.width / (artwork.asset.dpi || 72)) * 0.0254;
+  const height = hasPhysicalSize ? (artwork.height! / 100) : (artwork.asset.height / (artwork.asset.dpi || 72)) * 0.0254;
 
   return (
     <group position={position} rotation={rotation} scale={scale}>

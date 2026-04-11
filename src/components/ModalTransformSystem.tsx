@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useEditorStore } from '../store/editorStore';
+import { useEditorStore, artworkMinY } from '../store/editorStore';
 
 export const ModalTransformSystem = () => {
     const activeObjectRef = useEditorStore(state => state.activeObjectRef);
@@ -49,6 +49,13 @@ export const ModalTransformSystem = () => {
                 else if (transformAxisLock === 'z') { movement.x = 0; movement.y = 0; }
 
                 activeObjectRef.position.add(movement);
+
+                // Clamp Y so the artwork bottom edge never dips below the floor
+                const id = useEditorStore.getState().selectedInstanceId;
+                const inst = id ? useEditorStore.getState().localInstances.find(i => i.id === id) : undefined;
+                if (inst) {
+                    activeObjectRef.position.y = Math.max(artworkMinY(inst, activeObjectRef.scale.y), activeObjectRef.position.y);
+                }
 
             } else if (transformMode === 'scale') {
                 const scaleDelta = (deltaX - deltaY) * scaleFactor;

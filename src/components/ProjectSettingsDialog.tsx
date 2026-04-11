@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { DateRangePicker } from "@/components/ui/date-picker";
 import type { DateRange } from "react-day-picker";
 import { Loader2, Upload, Trash2, UserPlus, X, Image, Search } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { gooeyToast } from 'goey-toast';
 
 interface Collaborator {
   id: number;
@@ -38,7 +38,7 @@ interface ProjectSettingsDialogProps {
 export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDialogProps) {
   const token = useAuthStore((s) => s.token);
   const activeExhibitionId = useEditorStore((s) => s.activeExhibitionId);
-  const { toast } = useToast();
+
 
   // General settings
   const [title, setTitle] = useState('');
@@ -84,9 +84,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       setCollaborators(collabs);
       setEligibleUsers(eligible);
     }).catch(() => {
-      toast({ title: 'Fehler', description: 'Daten konnten nicht geladen werden.', variant: 'destructive' });
+      gooeyToast.error('Fehler', { description: 'Daten konnten nicht geladen werden.' });
     }).finally(() => setLoading(false));
-  }, [open, activeExhibitionId, token, toast]);
+  }, [open, activeExhibitionId, token]);
 
   const handleSaveGeneral = async () => {
     if (!activeExhibitionId || !token) return;
@@ -112,9 +112,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       if (title) {
         useEditorStore.setState({ activeProjectName: title });
       }
-      toast({ title: 'Gespeichert', description: 'Einstellungen wurden aktualisiert.' });
+      gooeyToast.success('Gespeichert', { description: 'Einstellungen wurden aktualisiert.' });
     } catch (err) {
-      toast({ title: 'Fehler', description: (err as Error).message, variant: 'destructive' });
+      gooeyToast.error('Fehler', { description: (err as Error).message });
     } finally {
       setSaving(false);
     }
@@ -134,9 +134,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       if (!res.ok) throw new Error('Upload fehlgeschlagen');
       const data = await res.json();
       setPosterPath(data.poster_path);
-      toast({ title: 'Poster hochgeladen', description: 'Das Poster wurde gespeichert.' });
+      gooeyToast.success('Poster hochgeladen', { description: 'Das Poster wurde gespeichert.' });
     } catch {
-      toast({ title: 'Fehler', description: 'Poster konnte nicht hochgeladen werden.', variant: 'destructive' });
+      gooeyToast.error('Fehler', { description: 'Poster konnte nicht hochgeladen werden.' });
     } finally {
       setUploadingPoster(false);
       if (posterInputRef.current) posterInputRef.current.value = '';
@@ -166,9 +166,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       });
       if (!res.ok) throw new Error();
       setPosterPath(null);
-      toast({ title: 'Poster entfernt' });
+      gooeyToast.success('Poster entfernt');
     } catch {
-      toast({ title: 'Fehler', description: 'Poster konnte nicht entfernt werden.', variant: 'destructive' });
+      gooeyToast.error('Fehler', { description: 'Poster konnte nicht entfernt werden.' });
     }
   };
 
@@ -186,14 +186,14 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       });
       const data = await res.json();
       if (!res.ok) {
-        toast({ title: 'Fehler', description: data.error || 'Fehler beim Einladen', variant: 'destructive' });
+        gooeyToast.error('Fehler', { description: data.error || 'Fehler beim Einladen' });
         return;
       }
       setCollaborators(prev => [...prev, data]);
       setEligibleUsers(prev => prev.filter(u => u.id !== user.id));
-      toast({ title: 'Eingeladen', description: `${user.email} wurde hinzugefügt.` });
+      gooeyToast.success('Eingeladen', { description: `${user.email} wurde hinzugefügt.` });
     } catch {
-      toast({ title: 'Netzwerkfehler', variant: 'destructive' });
+      gooeyToast.error('Netzwerkfehler');
     } finally {
       setInviting(null);
     }
@@ -212,9 +212,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       if (collaborator.user.role === 'curator' || collaborator.user.role === 'prof') {
         setEligibleUsers(prev => [...prev, collaborator.user].sort((a, b) => a.email.localeCompare(b.email)));
       }
-      toast({ title: 'Entfernt', description: 'Kollaborateur wurde entfernt.' });
+      gooeyToast.success('Entfernt', { description: 'Kollaborateur wurde entfernt.' });
     } catch {
-      toast({ title: 'Fehler', description: 'Konnte nicht entfernt werden.', variant: 'destructive' });
+      gooeyToast.error('Fehler', { description: 'Konnte nicht entfernt werden.' });
     }
   };
 

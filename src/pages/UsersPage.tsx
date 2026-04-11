@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Trash2, Layers, ArrowLeft } from 'lucide-react';
 import { UserExhibitionsModal } from '../components/UserExhibitionsModal';
-import { useToast } from '@/hooks/use-toast';
+import { gooeyToast } from 'goey-toast';
 
 type AppRole = 'user' | 'curator' | 'prof' | 'admin';
 
@@ -32,7 +32,6 @@ const ROLE_LABELS: Record<AppRole, string> = {
 export const UsersPage = () => {
   const token = useAuthStore((s) => s.token);
   const currentUser = useAuthStore((s) => s.user);
-  const { toast } = useToast();
   const [users, setUsers] = useState<UserRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,7 +74,7 @@ export const UsersPage = () => {
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
       );
     } catch {
-      toast({ title: 'Fehler', description: 'Rollenänderung fehlgeschlagen.', variant: 'destructive' });
+      gooeyToast.error('Fehler', { description: 'Rollenänderung fehlgeschlagen.' });
     }
   };
 
@@ -89,7 +88,7 @@ export const UsersPage = () => {
       setUsers((prev) => prev.filter((u) => u.id !== userId));
       setConfirmDeleteId(null);
     } catch {
-      toast({ title: 'Fehler', description: 'Benutzer konnte nicht gelöscht werden.', variant: 'destructive' });
+      gooeyToast.error('Fehler', { description: 'Benutzer konnte nicht gelöscht werden.' });
     }
   };
 

@@ -2,7 +2,7 @@ import { useRef, useCallback } from 'react';
 import { TransformControls } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useEditorStore } from '../store/editorStore';
+import { useEditorStore, artworkMinY } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 
 interface InstanceTransformControlsProps {
@@ -22,12 +22,22 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
 
     // Poll live transform every frame during drag
     useFrame(() => {
-        if (!useEditorStore.getState().isTransforming) return;
-        const id = useEditorStore.getState().selectedInstanceId;
+        const store = useEditorStore.getState();
+        if (!store.isTransforming) return;
+        const id = store.selectedInstanceId;
         if (!id) return;
         const group = instanceRefs.current.get(id);
         if (!group) return;
-        useEditorStore.getState().setLiveTransform({
+
+        // Clamp Y live during translate so the artwork never visually passes through the floor
+        if (store.transformMode === 'translate') {
+            const inst = store.localInstances.find(i => i.id === id);
+            if (inst) {
+                group.position.y = Math.max(artworkMinY(inst, group.scale.y), group.position.y);
+            }
+        }
+
+        store.setLiveTransform({
             position: { x: group.position.x, y: group.position.y, z: group.position.z },
             rotation: { x: group.rotation.x, y: group.rotation.y, z: group.rotation.z },
             scale: { x: group.scale.x, y: group.scale.y, z: group.scale.z },
@@ -50,6 +60,12 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
         const currentMode = store.transformMode;
         const updatedInstances = store.localInstances.map(inst => {
             if (inst.id !== currentSelectedId) return inst;
+
+            // Clamp Y so the artwork bottom edge never goes below the floor
+            if (currentMode === 'translate') {
+                const minY = artworkMinY(inst, group.scale.y);
+                group.position.y = Math.max(minY, group.position.y);
+            }
 
             const updated = {
                 ...inst,

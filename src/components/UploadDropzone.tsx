@@ -3,22 +3,32 @@ import { useAuthStore } from '../store/authStore';
 import { Button } from "@/components/ui/button";
 import { CloudUpload } from "lucide-react";
 
+interface DuplicateInfo {
+  filename: string;
+  existing: Record<string, unknown>;
+  retry: () => Promise<void>;
+}
+
 interface UploadDropzoneProps {
   onUploadStart?: () => void;
   onUploadComplete?: (fileData: any) => void;
   onUploadError?: (error: string) => void;
+  onDuplicate?: (info: DuplicateInfo) => void;
   projectId?: number | null;
+  folderId?: number | null;
   children?: React.ReactNode;
   disabled?: boolean;
-  className?: string; 
+  className?: string;
 }
 
-export const UploadDropzone = ({ 
-    onUploadStart = () => {}, 
-    onUploadComplete = () => {}, 
-    onUploadError = (e) => console.error(e), 
+export const UploadDropzone = ({
+    onUploadStart = () => {},
+    onUploadComplete = () => {},
+    onUploadError = (e) => console.error(e),
+    onDuplicate,
     projectId = null,
-    children, 
+    folderId = null,
+    children,
     disabled = false,
     className = ""
 }: UploadDropzoneProps) => {
@@ -52,18 +62,56 @@ export const UploadDropzone = ({
     // Don't signal copy if it's not a file (optional, but good practice)
   };
 
+  const uploadFile = async (rawFile: File, force = false) => {
+      const formData = new FormData();
+      formData.append('file', rawFile);
+      if (projectId) formData.append('projectId', projectId.toString());
+      if (folderId) formData.append('folderId', folderId.toString());
+      if (force) formData.append('force', 'true');
+
+      const response = await fetch('/upload', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData,
+      });
+
+      if (response.status === 409) {
+          const body = await response.json();
+          if (body.duplicate && onDuplicate) {
+              onDuplicate({
+                  filename: body.filename,
+                  existing: body.existing,
+                  retry: () => uploadFile(rawFile, true).then((data) => onUploadComplete(data)),
+              });
+              return null; // handled via callback
+          }
+      }
+
+      if (!response.ok) {
+          const body = await response.json().catch(() => ({}));
+          throw new Error((body as any).error || `Upload failed for ${rawFile.name}`);
+      }
+
+      return response.json();
+  };
+
   const processFiles = async (files: FileList | File[]) => {
+      const MODEL_EXTENSIONS = [
+          '.glb', '.gltf', '.obj', '.fbx', '.dae', '.stl',
+          '.ply', '.3ds', '.ase', '.blend', '.usdz', '.usd',
+      ];
+
       const validFiles = Array.from(files).filter(file => {
           if (file.type.startsWith('image/')) return true;
           if (file.type.startsWith('video/')) return true;
           const ext = file.name.toLowerCase();
-          if (ext.endsWith('.glb') || ext.endsWith('.gltf')) return true;
+          if (MODEL_EXTENSIONS.some(m => ext.endsWith(m))) return true;
           return false;
       });
 
       if (validFiles.length === 0) {
           if (files.length > 0) {
-             onUploadError('Unsupported file type. Allowed: images, videos, 3D models (.glb/.gltf)');
+             onUploadError('Nicht unterstütztes Dateiformat. Erlaubt: Bilder, Videos, 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …)');
           }
           return;
       }
@@ -72,29 +120,10 @@ export const UploadDropzone = ({
       onUploadStart();
 
       try {
-          // Process files sequentially to avoid overwhelming the server or client state
           for (const rawFile of validFiles) {
               try {
-                  const formData = new FormData();
-                  formData.append('file', rawFile);
-                  if (projectId) {
-                      formData.append('projectId', projectId.toString());
-                  }
-
-                  const response = await fetch('/upload', {
-                    method: 'POST',
-                    headers: {
-                      'Authorization': `Bearer ${token}`
-                    },
-                    body: formData,
-                  });
-
-                  if (!response.ok) {
-                      throw new Error(`Upload failed for ${rawFile.name}`);
-                  }
-
-                  const data = await response.json();
-                  onUploadComplete(data);
+                  const data = await uploadFile(rawFile);
+                  if (data) onUploadComplete(data);
               } catch (error) {
                   onUploadError(error instanceof Error ? error.message : `Error uploading ${rawFile.name}`);
               }
@@ -172,7 +201,7 @@ export const UploadDropzone = ({
             type="file" 
             className="hidden" 
             onChange={handleFileSelect} 
-            accept="image/*,video/*,.glb,.gltf"
+            accept="image/*,video/*,.glb,.gltf,.obj,.fbx,.dae,.stl,.ply,.3ds,.ase,.blend,.usdz,.usd"
             multiple 
             disabled={processing} 
         />

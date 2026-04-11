@@ -8,6 +8,7 @@ import { uploadRouter } from './routes/upload';
 import { artworksRouter } from './routes/artworks';
 import { instancesRouter } from './routes/instances';
 import { assetsRouter } from './routes/assets';
+import { foldersRouter } from './routes/folders';
 import { projectsRouter } from './routes/projects';
 import { versionsRouter } from './routes/versions';
 import { wallsRouter } from './routes/walls';
@@ -30,6 +31,7 @@ app.use('/api/uploads', express.static(path.join(__dirname, '../uploads')));
 app.use('/auth', authRouter);
 app.use('/upload', uploadRouter);
 app.use('/assets', assetsRouter);
+app.use('/folders', foldersRouter);
 app.use('/artworks', artworksRouter);
 app.use('/instances', instancesRouter);
 app.use('/projects', projectsRouter);
@@ -43,6 +45,7 @@ app.use('/', versionsRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/upload', uploadRouter);
 app.use('/api/assets', assetsRouter);
+app.use('/api/folders', foldersRouter);
 app.use('/api/artworks', artworksRouter);
 app.use('/api/instances', instancesRouter);
 app.use('/api/projects', projectsRouter);
@@ -72,7 +75,7 @@ if (process.env.NODE_ENV === 'production') {
     app.use((req, res, next) => {
         // Only handle GET requests that don't have a file extension
         if (req.method === 'GET' && !req.path.includes('.')) {
-            const skip = ['/api', '/uploads', '/auth', '/upload', '/assets', '/artworks', '/instances', '/projects', '/walls', '/exhibitions', '/admin', '/public'];
+            const skip = ['/api', '/uploads', '/auth', '/upload', '/assets', '/folders', '/artworks', '/instances', '/projects', '/walls', '/exhibitions', '/admin', '/public'];
             if (!skip.some(p => req.path.startsWith(p))) {
                 return res.sendFile(path.join(frontendPath, 'index.html'));
             }
@@ -87,7 +90,7 @@ app.get('/', (req, res) => {
 });
 
 // JSON 404 for API paths
-app.use(['/api', '/auth', '/upload', '/assets', '/public', '/admin'], (req, res) => {
+app.use(['/api', '/auth', '/upload', '/assets', '/folders', '/public', '/admin'], (req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
 

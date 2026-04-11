@@ -18,12 +18,14 @@ interface GhostPreviewProps {
     width: number;
     height: number;
     dpi: number;
+    artworkWidth?: number;
+    artworkHeight?: number;
     position: THREE.Vector3;
     quaternion: THREE.Quaternion;
     isValid: boolean;
 }
 
-const GhostPreview = ({ url, width, height, dpi, position, quaternion, isValid }: GhostPreviewProps) => {
+const GhostPreview = ({ url, width, height, dpi, artworkWidth, artworkHeight, position, quaternion, isValid }: GhostPreviewProps) => {
     // Apply anisotropy for preview
     const texture = useTexture(url);
     const gl = useThree((state) => state.gl);
@@ -36,9 +38,11 @@ const GhostPreview = ({ url, width, height, dpi, position, quaternion, isValid }
         }
     }, [texture, gl]);
 
-    // DPI-based sizing: (pixels / dpi) * 0.0254 = meters
-    const widthM = (width / dpi) * 0.0254;
-    const heightM = (height / dpi) * 0.0254;
+    // Use physical dimensions from artwork if available (in cm -> convert to meters)
+    // Otherwise, fallback to DPI-based sizing: (pixels / dpi) * 0.0254 = meters
+    const hasPhysicalSize = artworkWidth != null && artworkHeight != null;
+    const widthM = hasPhysicalSize ? (artworkWidth! / 100) : (width / dpi) * 0.0254;
+    const heightM = hasPhysicalSize ? (artworkHeight! / 100) : (height / dpi) * 0.0254;
     const MAX_DIMENSION = 3;
     let scale = 1;
     if (widthM > MAX_DIMENSION || heightM > MAX_DIMENSION) {
@@ -226,8 +230,9 @@ export const ArtworkPlacement = () => {
             if (isValid) {
                 const dpi = draggedAsset.dpi || 72;
                 const MAX_DIMENSION = 3;
-                const widthM = (draggedAsset.width / dpi) * 0.0254;
-                const heightM = (draggedAsset.height / dpi) * 0.0254;
+                const hasPhysicalSize = draggedAsset.artworkWidth != null && draggedAsset.artworkHeight != null;
+                const widthM = hasPhysicalSize ? (draggedAsset.artworkWidth! / 100) : (draggedAsset.width / dpi) * 0.0254;
+                const heightM = hasPhysicalSize ? (draggedAsset.artworkHeight! / 100) : (draggedAsset.height / dpi) * 0.0254;
                 let scale = 1;
                 if (widthM > MAX_DIMENSION || heightM > MAX_DIMENSION) {
                     scale = MAX_DIMENSION / Math.max(widthM, heightM);
@@ -279,6 +284,8 @@ export const ArtworkPlacement = () => {
                 width={draggedAsset.width}
                 height={draggedAsset.height}
                 dpi={draggedAsset.dpi}
+                artworkWidth={draggedAsset.artworkWidth}
+                artworkHeight={draggedAsset.artworkHeight}
                 position={ghostState.position}
                 quaternion={ghostState.quaternion}
                 isValid={ghostState.isValid}

@@ -13,6 +13,33 @@ export const videoRefMap = new Map<number, HTMLVideoElement>();
 // and new instances (the offset is baked into stored positions). Single source of truth.
 export const WALL_PLACEMENT_OFFSET = 0.01;
 
+/**
+ * Mutable cache for the Monitor65.glb bottom extent in its local Y space.
+ * Populated by VideoInstance when the GLB is first loaded so artworkMinY()
+ * can use the real model height instead of the video asset pixel dimensions.
+ */
+export const monitorGlbBounds = { minY: 0 };
+
+/**
+ * Minimum Y position for an artwork instance so its bottom edge stays at or above the floor (Y=0).
+ * Position is the center point, so minY = halfHeight.
+ * For 3D models the origin sits on the floor, so minY = 0.
+ *
+ * Pass `overrideScaleY` when the live Three.js scale differs from the stored value
+ * (e.g. right after a scale transform before it is committed to the store).
+ */
+export function artworkMinY(inst: Pick<ArtworkInstanceData, 'medium' | 'artwork' | 'scale_y'>, overrideScaleY?: number): number {
+  if (inst.medium === 'model3d') return 0;
+  // Monitor pivot may not be at the model's bottom — use the actual GLB bbox
+  if (inst.medium === 'monitor') return Math.max(0, -monitorGlbBounds.minY);
+  const hasPhysical = inst.artwork.height != null && inst.artwork.width != null;
+  const baseHeight = hasPhysical
+    ? (inst.artwork.height! / 100)                                        // cm → m
+    : (inst.artwork.asset.height / (inst.artwork.asset.dpi || 72)) * 0.0254; // px / dpi → inches → m
+  const scaleY = overrideScaleY ?? inst.scale_y;
+  return (baseHeight * Math.abs(scaleY)) / 2;
+}
+
 export type PlannerViewMode = 'orthographic' | 'perspective' | 'firstPerson';
 export type TransformMode = 'translate' | 'rotate' | 'scale';
 export type TransformAxisLock = 'none' | 'x' | 'y' | 'z';
@@ -32,6 +59,8 @@ export interface ArtworkInstanceData {
     artist?: string | null;
     year?: string | null;
     description?: string | null;
+    width?: number | null;
+    height?: number | null;
     asset: {
       path: string;
       width: number;
@@ -82,7 +111,7 @@ interface FirstPersonCameraState {
 
 interface DragState {
   isDragging: boolean;
-  draggedAsset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string } | null;
+  draggedAsset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string; artworkWidth?: number; artworkHeight?: number } | null;
   dragPosition: { x: number; y: number } | null; // NDC coordinates (-1 to 1)
   validPlacement: {
     position: [number, number, number];
@@ -153,7 +182,7 @@ interface EditorState {
   // Actions
   setDialogOpen: (isOpen: boolean) => void;
   startPlacement: (artwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string }) => void;
-  setDragging: (isDragging: boolean, asset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string } | null) => void;
+  setDragging: (isDragging: boolean, asset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string; artworkWidth?: number; artworkHeight?: number } | null) => void;
   setDragPosition: (pos: { x: number; y: number } | null) => void;
   setValidPlacement: (placement: { position: [number, number, number]; rotation: [number, number, number]; scale: number; wallId: number | null } | null) => void;
   triggerInstancesRefresh: () => void;
@@ -323,10 +352,11 @@ export const useEditorStore = create<EditorState>((set) => ({
       const inst = state.localInstances.find(i => i.id === id);
       if (!inst) return state;
 
+      const minY = artworkMinY(inst, ref.scale.y);
       const newInst = {
         ...inst,
         position_x: ref.position.x,
-        position_y: ref.position.y,
+        position_y: Math.max(minY, ref.position.y),
         position_z: ref.position.z,
         rotation_x: ref.rotation.x,
         rotation_y: ref.rotation.y,
