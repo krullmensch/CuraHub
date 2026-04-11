@@ -210,15 +210,37 @@ export const UploadDropzone = ({
         className={className}
         style={{ position: 'relative', width: '100%', height: '100%' }}
     >
-      {/* Drop overlay */}
+      {/* Drop overlay — accepts the drop itself so Firefox doesn't swallow it */}
       {isDragging && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none rounded-lg overflow-hidden">
+        <div
+          className="absolute inset-0 z-50 flex items-center justify-center rounded-lg overflow-hidden"
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            dragCounterRef.current = 0;
+            setIsDragging(false);
+            if (disabled) return;
+            // Access native event's dataTransfer — always valid, even in Firefox + React 19
+            const native = e.nativeEvent;
+            const files = native.dataTransfer?.files;
+            if (files && files.length > 0) processFiles(files);
+          }}
+          onDragLeave={(e) => {
+            // If cursor leaves the overlay to outside the dropzone, dismiss
+            const related = e.relatedTarget as Node | null;
+            if (!related || !dropzoneRef.current?.contains(related)) {
+              dragCounterRef.current = 0;
+              setIsDragging(false);
+            }
+          }}
+        >
           {/* Backdrop */}
-          <div className="absolute inset-0 bg-blue-950/70 backdrop-blur-sm" />
+          <div className="absolute inset-0 bg-blue-950/70 backdrop-blur-sm pointer-events-none" />
           {/* Animated border */}
-          <div className="absolute inset-2 rounded-xl border-2 border-dashed border-blue-400 animate-pulse" />
+          <div className="absolute inset-2 rounded-xl border-2 border-dashed border-blue-400 animate-pulse pointer-events-none" />
           {/* Centre card */}
-          <div className="relative flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-blue-950/80 border border-blue-500/40 shadow-2xl">
+          <div className="relative flex flex-col items-center gap-3 px-8 py-6 rounded-2xl bg-blue-950/80 border border-blue-500/40 shadow-2xl pointer-events-none">
             <div className="rounded-full bg-blue-500/20 p-4">
               <CloudUpload className="h-10 w-10 text-blue-300" />
             </div>
