@@ -123,37 +123,46 @@ export const UploadDropzone = ({
       }
   }, [onFilesReady, onUploadStart, onUploadComplete, onUploadError, uploadFile]);
 
-  // ── Native drag event listeners ──────────────────────────────────────
-  // React 19's synthetic event delegation can deliver dragenter/drop with
-  // e.dataTransfer === null (observed in Firefox via Cloudflare Tunnel).
-  // Native listeners attached directly to the DOM element guarantee access
-  // to the browser's real DataTransfer object.
+  // ── Drag event listeners ─────────────────────────────────────────────
+  // Uses two layers for cross-browser reliability:
+  //  1. Native listeners on the dropzone element (works in Chrome)
+  //  2. Document-level capture listeners as fallback (covers Firefox where
+  //     React 19 synthetic events AND element-level native events can
+  //     deliver dragenter with e.dataTransfer === null)
+  //
+  // If dataTransfer is null we still show the overlay — the only drags
+  // that produce null dataTransfer are external (OS) file drags in Firefox,
+  // so it's safe to assume files. Internal drags (asset-to-folder) always
+  // have a valid dataTransfer with 'asset-id' type.
 
   const disabledRef = useRef(disabled);
   disabledRef.current = disabled;
   const processFilesRef = useRef(processFiles);
   processFilesRef.current = processFiles;
 
+  // Helper: does this look like an external file drag (or unknown)?
+  const isFileDrag = (dt: DataTransfer | null): boolean => {
+    if (!dt) return true; // null in Firefox for external drags → assume files
+    const types = Array.from(dt.types);
+    if (types.some(t => t === 'asset-id')) return false; // internal asset drag
+    return types.some(t => t === 'Files' || t === 'files') || types.length === 0;
+  };
+
   useEffect(() => {
     const el = dropzoneRef.current;
     if (!el) return;
 
+    // ── Element-level listeners (bubble phase) ──
     const onDragEnter = (e: DragEvent) => {
       e.preventDefault();
-      e.stopPropagation();
-      if (disabledRef.current || !e.dataTransfer) return;
-      const hasFiles = Array.from(e.dataTransfer.types).some(
-        t => t === 'Files' || t === 'files'
-      );
-      if (hasFiles) {
-        dragCounterRef.current += 1;
-        setIsDragging(true);
-      }
+      if (disabledRef.current) return;
+      if (!isFileDrag(e.dataTransfer)) return;
+      dragCounterRef.current += 1;
+      setIsDragging(true);
     };
 
     const onDragLeave = (e: DragEvent) => {
       e.preventDefault();
-      e.stopPropagation();
       if (disabledRef.current) return;
       dragCounterRef.current -= 1;
       if (dragCounterRef.current <= 0) {
@@ -163,17 +172,16 @@ export const UploadDropzone = ({
     };
 
     const onDragOver = (e: DragEvent) => {
+      if (disabledRef.current) return;
       e.preventDefault();
-      e.stopPropagation();
     };
 
     const onDrop = (e: DragEvent) => {
       e.preventDefault();
-      e.stopPropagation();
       dragCounterRef.current = 0;
       setIsDragging(false);
-      if (disabledRef.current || !e.dataTransfer) return;
-      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      if (disabledRef.current) return;
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
         processFilesRef.current(e.dataTransfer.files);
       }
     };
@@ -183,11 +191,61 @@ export const UploadDropzone = ({
     el.addEventListener('dragover', onDragOver);
     el.addEventListener('drop', onDrop);
 
+    // ── Document-level capture listeners (Firefox fallback) ──
+    // Capture phase fires top-down before any child can interfere.
+    // We check if the event target is inside our dropzone.
+    const isInsideDropzone = (e: Event) =>
+      el.contains(e.target as Node);
+
+    const onDocDragEnter = (e: DragEvent) => {
+      if (disabledRef.current || !isInsideDropzone(e)) return;
+      if (!isFileDrag(e.dataTransfer)) return;
+      // Only activate if the element-level handler hasn't already
+      // (avoids double-counting in Chrome where both fire)
+      if (dragCounterRef.current === 0) {
+        dragCounterRef.current = 1;
+        setIsDragging(true);
+      }
+    };
+
+    const onDocDragOver = (e: DragEvent) => {
+      if (disabledRef.current || !isInsideDropzone(e)) return;
+      e.preventDefault(); // Required for Firefox to allow drop
+    };
+
+    const onDocDragLeave = (e: DragEvent) => {
+      if (disabledRef.current) return;
+      // Only reset when cursor leaves the browser window entirely
+      if (!e.relatedTarget && dragCounterRef.current > 0) {
+        dragCounterRef.current = 0;
+        setIsDragging(false);
+      }
+    };
+
+    const onDocDrop = (e: DragEvent) => {
+      if (disabledRef.current || !isInsideDropzone(e)) return;
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+      if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        processFilesRef.current(e.dataTransfer.files);
+      }
+    };
+
+    document.addEventListener('dragenter', onDocDragEnter, true);
+    document.addEventListener('dragover', onDocDragOver, true);
+    document.addEventListener('dragleave', onDocDragLeave, true);
+    document.addEventListener('drop', onDocDrop, true);
+
     return () => {
       el.removeEventListener('dragenter', onDragEnter);
       el.removeEventListener('dragleave', onDragLeave);
       el.removeEventListener('dragover', onDragOver);
       el.removeEventListener('drop', onDrop);
+      document.removeEventListener('dragenter', onDocDragEnter, true);
+      document.removeEventListener('dragover', onDocDragOver, true);
+      document.removeEventListener('dragleave', onDocDragLeave, true);
+      document.removeEventListener('drop', onDocDrop, true);
     };
   }, []);
 
