@@ -163,8 +163,11 @@ export const UploadDropzone = ({
       }
     };
 
+    let dragOverCount = 0;
     const onDragOver = (e: DragEvent) => {
       e.preventDefault();
+      dragOverCount++;
+      if (dragOverCount <= 3) console.log('[DZ] dragover #' + dragOverCount, 'target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.substring(0, 40));
     };
 
     const onDrop = (e: DragEvent) => {
@@ -187,11 +190,24 @@ export const UploadDropzone = ({
     el.addEventListener('dragover', onDragOver);
     el.addEventListener('drop', onDrop);
 
+    // Document-level diagnostics — detect if events are going elsewhere
+    const onDocDragOver = (e: DragEvent) => {
+      e.preventDefault(); // Always allow drops at document level too
+    };
+    const onDocDrop = (e: DragEvent) => {
+      console.log('[DZ-DOC] drop on document — target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.substring(0, 60), 'files:', e.dataTransfer?.files?.length);
+      e.preventDefault();
+    };
+    document.addEventListener('dragover', onDocDragOver);
+    document.addEventListener('drop', onDocDrop);
+
     return () => {
       el.removeEventListener('dragenter', onDragEnter);
       el.removeEventListener('dragleave', onDragLeave);
       el.removeEventListener('dragover', onDragOver);
       el.removeEventListener('drop', onDrop);
+      document.removeEventListener('dragover', onDocDragOver);
+      document.removeEventListener('drop', onDocDrop);
     };
   }, []);
 
