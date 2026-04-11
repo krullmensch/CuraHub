@@ -146,6 +146,7 @@ export const UploadDropzone = ({
 
     const onDragEnter = (e: DragEvent) => {
       e.preventDefault();
+      console.log('[DZ] dragenter — disabled:', disabledRef.current, 'dt:', e.dataTransfer, 'types:', e.dataTransfer ? Array.from(e.dataTransfer.types) : 'null', 'isFile:', isFileDrag(e.dataTransfer));
       if (disabledRef.current) return;
       if (!isFileDrag(e.dataTransfer)) return;
       dragCounterRef.current += 1;
@@ -171,9 +172,13 @@ export const UploadDropzone = ({
       e.stopPropagation();
       dragCounterRef.current = 0;
       setIsDragging(false);
+      console.log('[DZ] drop — disabled:', disabledRef.current, 'dt:', e.dataTransfer, 'files:', e.dataTransfer?.files?.length, 'target:', (e.target as HTMLElement)?.className?.substring(0, 60));
       if (disabledRef.current) return;
       if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+        console.log('[DZ] calling processFiles with', e.dataTransfer.files.length, 'files');
         processFilesRef.current(e.dataTransfer.files);
+      } else {
+        console.log('[DZ] NO files in dataTransfer');
       }
     };
 
