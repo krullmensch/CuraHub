@@ -45,8 +45,7 @@ export const UploadDropzone = ({
   const handleDragEnter = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    console.log('[DropZone] dragenter — disabled:', disabled, 'types:', Array.from(e.dataTransfer.types));
-    if (disabled) return;
+    if (disabled || !e.dataTransfer) return;
     const hasFiles = Array.from(e.dataTransfer.types).some(t => t === 'Files' || t === 'files');
     if (hasFiles) {
       dragCounterRef.current += 1;
@@ -155,7 +154,7 @@ export const UploadDropzone = ({
     e.stopPropagation();
     dragCounterRef.current = 0;
     setIsDragging(false);
-    if (disabled) return;
+    if (disabled || !e.dataTransfer) return;
 
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
       processFiles(e.dataTransfer.files);
