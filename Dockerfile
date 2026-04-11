@@ -35,8 +35,8 @@ RUN npm run build
 
 # Production Stage
 FROM node:20-alpine
-# Runtime dependencies
-RUN apk add --no-cache openssl libc6-compat ca-certificates curl
+# Runtime dependencies — ffmpeg is required for video transcoding and thumbnail generation
+RUN apk add --no-cache openssl libc6-compat ca-certificates curl ffmpeg
 WORKDIR /app
 
 # Copy Frontend Build

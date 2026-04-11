@@ -79,7 +79,16 @@ function uploadXHR(
         const body = JSON.parse(xhr.responseText) as Record<string, unknown>;
         resolve({ status: xhr.status, body });
       } catch {
-        reject(new Error('Ungültige Serverantwort'));
+        // Server returned non-JSON — likely an nginx proxy error page (413, 502, 504)
+        const isHtml = xhr.responseText.trimStart().startsWith('<');
+        const statusHint = xhr.status ? ` (HTTP ${xhr.status})` : '';
+        if (isHtml && xhr.status === 413) {
+          reject(new Error(`Datei zu groß — Serverlimit überschritten${statusHint}`));
+        } else if (isHtml && (xhr.status === 502 || xhr.status === 504)) {
+          reject(new Error(`Server-Timeout — Video-Verarbeitung dauerte zu lange${statusHint}`));
+        } else {
+          reject(new Error(`Ungültige Serverantwort${statusHint}`));
+        }
       }
     };
     xhr.onerror = () => reject(new Error('Netzwerkfehler beim Upload'));
