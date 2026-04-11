@@ -31,7 +31,6 @@ import {
   FileIcon,
   Loader2,
   Edit,
-  CloudUpload,
   Play,
   Folder as FolderIcon,
   FolderPlus,

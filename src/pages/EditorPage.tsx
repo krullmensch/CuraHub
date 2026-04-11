@@ -5,7 +5,7 @@ import * as THREE from 'three';
 import { Scene } from '../components/Scene';
 // Player is now handled inside PlannerCameraSystem
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
-import { useEditorStore, artworkMinY, type MediumType } from '../store/editorStore';
+import { useEditorStore, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
 import { useEffect, useState } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2 } from 'lucide-react';
