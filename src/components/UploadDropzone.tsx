@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { Button } from "@/components/ui/button";
 import { CloudUpload } from "lucide-react";
@@ -39,39 +39,13 @@ export const UploadDropzone = ({
   const [processing, setProcessing] = useState(false);
   const token = useAuthStore((state) => state.token);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dropzoneRef = useRef<HTMLDivElement>(null);
   // Counter avoids false drag-leave events when the pointer moves over child elements
   const dragCounterRef = useRef(0);
 
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (disabled || !e.dataTransfer) return;
-    const hasFiles = Array.from(e.dataTransfer.types).some(t => t === 'Files' || t === 'files');
-    if (hasFiles) {
-      dragCounterRef.current += 1;
-      setIsDragging(true);
-    }
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (disabled) return;
-    dragCounterRef.current -= 1;
-    if (dragCounterRef.current <= 0) {
-      dragCounterRef.current = 0;
-      setIsDragging(false);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
   // ── Direct upload path (used by EditorLayout) ──────────────────────────
 
-  const uploadFile = async (rawFile: File, force = false) => {
+  const uploadFile = useCallback(async (rawFile: File, force = false) => {
       const formData = new FormData();
       formData.append('file', rawFile);
       if (projectId) formData.append('projectId', projectId.toString());
@@ -102,9 +76,9 @@ export const UploadDropzone = ({
       }
 
       return response.json();
-  };
+  }, [token, projectId, folderId, onDuplicate, onUploadComplete]);
 
-  const processFiles = async (files: FileList | File[]) => {
+  const processFiles = useCallback(async (files: FileList | File[]) => {
       const MODEL_EXTENSIONS = [
           '.glb', '.gltf', '.obj', '.fbx', '.dae', '.stl',
           '.ply', '.3ds', '.ase', '.blend', '.usdz', '.usd',
@@ -147,19 +121,75 @@ export const UploadDropzone = ({
       } finally {
         setProcessing(false);
       }
-  };
+  }, [onFilesReady, onUploadStart, onUploadComplete, onUploadError, uploadFile]);
 
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    dragCounterRef.current = 0;
-    setIsDragging(false);
-    if (disabled || !e.dataTransfer) return;
+  // ── Native drag event listeners ──────────────────────────────────────
+  // React 19's synthetic event delegation can deliver dragenter/drop with
+  // e.dataTransfer === null (observed in Firefox via Cloudflare Tunnel).
+  // Native listeners attached directly to the DOM element guarantee access
+  // to the browser's real DataTransfer object.
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFiles(e.dataTransfer.files);
-    }
-  };
+  const disabledRef = useRef(disabled);
+  disabledRef.current = disabled;
+  const processFilesRef = useRef(processFiles);
+  processFilesRef.current = processFiles;
+
+  useEffect(() => {
+    const el = dropzoneRef.current;
+    if (!el) return;
+
+    const onDragEnter = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (disabledRef.current || !e.dataTransfer) return;
+      const hasFiles = Array.from(e.dataTransfer.types).some(
+        t => t === 'Files' || t === 'files'
+      );
+      if (hasFiles) {
+        dragCounterRef.current += 1;
+        setIsDragging(true);
+      }
+    };
+
+    const onDragLeave = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (disabledRef.current) return;
+      dragCounterRef.current -= 1;
+      if (dragCounterRef.current <= 0) {
+        dragCounterRef.current = 0;
+        setIsDragging(false);
+      }
+    };
+
+    const onDragOver = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
+
+    const onDrop = (e: DragEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+      if (disabledRef.current || !e.dataTransfer) return;
+      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+        processFilesRef.current(e.dataTransfer.files);
+      }
+    };
+
+    el.addEventListener('dragenter', onDragEnter);
+    el.addEventListener('dragleave', onDragLeave);
+    el.addEventListener('dragover', onDragOver);
+    el.addEventListener('drop', onDrop);
+
+    return () => {
+      el.removeEventListener('dragenter', onDragEnter);
+      el.removeEventListener('dragleave', onDragLeave);
+      el.removeEventListener('dragover', onDragOver);
+      el.removeEventListener('drop', onDrop);
+    };
+  }, []);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files.length > 0) {
@@ -177,10 +207,7 @@ export const UploadDropzone = ({
 
   return (
     <div
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
+        ref={dropzoneRef}
         className={className}
         style={{ position: 'relative', width: '100%', height: '100%' }}
     >
