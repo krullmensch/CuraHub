@@ -209,8 +209,11 @@ export const UploadDropzone = ({
     };
 
     const onDocDragOver = (e: DragEvent) => {
-      if (disabledRef.current || !isInsideDropzone(e)) return;
-      e.preventDefault(); // Required for Firefox to allow drop
+      if (disabledRef.current) return;
+      // Must ALWAYS preventDefault so the browser allows the drop event.
+      // In Firefox, dragover targets can be <html>/<body> which fail the
+      // isInsideDropzone check — skipping preventDefault blocks drop entirely.
+      e.preventDefault();
     };
 
     const onDocDragLeave = (e: DragEvent) => {
@@ -223,8 +226,9 @@ export const UploadDropzone = ({
     };
 
     const onDocDrop = (e: DragEvent) => {
-      if (disabledRef.current || !isInsideDropzone(e)) return;
+      if (disabledRef.current) return;
       e.preventDefault();
+      e.stopImmediatePropagation(); // prevent other UploadDropzone instances from double-processing
       dragCounterRef.current = 0;
       setIsDragging(false);
       if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
