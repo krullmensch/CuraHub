@@ -1,19 +1,17 @@
-# Asset Management
+# Asset-Management & Medien
 
-The Asset Library is where all your digital artworks, images, and 3D models live.
+Die Asset-Bibliothek ist der zentrale Ort für all deine digitalen Kunstwerke. Einmal hochgeladen, kannst du sie in verschiedenen Ausstellungen wiederverwenden.
 
-## Uploading New Content
-To add new artwork to your project:
-1. Open the Asset Library sidebar.
-2. Drag and drop your files directly into the **Upload Area**.
-3. CuraHub will automatically process your files and add them to your library.
+## Medien hochladen
+Du kannst Dateien per Drag & Drop direkt in die Bibliothek oder in den 3D-Editor ziehen.
+- **Bilder:** Werden automatisch skaliert (max. 2500px) und für das Web optimiert (WebP-Format). Physische Maße werden, falls vorhanden, aus den EXIF-Metadaten extrahiert.
+- **Videos:** Werden auf dem Server automatisch in das MP4-Format (H.264) umgewandelt. Zudem werden Thumbnails generiert.
+- **3D-Modelle:** Unterstützt werden GLB, GLTF, OBJ und FBX-Dateien (max. 50MB).
 
-## Placing Artworks in the Scene
-Once an item is in your Asset Library, adding it to your exhibition is simple:
-- Find the artwork in your library list.
-- **Click and drag** the item directly from the sidebar into the 3D workspace.
-- The item will appear in the room, ready for you to position and scale.
+## Metadaten verwalten
+Jedes Kunstwerk besitzt wichtige Metadaten:
+- Titel und Künstler
+- Beschreibung und Jahr
+- Reale Dimensionen (Breite x Höhe x Tiefe)
 
-## Managing Metadata
-Every artwork carries important information (Title, Artist, Year, etc.). 
-You can edit these details by clicking the info/metadata button on any item in your library. Keeping your metadata organized ensures your virtual exhibition displays the correct plaques next to your art!
+Diese Daten werden im Info-Overlay für die Besucher angezeigt. Halte sie aktuell, damit deine Ausstellung professionell wirkt!

@@ -5,6 +5,8 @@ import { useAuthStore } from './authStore';
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
 export const videoRefMap = new Map<number, HTMLVideoElement>();
+// Natural (unscaled) bounding box size of 3D model instances, in Three.js units (meters)
+export const modelBBoxMap = new Map<number, THREE.Vector3>();
 
 // Distance (m) the wall-placement code stores between the wall surface and the
 // instance group origin (along the wall normal). Each wall-mounted instance
@@ -589,6 +591,11 @@ const syncToBackend = () => {
             if (videoEl) {
               videoRefMap.set(created.id, videoEl);
               videoRefMap.delete(inst.id);
+            }
+            const bboxSize = modelBBoxMap.get(inst.id);
+            if (bboxSize) {
+              modelBBoxMap.set(created.id, bboxSize);
+              modelBBoxMap.delete(inst.id);
             }
           }
         }).catch(err => console.error('[AutoSync] Failed to create instance:', err))

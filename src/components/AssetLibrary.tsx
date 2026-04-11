@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { UploadDropzone } from './UploadDropzone';
+import { UploadPreviewModal } from './UploadPreviewModal';
 import { useEditorStore } from '../store/editorStore';
 import { Card, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -40,6 +41,7 @@ import {
   Palette,
   Pencil,
   FolderInput,
+  Upload,
 } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { MetadataDialog } from './MetadataDialog';
@@ -100,12 +102,6 @@ export const AssetLibrary = () => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [contextMenu, setContextMenu] = useState<{ assetId: number; x: number; y: number } | null>(null);
-  const [duplicateInfo, setDuplicateInfo] = useState<{
-    filename: string;
-    existing: Record<string, unknown>;
-    retry: () => Promise<void>;
-  } | null>(null);
-  const [retrying, setRetrying] = useState(false);
   const activeProjectId = useEditorStore((state) => state.activeProjectId);
 
   // Folder state
@@ -128,7 +124,12 @@ export const AssetLibrary = () => {
   const [deletingFolder, setDeletingFolder] = useState(false);
 
   const dragMovedRef = useRef(false);
-  const uploadToastIdRef = useRef<string | number | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+
+  // Upload preview modal
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [uploadModalOpen, setUploadModalOpen] = useState(false);
+  const [uploadKey, setUploadKey] = useState(0);
 
 
   // ── Fetchers ──
@@ -264,35 +265,31 @@ export const AssetLibrary = () => {
     }
   };
 
-  const handleUploadStart = () => {
-    const id = gooeyToast('Upload wird verarbeitet …', {
-      description: 'Datei wird optimiert und hochgeladen.',
-      showProgress: true,
-      duration: 60000,
-    });
-    uploadToastIdRef.current = id;
+  const handleFilesReady = (files: File[]) => {
+    if (files.length === 0) return;
+    setPendingFiles(files);
+    setUploadKey((k) => k + 1);
+    setUploadModalOpen(true);
   };
 
-  const handleUploadComplete = (newAsset: Asset) => {
-    // Dismiss loading toast
-    if (uploadToastIdRef.current != null) {
-      gooeyToast.dismiss(uploadToastIdRef.current);
-      uploadToastIdRef.current = null;
-    }
-
+  const handleAssetUploaded = (newAsset: Record<string, unknown>) => {
+    const asset = newAsset as unknown as Asset;
     // Only prepend to local list if it matches the current view
     const matchesCurrentView =
       selectedFolder === 'all' ||
-      (selectedFolder === 'unsorted' && !newAsset.folderId) ||
-      (typeof selectedFolder === 'number' && newAsset.folderId === selectedFolder);
+      (selectedFolder === 'unsorted' && !asset.folderId) ||
+      (typeof selectedFolder === 'number' && asset.folderId === selectedFolder);
 
     if (matchesCurrentView) {
-      setAssets((prev) => [newAsset, ...prev]);
+      setAssets((prev) => [asset, ...prev]);
     }
     fetchFolders();
-    gooeyToast.success('Upload abgeschlossen', {
-      description: `${newAsset.filename} wurde hinzugefügt.`,
-    });
+  };
+
+  const handleUploadModalClose = () => {
+    setUploadModalOpen(false);
+    setPendingFiles([]);
+    fetchFolders();
   };
 
   const handleMetadataSaved = () => {
@@ -391,7 +388,128 @@ export const AssetLibrary = () => {
     dragMovedRef.current = true;
     e.dataTransfer.setData('asset-id', assetId.toString());
     e.dataTransfer.effectAllowed = 'move';
-  };
+
+    // Build a custom drag ghost showing a stack of cards for multi-selections
+    const draggedIds = selectedIds.includes(assetId) && selectedIds.length > 1
+      ? selectedIds
+      : [assetId];
+
+    {
+      // Collect up to 3 thumbnails for the stack (front = dragged card)
+      const stackAssets = [
+        assets.find((a) => a.id === assetId),
+        ...assets.filter((a) => a.id !== assetId && draggedIds.includes(a.id)).slice(0, 2),
+      ].filter(Boolean) as Asset[];
+
+      const SIZE = 96;
+      const CARD_RADIUS = 10;
+      const PADDING = 20; // extra space for rotated back-cards
+      const TOTAL = SIZE + PADDING * 2;
+
+      const ghost = document.createElement('div');
+      ghost.style.cssText = `
+        position: fixed;
+        top: -1000px;
+        left: -1000px;
+        width: ${TOTAL}px;
+        height: ${TOTAL}px;
+        pointer-events: none;
+      `;
+
+      // Render back cards first (reversed), then front card on top
+      const rotations = [7, 3.5];
+      const offsets = [10, 5];
+
+      stackAssets
+        .slice()
+        .reverse()
+        .forEach((asset, reverseIdx) => {
+          const isFront = reverseIdx === stackAssets.length - 1;
+          const stackIdx = stackAssets.length - 1 - reverseIdx; // 0 = front
+          const card = document.createElement('div');
+
+          const rot = isFront ? 0 : rotations[Math.min(stackIdx - 1, rotations.length - 1)];
+          const tx = isFront ? 0 : offsets[Math.min(stackIdx - 1, offsets.length - 1)];
+          const shadow = isFront
+            ? '0 8px 24px rgba(0,0,0,0.55)'
+            : '0 4px 12px rgba(0,0,0,0.4)';
+
+          card.style.cssText = `
+            position: absolute;
+            top: ${PADDING}px;
+            left: ${PADDING}px;
+            width: ${SIZE}px;
+            height: ${SIZE}px;
+            border-radius: ${CARD_RADIUS}px;
+            overflow: hidden;
+            background: #18181b;
+            border: 1.5px solid #3f3f46;
+            box-shadow: ${shadow};
+            transform: rotate(${rot}deg) translateX(${tx}px);
+            transform-origin: center center;
+          `;
+
+          const thumb =
+            asset.type === 'video' && asset.thumbnailPath
+              ? asset.thumbnailPath
+              : (asset.type || 'image') === 'image'
+              ? asset.path
+              : null;
+
+          if (thumb) {
+            const img = document.createElement('img');
+            img.src = thumb;
+            img.style.cssText = `
+              width: 100%;
+              height: 100%;
+              object-fit: cover;
+              display: block;
+            `;
+            card.appendChild(img);
+          } else {
+            // Fallback for 3D models / unknown types
+            card.style.background = '#27272a';
+            card.style.display = 'flex';
+            card.style.alignItems = 'center';
+            card.style.justifyContent = 'center';
+            card.innerHTML = `<span style="color:#71717a;font-size:11px;font-family:sans-serif;text-transform:uppercase;letter-spacing:.05em;">${asset.filename.split('.').pop() ?? '3D'}</span>`;
+          }
+
+          ghost.appendChild(card);
+        });
+
+      // Count badge
+      if (draggedIds.length > 1) {
+        const badge = document.createElement('div');
+        badge.style.cssText = `
+          position: absolute;
+          top: ${PADDING - 8}px;
+          right: ${PADDING - 8}px;
+          min-width: 22px;
+          height: 22px;
+          padding: 0 6px;
+          border-radius: 11px;
+          background: #2563eb;
+          color: #fff;
+          font-size: 11px;
+          font-weight: 700;
+          font-family: sans-serif;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          box-shadow: 0 2px 6px rgba(0,0,0,0.5);
+          z-index: 10;
+        `;
+        badge.textContent = String(draggedIds.length);
+        ghost.appendChild(badge);
+      }
+
+      document.body.appendChild(ghost);
+      e.dataTransfer.setDragImage(ghost, TOTAL / 2, TOTAL / 2);
+      // Remove after the browser has captured the drag image
+      requestAnimationFrame(() => document.body.removeChild(ghost));
+    }
+  }; // end handleAssetDragStart
 
   const handleFolderDragOver = (e: React.DragEvent, folderSel: FolderSelection) => {
     if (!e.dataTransfer.types.includes('asset-id') && !e.dataTransfer.types.includes('text/plain')) {
@@ -658,16 +776,8 @@ export const AssetLibrary = () => {
     <UploadDropzone
       projectId={activeProjectId}
       folderId={folderForUpload}
-      onUploadStart={handleUploadStart}
-      onUploadComplete={handleUploadComplete}
-      onUploadError={(msg) => {
-        if (uploadToastIdRef.current != null) {
-          gooeyToast.dismiss(uploadToastIdRef.current);
-          uploadToastIdRef.current = null;
-        }
-        gooeyToast.error('Upload fehlgeschlagen', { description: msg });
-      }}
-      onDuplicate={({ filename, existing, retry }) => setDuplicateInfo({ filename, existing, retry })}
+      onFilesReady={handleFilesReady}
+      onUploadError={(msg) => gooeyToast.error('Upload fehlgeschlagen', { description: msg })}
       className="h-full w-full flex flex-col bg-zinc-950"
     >
       <div className="h-full w-full flex min-h-0">
@@ -722,13 +832,37 @@ export const AssetLibrary = () => {
 
         {/* Right column — asset grid */}
         <div className="flex-1 overflow-auto p-6 space-y-6 pb-20">
-          <div className="flex justify-between items-center">
+          <div className="flex justify-between items-start">
             <div>
               <h2 className="text-2xl font-bold tracking-tight text-white mb-2">Asset Library</h2>
               <p className="text-gray-400">
                 Verwalte deine Dateien und ordne sie in Ordnern. Klicke ein Asset, um Details zu bearbeiten.
               </p>
             </div>
+            {selectedIds.length === 0 && (
+              <>
+                <input
+                  ref={uploadInputRef}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  accept="image/*,video/*,.glb,.gltf,.obj,.fbx,.dae,.stl,.ply,.3ds,.ase,.blend,.usdz,.usd"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      handleFilesReady(Array.from(e.target.files));
+                    }
+                    e.target.value = '';
+                  }}
+                />
+                <Button
+                  onClick={() => uploadInputRef.current?.click()}
+                  className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
+                >
+                  <Upload className="h-4 w-4 mr-2" />
+                  Dateien hochladen
+                </Button>
+              </>
+            )}
             {selectedIds.length > 0 && (
               <div className="flex items-center gap-2 bg-blue-900/30 px-4 py-2 rounded-lg border border-blue-800">
                 <span className="text-sm font-medium text-blue-100">
@@ -810,7 +944,7 @@ export const AssetLibrary = () => {
                   ? 'Keine unsortierten Assets'
                   : 'Dieser Ordner ist leer'}
               </h3>
-              <p>Dateien per Drag & Drop hochladen.</p>
+              <p>Dateien hochladen oder per Drag & Drop ablegen.</p>
             </div>
           ) : (
             <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
@@ -971,55 +1105,16 @@ export const AssetLibrary = () => {
             </>
           )}
 
-          {/* Duplicate Warning Dialog */}
-          <Dialog open={!!duplicateInfo} onOpenChange={(open) => !open && setDuplicateInfo(null)}>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Datei bereits vorhanden</DialogTitle>
-                <DialogDescription>
-                  <span className="font-medium text-zinc-900">„{duplicateInfo?.filename}"</span> wurde in diesem Projekt bereits hochgeladen. Möchtest du sie trotzdem erneut hochladen?
-                </DialogDescription>
-              </DialogHeader>
-              {duplicateInfo?.existing && (() => {
-                const ex = duplicateInfo.existing;
-                const isVideo = ex.type === 'video';
-                const src = (isVideo ? ex.thumbnailPath : ex.path) as string | undefined;
-                return (
-                  <div className="rounded-lg overflow-hidden bg-zinc-100 flex items-center justify-center h-48">
-                    {src ? (
-                      <img
-                        src={src}
-                        alt={ex.filename as string}
-                        className="max-h-full max-w-full object-contain"
-                      />
-                    ) : (
-                      <FileIcon className="h-12 w-12 text-zinc-400" />
-                    )}
-                  </div>
-                );
-              })()}
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setDuplicateInfo(null)} disabled={retrying}>
-                  Abbrechen
-                </Button>
-                <Button
-                  onClick={async () => {
-                    if (!duplicateInfo) return;
-                    setRetrying(true);
-                    try {
-                      await duplicateInfo.retry();
-                    } finally {
-                      setRetrying(false);
-                      setDuplicateInfo(null);
-                    }
-                  }}
-                  disabled={retrying}
-                >
-                  {retrying ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Trotzdem hochladen'}
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
+          {/* Upload Preview Modal */}
+          <UploadPreviewModal
+            key={uploadKey}
+            files={pendingFiles}
+            projectId={activeProjectId}
+            folderId={folderForUpload}
+            open={uploadModalOpen}
+            onClose={handleUploadModalClose}
+            onAssetUploaded={handleAssetUploaded}
+          />
 
           {/* Delete Confirmation Dialog */}
           <Dialog

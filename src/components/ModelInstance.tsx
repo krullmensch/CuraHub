@@ -1,9 +1,9 @@
-import { forwardRef, useMemo } from 'react';
+import { forwardRef, useMemo, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
-import { useEditorStore, type ArtworkInstanceData } from '../store/editorStore';
+import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
 
 interface ModelInstanceProps {
     instance: ArtworkInstanceData;
@@ -39,6 +39,12 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             box.getCenter(center);
             return { size, center };
         }, [clonedScene]);
+
+        // Publish natural (unscaled) bbox size so PropertiesPanel can show real-world dimensions
+        useEffect(() => {
+            modelBBoxMap.set(instance.id, bbox.size.clone());
+            return () => { modelBBoxMap.delete(instance.id); };
+        }, [instance.id, bbox.size]);
 
         // Selection highlight: apply emissive to all meshes
         useMemo(() => {

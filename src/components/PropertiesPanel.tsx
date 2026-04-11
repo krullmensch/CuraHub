@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type InputHTMLAttributes } from 'react';
-import { useEditorStore, videoRefMap } from '../store/editorStore';
+import { useEditorStore, videoRefMap, modelBBoxMap } from '../store/editorStore';
 import type { TransformMode, MediumType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { gooeyToast } from 'goey-toast';
@@ -114,11 +114,20 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const [assetMeta, setAssetMeta] = useState<{ widthPx: number; heightPx: number; dpi: number; type?: string; physicalWidth?: number | null; physicalHeight?: number | null } | null>(null);
     const [instanceMedium, setInstanceMedium] = useState<MediumType>('frame');
 
-    const baseCm = assetMeta ? {
-        x: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalWidth : (assetMeta.widthPx / assetMeta.dpi) * 2.54,
-        y: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalHeight : (assetMeta.heightPx / assetMeta.dpi) * 2.54,
-        z: 0.1,
-    } : { x: 1, y: 1, z: 1 };
+    // For 3D models: use the natural bounding box size (in meters) from the scene as the base.
+    // Falls back to { 1, 1, 1 } until the model renders and populates modelBBoxMap.
+    const modelNaturalSize = (assetMeta?.type === 'model3d' && selectedId != null)
+        ? (modelBBoxMap.get(selectedId) ?? null)
+        : null;
+
+    const baseCm = modelNaturalSize
+        ? { x: modelNaturalSize.x, y: modelNaturalSize.y, z: modelNaturalSize.z }
+        : assetMeta?.type === 'model3d' ? { x: 1, y: 1, z: 1 }
+        : assetMeta ? {
+            x: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalWidth : (assetMeta.widthPx / assetMeta.dpi) * 2.54,
+            y: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalHeight : (assetMeta.heightPx / assetMeta.dpi) * 2.54,
+            z: 0.1,
+        } : { x: 1, y: 1, z: 1 };
 
     const displayTransform = liveTransform ?? transform;
 
@@ -532,18 +541,21 @@ const ArtworkPropertiesContent = ({
             </div>
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
-                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">Size (cm)</Label>
+                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">{isModel ? 'Größe (m)' : 'Size (cm)'}</Label>
                     {!hideAspectToggle && (
                         <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => setAspectLocked(!aspectLocked)} title={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}>
                             {aspectLocked ? <Link className="h-3.5 w-3.5" /> : <Unlink className="h-3.5 w-3.5" />}
                         </Button>
                     )}
                 </div>
-                <div className="grid grid-cols-2 gap-2">
-                    {([['x', 'W'], ['y', 'H']] as const).map(([axis, label]) => (
+                <div className={cn("grid gap-2", isModel ? "grid-cols-3" : "grid-cols-2")}>
+                    {(isModel
+                        ? [['x', 'W'], ['y', 'H'], ['z', 'T']] as [string, string][]
+                        : [['x', 'W'], ['y', 'H']] as [string, string][]
+                    ).map(([axis, label]) => (
                         <div key={axis} className="space-y-1">
                             <Label className="text-[10px] text-zinc-500 uppercase">{label}</Label>
-                            <NumericInput step="0.1" min="0.1" value={toFixed(baseCm[axis] * transform.scale[axis])} onChange={(raw) => handleScaleChange(axis, raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" disabled={sizeLocked} />
+                            <NumericInput step={isModel ? "0.01" : "0.1"} min="0.001" value={toFixed(baseCm[axis as 'x' | 'y' | 'z'] * transform.scale[axis as 'x' | 'y' | 'z'], isModel ? 3 : 1)} onChange={(raw) => handleScaleChange(axis as 'x' | 'y' | 'z', raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" disabled={sizeLocked} />
                         </div>
                     ))}
                 </div>

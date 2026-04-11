@@ -1,20 +1,21 @@
-# The 3D Editor
+# 3D-Editor (Planer-Modus)
 
-Welcome to the CuraHub 3D Editor! This is your primary workspace for creating and arranging your virtual exhibitions.
+Der 3D-Editor ist dein Hauptwerkzeug zur Einrichtung der virtuellen Ausstellungen im Raum "Satellit".
 
-## Navigating the Space
-When you open a project, you'll be placed inside the 3D environment. 
+## Ansichten & Kamera
+Du kannst jederzeit zwischen verschiedenen Ansichten wechseln:
+- **Planer-Ansicht (Orbit / Top-Down):** Eine übersichtliche Vogelperspektive. Perfekt, um viele Kunstwerke schnell anzuordnen.
+- **First-Person-Ansicht:** Bewege dich wie ein Besucher durch den Raum. Ideal, um die Wirkung der Ausstellung zu testen.
 
-You can switch between two primary camera modes depending on what you're trying to achieve:
-- **First-Person View:** Move around the room as if you were walking through it. This is great for checking out how your gallery feels from a visitor's perspective.
-- **Planner View (Top-Down):** A bird's-eye view of your exhibition space. This is perfect for arranging multiple artworks quickly and precisely.
+## Kunstwerke & Wände platzieren
+Ziehe ein Asset aus der Bibliothek per Drag & Drop in den Raum. Das smarte **Raycasting** sorgt dafür, dass Objekte automatisch an Wänden oder auf dem Boden einrasten.
+Zusätzlich kannst du modulare Messewände frei im Raum aufstellen, um neue Raumstrukturen zu schaffen.
 
-## Moving Artworks
-To reposition an artwork:
-1. **Click** on the artwork you want to adjust. A selection outline will appear.
-2. **Transform Controls** will appear around the item.
-3. Click and drag the arrows to **move** the item, the circles to **rotate** it, or the cubes to **scale** it up and down.
+## Transform-System (Blender-Style)
+Wenn du ein Objekt auswählst, erscheinen 3D-Gizmos. Du kannst aber auch Tastenkürzel nutzen:
+- **G (Grab):** Verschieben
+- **R (Rotate):** Rotieren
+- **S (Scale):** Skalieren
+- **X, Y, Z:** Achse sperren
 
-## Properties Panel
-When an item is selected, the **Properties Panel** will open on the side of your screen. 
-Here you can see the exact dimensions of the artwork (in centimeters) and precisely adjust its X, Y, and Z scale values for perfect accuracy.
+Für exakte Einstellungen (z.B. "Zentrum des Bildes genau auf 1,45m Höhe") nutzt du das **Properties-Panel** auf der rechten Seite.

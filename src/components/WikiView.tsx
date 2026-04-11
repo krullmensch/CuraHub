@@ -4,9 +4,12 @@ import remarkGfm from 'remark-gfm';
 import { BookOpen } from 'lucide-react';
 
 // Import markdown files as raw strings
-import sceneDoc from '../wiki/3d-scene.md?raw';
+import accessControlDoc from '../wiki/access-control.md?raw';
+import projectManagementDoc from '../wiki/project-management.md?raw';
 import assetDoc from '../wiki/asset-management.md?raw';
-import versionDoc from '../wiki/versioning.md?raw';
+import sceneDoc from '../wiki/3d-scene.md?raw';
+import viewerDoc from '../wiki/viewer.md?raw';
+import adminDoc from '../wiki/admin.md?raw';
 
 interface WikiPage {
   id: string;
@@ -15,9 +18,12 @@ interface WikiPage {
 }
 
 const pages: WikiPage[] = [
-  { id: '3d-scene', title: 'The 3D Editor', content: sceneDoc },
-  { id: 'asset-management', title: 'Asset Management', content: assetDoc },
-  { id: 'versioning', title: 'Saving Versions', content: versionDoc },
+  { id: 'access-control', title: 'Benutzer & Rechte', content: accessControlDoc },
+  { id: 'project-management', title: 'Ausstellungen & Versionen', content: projectManagementDoc },
+  { id: 'asset-management', title: 'Asset-Management', content: assetDoc },
+  { id: '3d-scene', title: '3D-Editor (Planer)', content: sceneDoc },
+  { id: 'viewer', title: 'Viewer-Modus', content: viewerDoc },
+  { id: 'admin', title: 'Admin & Raumverwaltung', content: adminDoc },
 ];
 
 export const WikiView = () => {
@@ -30,7 +36,7 @@ export const WikiView = () => {
       <nav className="w-56 shrink-0 bg-zinc-900/80 border-r border-zinc-700/60 flex flex-col py-5 px-3 gap-1">
         <div className="flex items-center gap-2 px-3 mb-4 text-zinc-400">
           <BookOpen className="h-4 w-4" />
-          <span className="text-xs font-semibold uppercase tracking-wider">User Manual</span>
+          <span className="text-xs font-semibold uppercase tracking-wider">Benutzerhandbuch</span>
         </div>
         {pages.map((page) => (
           <button
