@@ -190,24 +190,35 @@ export const UploadDropzone = ({
     el.addEventListener('dragover', onDragOver);
     el.addEventListener('drop', onDrop);
 
-    // Document-level diagnostics — detect if events are going elsewhere
+    // CAPTURE-phase document listeners — fires before ANY other handler.
+    // Guarantees preventDefault on dragover so browser allows drop.
+    // Also serves as fallback drop handler if element listener misses it.
     const onDocDragOver = (e: DragEvent) => {
-      e.preventDefault(); // Always allow drops at document level too
-    };
-    const onDocDrop = (e: DragEvent) => {
-      console.log('[DZ-DOC] drop on document — target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.substring(0, 60), 'files:', e.dataTransfer?.files?.length);
       e.preventDefault();
     };
-    document.addEventListener('dragover', onDocDragOver);
-    document.addEventListener('drop', onDocDrop);
+    const onDocDrop = (e: DragEvent) => {
+      e.preventDefault();
+      console.log('[DZ-DOC] CAPTURE drop — target:', (e.target as HTMLElement)?.tagName, (e.target as HTMLElement)?.className?.substring(0, 60), 'files:', e.dataTransfer?.files?.length);
+      // Fallback: if the drop is inside our dropzone and we're in drag state, process files
+      if (el.contains(e.target as Node) && !disabledRef.current) {
+        dragCounterRef.current = 0;
+        setIsDragging(false);
+        if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+          console.log('[DZ-DOC] processing files via capture fallback');
+          processFilesRef.current(e.dataTransfer.files);
+        }
+      }
+    };
+    document.addEventListener('dragover', onDocDragOver, true);  // capture
+    document.addEventListener('drop', onDocDrop, true);          // capture
 
     return () => {
       el.removeEventListener('dragenter', onDragEnter);
       el.removeEventListener('dragleave', onDragLeave);
       el.removeEventListener('dragover', onDragOver);
       el.removeEventListener('drop', onDrop);
-      document.removeEventListener('dragover', onDocDragOver);
-      document.removeEventListener('drop', onDocDrop);
+      document.removeEventListener('dragover', onDocDragOver, true);
+      document.removeEventListener('drop', onDocDrop, true);
     };
   }, []);
 
