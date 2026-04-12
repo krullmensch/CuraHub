@@ -7,6 +7,9 @@ import {
   useEdgesState,
   type NodeMouseHandler,
   type ReactFlowInstance,
+  type NodeTypes,
+  type Node,
+  type Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
 import { History, ChevronDown, Layers, Save } from 'lucide-react';
@@ -20,9 +23,8 @@ import { MergeDialog } from './version-graph/MergeDialog';
 import { buildVersionGraph } from './version-graph/buildVersionGraph';
 import type { Version } from './version-graph/buildVersionGraph';
 import type { VersionNodeData } from './version-graph/buildVersionGraph';
-import type { Node } from '@xyflow/react';
 
-const nodeTypes = { versionNode: VersionNode };
+const nodeTypes: NodeTypes = { versionNode: VersionNode as NodeTypes[string] };
 
 const MIN_HEIGHT = 200;
 const MAX_HEIGHT = 600;
@@ -57,7 +59,7 @@ export const VersionPanel = ({
   const [mergeSourceVersion, setMergeSourceVersion] = useState<Version | null>(null);
 
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
-  const rfInstanceRef = useRef<ReactFlowInstance | null>(null);
+  const rfInstanceRef = useRef<ReactFlowInstance<Node<VersionNodeData>, Edge> | null>(null);
   const hasInitialFit = useRef(false);
 
   const token = useAuthStore((state) => state.token);

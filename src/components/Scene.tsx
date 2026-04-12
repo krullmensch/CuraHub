@@ -1,5 +1,5 @@
 import { Suspense } from 'react';
-import { Grid, Environment } from '@react-three/drei';
+import { Grid } from '@react-three/drei';
 import { RigidBody } from '@react-three/rapier';
 import { Satellit } from './Satellit';
 import { PlacedArtworks } from './PlacedArtworks';

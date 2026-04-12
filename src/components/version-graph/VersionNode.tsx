@@ -1,10 +1,10 @@
 import { memo } from 'react';
 import { Handle, Position } from '@xyflow/react';
-import type { NodeProps } from '@xyflow/react';
+import type { NodeProps, Node } from '@xyflow/react';
 import { Globe, Star } from 'lucide-react';
 import type { VersionNodeData } from './buildVersionGraph';
 
-export const VersionNode = memo(({ data }: NodeProps<VersionNodeData>) => {
+export const VersionNode = memo(({ data }: NodeProps<Node<VersionNodeData>>) => {
   const { version, isActive } = data;
 
   const dotColor = isActive
