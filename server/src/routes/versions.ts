@@ -1,19 +1,21 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
-import { authenticate, requireAdmin, exhibitionAccessFilter } from '../lib/middleware';
+import { authenticate, requireAdmin, requireCurator, exhibitionAccessFilter } from '../lib/middleware';
 
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
 
 const createVersionSchema = z.object({
     comment: z.string().min(1).max(500),
+    branch_name: z.string().min(1).max(100).default('main'),
     sourceVersionId: z.number().optional(), // Version to optionally link as parent
     instances: z.array(z.object({
         artworkId: z.number().optional(),
         assetId: z.number().optional(),
         wallId: z.number().nullable().optional(),
         wallIndex: z.number().nullable().optional(), // Index into walls[] array for ID remapping
+        medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer']).optional(),
         position_x: z.number(),
         position_y: z.number(),
         position_z: z.number(),
@@ -64,6 +66,7 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (r
                 comment: true,
                 created_at: true,
                 parent_version_id: true,
+                branch_name: true,
                 is_published: true,
                 is_featured: true,
                 creator: {
@@ -133,6 +136,15 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
         const data = createVersionSchema.parse(req.body);
         const userId = req.user.userId;
         const isAdmin = req.user.role === 'admin';
+        const userRole = req.user.role;
+
+        // Branching (non-main) requires curator+ role
+        if (data.branch_name !== 'main') {
+            const allowedRoles = ['curator', 'prof', 'admin'];
+            if (!allowedRoles.includes(userRole)) {
+                return res.status(403).json({ error: 'Branches können nur von Kuratoren, Profs oder Admins erstellt werden' });
+            }
+        }
 
         // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
@@ -180,6 +192,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                 if (artworkId) {
                     instancesToCreate.push({
                         artworkId,
+                        medium: inst.medium ?? 'frame',
                         position_x: inst.position_x,
                         position_y: inst.position_y,
                         position_z: inst.position_z,
@@ -206,6 +219,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
 
             instancesToCreate = sourceInstances.map(inst => ({
                 artworkId: inst.artworkId,
+                medium: inst.medium ?? 'frame',
                 _wallIndex: inst.wallId ? (oldWallIdToIndex.get(inst.wallId) ?? null) : null,
                 position_x: inst.position_x,
                 position_y: inst.position_y,
@@ -264,6 +278,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                     exhibition_id: exhibitionId,
                     created_by_user_id: userId,
                     parent_version_id: sourceVersionId,
+                    branch_name: data.branch_name,
                     comment: data.comment,
                     is_published: false,
                     walls: {
@@ -441,5 +456,114 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/feature', a
     } catch (e) {
         console.error('Failed to feature version:', e);
         res.status(500).json({ error: 'Failed to feature version' });
+    }
+});
+
+// POST /exhibitions/:exhibitionId/versions/:versionId/merge — overwrite-merge a branch into main
+versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', authenticate, requireCurator, async (req: any, res) => {
+    try {
+        const exhibitionId = parseInt(req.params.exhibitionId, 10);
+        const versionId = parseInt(req.params.versionId, 10);
+        if (isNaN(exhibitionId) || isNaN(versionId)) {
+            return res.status(400).json({ error: 'Invalid ID' });
+        }
+
+        const userId = req.user.userId;
+        const isAdmin = req.user.role === 'admin';
+
+        // Verify user has exhibition access
+        const exhibition = await prisma.exhibition.findFirst({
+            where: { id: exhibitionId, ...exhibitionAccessFilter(userId, isAdmin) }
+        });
+        if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
+
+        // Load the source version
+        const sourceVersion = await prisma.exhibitionVersion.findFirst({
+            where: { id: versionId, exhibition_id: exhibitionId },
+            include: {
+                instances: true,
+                walls: true,
+            }
+        });
+        if (!sourceVersion) return res.status(404).json({ error: 'Version not found' });
+        if (sourceVersion.branch_name === 'main') {
+            return res.status(400).json({ error: 'Kann main nicht in main mergen' });
+        }
+
+        // Build old wall ID → index mapping for remapping instances
+        const oldWallIdToIndex = new Map(sourceVersion.walls.map((w, i) => [w.id, i]));
+
+        const wallsToCreate = sourceVersion.walls.map(w => ({
+            label: w.label,
+            position_x: w.position_x,
+            position_y: w.position_y,
+            position_z: w.position_z,
+            rotation_x: w.rotation_x,
+            rotation_y: w.rotation_y,
+            rotation_z: w.rotation_z,
+            width: w.width,
+            height: w.height,
+            thickness: w.thickness,
+            color: w.color,
+            isLocked: w.isLocked,
+        }));
+
+        const instancesToCreate = sourceVersion.instances.map(inst => ({
+            artworkId: inst.artworkId,
+            medium: inst.medium ?? 'frame',
+            _wallIndex: inst.wallId ? (oldWallIdToIndex.get(inst.wallId) ?? null) : null,
+            position_x: inst.position_x,
+            position_y: inst.position_y,
+            position_z: inst.position_z,
+            rotation_x: inst.rotation_x,
+            rotation_y: inst.rotation_y,
+            rotation_z: inst.rotation_z,
+            scale_x: inst.scale_x,
+            scale_y: inst.scale_y,
+            scale_z: inst.scale_z,
+        }));
+
+        const newVersion = await prisma.$transaction(async (tx) => {
+            const version = await tx.exhibitionVersion.create({
+                data: {
+                    exhibition_id: exhibitionId,
+                    created_by_user_id: userId,
+                    parent_version_id: versionId,
+                    branch_name: 'main',
+                    comment: `Merge: ${sourceVersion.branch_name} → main`,
+                    is_published: false,
+                    walls: { create: wallsToCreate }
+                },
+                include: { walls: true }
+            });
+
+            const newWallIds = version.walls.map(w => w.id);
+            const instancesWithWallIds = instancesToCreate.map((inst: any) => {
+                const wallIndex = inst._wallIndex;
+                const wallId = (wallIndex != null && wallIndex >= 0 && wallIndex < newWallIds.length)
+                    ? newWallIds[wallIndex]
+                    : null;
+                const { _wallIndex, ...cleanInst } = inst;
+                return { ...cleanInst, wallId, versionId: version.id };
+            });
+
+            if (instancesWithWallIds.length > 0) {
+                await tx.artworkInstance.createMany({ data: instancesWithWallIds });
+            }
+
+            return tx.exhibitionVersion.findUniqueOrThrow({
+                where: { id: version.id },
+                include: {
+                    instances: { include: { artwork: { include: { asset: true } } } },
+                    walls: true,
+                    creator: { select: { id: true, email: true } }
+                }
+            });
+        });
+
+        res.status(201).json(newVersion);
+    } catch (e) {
+        console.error('Failed to merge version:', e);
+        res.status(500).json({ error: 'Failed to merge version' });
     }
 });

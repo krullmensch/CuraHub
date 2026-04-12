@@ -6,9 +6,10 @@ import { Save, X } from 'lucide-react';
 interface SaveVersionDialogProps {
   onSave: () => void;
   onCancel: () => void;
+  branchName?: string;
 }
 
-export const SaveVersionDialog = ({ onSave, onCancel }: SaveVersionDialogProps) => {
+export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: SaveVersionDialogProps) => {
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -33,6 +34,7 @@ export const SaveVersionDialog = ({ onSave, onCancel }: SaveVersionDialogProps) 
         },
         body: JSON.stringify({
           comment: comment.trim(),
+          branch_name: branchName,
           sourceVersionId: activeVersionId,
           instances: (() => {
             const walls = useEditorStore.getState().localWalls;
@@ -41,6 +43,7 @@ export const SaveVersionDialog = ({ onSave, onCancel }: SaveVersionDialogProps) 
               assetId: inst.assetId,
               wallId: inst.wallId ?? null,
               wallIndex: inst.wallId ? walls.findIndex(w => w.id === inst.wallId) : null,
+              medium: inst.medium ?? 'frame',
               position_x: inst.position_x,
               position_y: inst.position_y,
               position_z: inst.position_z,

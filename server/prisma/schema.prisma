@@ -83,6 +83,7 @@ model ExhibitionVersion {
   exhibition_id       Int
   exhibition          Exhibition @relation(fields: [exhibition_id], references: [id], onDelete: Cascade)
   parent_version_id   Int?
+  branch_name         String     @default("main")
   created_by_user_id  Int
   creator             User       @relation(fields: [created_by_user_id], references: [id])
   created_at          DateTime   @default(now())
