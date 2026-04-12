@@ -22,6 +22,7 @@ type GLTFResult = GLTF & {
     Traversen: THREE.Mesh
     Tür2001: THREE.Mesh
     Tür1001: THREE.Mesh
+    Fensterbank: THREE.Mesh
   }
   materials: {
     ['Material.005']: THREE.MeshStandardMaterial
@@ -29,6 +30,7 @@ type GLTFResult = GLTF & {
     Glass: THREE.MeshStandardMaterial
     ['Material.004']: THREE.MeshStandardMaterial
     ['Material.006']: THREE.MeshStandardMaterial
+    ['Black marble.001']: THREE.MeshStandardMaterial
   }
   animations: THREE.AnimationClip[]
 }
@@ -85,6 +87,7 @@ export function Satellit({ viewMode = 'firstPerson', ...props }: SatellitProps) 
       <mesh castShadow receiveShadow geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />
       <mesh castShadow receiveShadow geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={[6.33, 1, 0.12]} />
       <mesh castShadow receiveShadow geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={[-6.33, 1, 2.372]} />
+      <mesh castShadow receiveShadow geometry={nodes.Fensterbank.geometry} material={materials['Black marble.001']} />
     </group>
   )
 }

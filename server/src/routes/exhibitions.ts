@@ -144,13 +144,13 @@ exhibitionsRouter.post('/:id/poster', authenticate, requireProf, posterUpload.si
 
         // Delete old poster if exists
         if (exhibition.poster_path) {
-            const oldPath = path.resolve(exhibition.poster_path);
+            const oldPath = path.join(posterDir, path.basename(exhibition.poster_path));
             if (fs.existsSync(oldPath)) {
                 fs.unlinkSync(oldPath);
             }
         }
 
-        const relativePath = `server/uploads/posters/${outputFilename}`;
+        const relativePath = `uploads/posters/${outputFilename}`;
 
         await prisma.exhibition.update({
             where: { id: exhibitionId },
@@ -174,7 +174,7 @@ exhibitionsRouter.delete('/:id/poster', authenticate, requireProf, async (req: a
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         if (exhibition.poster_path) {
-            const oldPath = path.resolve(exhibition.poster_path);
+            const oldPath = path.join(posterDir, path.basename(exhibition.poster_path));
             if (fs.existsSync(oldPath)) {
                 fs.unlinkSync(oldPath);
             }

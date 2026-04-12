@@ -148,7 +148,7 @@ export const LoginPage = () => {
                 <Input
                   id="username"
                   type="text"
-                  placeholder="HSBI-Kennung"
+                  placeholder="amustermann"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
@@ -172,6 +172,7 @@ export const LoginPage = () => {
                 <Input
                   id="password"
                   type="password"
+                  placeholder="Dein HSBI Passwort"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   required
