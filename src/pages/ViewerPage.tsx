@@ -160,14 +160,24 @@ export const ViewerPage = () => {
             {/* Exhibition title overlay */}
             {data?.exhibition.title && (
                 <div className="fixed top-6 left-6 z-20 pointer-events-none select-none">
-                    <h1 
-                        className="text-white text-3xl font-bold tracking-tight drop-shadow-xl" 
+                    <h1
+                        className="text-white text-3xl font-bold tracking-tight drop-shadow-xl"
                         style={{ fontFamily: '"Funnel Display", sans-serif' }}
                     >
                         {data.exhibition.title}
                     </h1>
                 </div>
             )}
+
+            {/* Top-right nav button */}
+            <div className="fixed top-6 right-6 z-20">
+                <button
+                    onClick={() => window.open('/exhibitions', '_blank')}
+                    className="text-white/70 hover:text-white text-sm font-medium uppercase tracking-[0.15em] bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 backdrop-blur-sm px-4 py-2 rounded-lg transition-all duration-200"
+                >
+                    Ausstellungen
+                </button>
+            </div>
 
             {/* Fading Loading Overlay (Unifies API and Asset loading) */}
             {showLoading && (

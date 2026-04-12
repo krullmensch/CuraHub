@@ -26,14 +26,14 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls }: ScenePr
             {isEditor && <PlannerCameraSystem />}
 
             {/* Lighting Setup — bright gallery with soft ambient bounces */}
-            <ambientLight intensity={1.2} />
+            <ambientLight intensity={0.4} />
 
             {/* Environment map for indirect light bounces on materials */}
-            <Environment preset="warehouse" background={false} environmentIntensity={0.25} />
+            {/* <Environment preset="warehouse" background={false} environmentIntensity={0.25} /> */}
 
             {/* Key light — soft overhead from skylight direction */}
-            <directionalLight
-                position={[0, 8, 2]}
+            {/* <directionalLight
+                position={[-4, 8, -8]}
                 intensity={0.8}
                 castShadow
                 shadow-mapSize={[2048, 2048]}
@@ -42,13 +42,13 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls }: ScenePr
                 shadow-radius={4}
             >
                 <orthographicCamera attach="shadow-camera" args={[-15, 15, 15, -15]} near={0.1} far={25} />
-            </directionalLight>
+            </directionalLight> */}
 
             {/* Fill light — simulate bounce off white walls */}
             <directionalLight position={[-6, 6, -4]} intensity={0.3} color="#f8f8ff" />
 
             {/* Hemisphere light — sky/ground bounce */}
-            <hemisphereLight args={['#ffffff', '#f0ece6', 0.4]} />
+            {/* <hemisphereLight args={['#ffffff', '#f0ece6', 0.4]} /> */}
 
             {isEditor && viewMode !== 'firstPerson' && (
                 <Grid args={[20, 20]} cellColor="white" sectionColor="gray" infiniteGrid fadeDistance={50} position={[0, -0.01, 0]} />

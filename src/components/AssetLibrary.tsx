@@ -103,6 +103,7 @@ export const AssetLibrary = () => {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [contextMenu, setContextMenu] = useState<{ assetId: number; x: number; y: number } | null>(null);
   const activeProjectId = useEditorStore((state) => state.activeProjectId);
+  const setDragging = useEditorStore((state) => state.setDragging);
 
   // Folder state
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -388,6 +389,25 @@ export const AssetLibrary = () => {
     dragMovedRef.current = true;
     e.dataTransfer.setData('asset-id', assetId.toString());
     e.dataTransfer.effectAllowed = 'move';
+
+    // Set store drag state so ArtworkPlacement and EditorPage onDrop can work
+    const asset = assets.find((a) => a.id === assetId);
+    if (asset) {
+      const isArtwork = !!asset.artwork;
+      const id = isArtwork ? asset.artwork!.id : asset.id;
+      setDragging(true, {
+        id,
+        type: isArtwork ? 'artwork' : 'asset',
+        assetType: (asset.type as 'image' | 'video' | 'model3d') || 'image',
+        width: asset.width,
+        height: asset.height,
+        dpi: asset.dpi || 72,
+        url: asset.type === 'video' && asset.thumbnailPath ? asset.thumbnailPath : asset.path,
+        videoUrl: asset.type === 'video' ? asset.path : undefined,
+        artworkWidth: asset.artwork?.width,
+        artworkHeight: asset.artwork?.height,
+      });
+    }
 
     // Build a custom drag ghost showing a stack of cards for multi-selections
     const draggedIds = selectedIds.includes(assetId) && selectedIds.length > 1
@@ -958,6 +978,7 @@ export const AssetLibrary = () => {
                     key={asset.id}
                     draggable
                     onDragStart={(e) => handleAssetDragStart(e, asset.id)}
+                    onDragEnd={() => setDragging(false, null)}
                     onContextMenu={(e) => {
                       e.preventDefault();
                       setContextMenu({ assetId: asset.id, x: e.clientX, y: e.clientY });

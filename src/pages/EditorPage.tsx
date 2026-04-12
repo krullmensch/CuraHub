@@ -7,7 +7,7 @@ import { Scene } from '../components/Scene';
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { useEditorStore, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2 } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
@@ -121,6 +121,11 @@ export const EditorPage = () => {
   // Captured placement awaiting the user's Monitor/Beamer choice (video drops only)
   const [pendingVideoDrop, setPendingVideoDrop] = useState<PendingVideoDrop | null>(null);
 
+  // Ref to the canvas container — used by capture-phase drag listeners
+  const containerRef = useRef<HTMLDivElement>(null);
+  // Stable ref to placeInstance so the drag useEffect doesn't need it as a dep
+  const placeInstanceRef = useRef<(medium: MediumType, snapshot: PendingVideoDrop) => number>(null!);
+
   // Shared instance-creation helper used by both the immediate drop path (image / model3d)
   // and the deferred video-drop path (after Monitor/Beamer is picked).
   const placeInstance = (medium: MediumType, snapshot: PendingVideoDrop): number => {
@@ -168,6 +173,91 @@ export const EditorPage = () => {
 
     return newInstanceId;
   };
+  // Keep ref in sync every render
+  placeInstanceRef.current = placeInstance;
+
+  // ── Capture-phase drag listeners ──────────────────────────────────────────
+  // UploadDropzone (a common ancestor) calls e.stopPropagation() in its
+  // onDragOver handler, and Chrome does not honour pointer-events:none for
+  // drag events, so the JSX onDragOver/onDrop on this component's own div
+  // are never reached. Document-level capture listeners fire before any
+  // child handler and are bounds-checked against the canvas container.
+  useEffect(() => {
+    const handleDragOver = (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes('asset-id')) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      if (e.clientX < rect.left || e.clientX > rect.right ||
+          e.clientY < rect.top  || e.clientY > rect.bottom) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      setDragPosition({ x: ndcX, y: ndcY });
+    };
+
+    const handleDrop = async (e: DragEvent) => {
+      if (!e.dataTransfer?.types.includes('asset-id')) return;
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      if (e.clientX < rect.left || e.clientX > rect.right ||
+          e.clientY < rect.top  || e.clientY > rect.bottom) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const { isDragging, validPlacement, draggedAsset } = useEditorStore.getState().dragState;
+
+      if (isDragging && validPlacement && draggedAsset) {
+        if (!useEditorStore.getState().activeVersionId) {
+          gooeyToast.error("No Project Selected", {
+            description: "Please select or create a project first.",
+          });
+        } else {
+          try {
+            const { position, rotation } = validPlacement;
+            const assetType = draggedAsset.assetType || 'image';
+            const snapshot: PendingVideoDrop = {
+              position,
+              rotation,
+              wallId: validPlacement.wallId ?? null,
+              draggedAsset,
+            };
+            if (assetType === 'video') {
+              setPendingVideoDrop(snapshot);
+            } else {
+              const medium: MediumType = assetType === 'model3d' ? 'model3d' : 'frame';
+              placeInstanceRef.current(medium, snapshot);
+              const label = assetType === 'model3d' ? '3D Model' : 'Artwork';
+              gooeyToast.success(`${label} Placed`, {
+                description: `Placed ${draggedAsset.url.split('/').pop()}`,
+              });
+            }
+          } catch (err) {
+            console.error('Placement error:', err);
+            gooeyToast.error('Placement Failed', {
+              description: 'Could not place artwork.',
+            });
+          }
+        }
+      } else if (isDragging && !validPlacement) {
+        gooeyToast.error('Invalid Placement', {
+          description: draggedAsset?.assetType === 'model3d'
+            ? 'Cannot place here. Try the floor.'
+            : 'Cannot place here. Try a wall.',
+        });
+      }
+
+      setDragging(false, null);
+      setDragPosition(null);
+    };
+
+    document.addEventListener('dragover', handleDragOver, true);
+    document.addEventListener('drop', handleDrop, true);
+    return () => {
+      document.removeEventListener('dragover', handleDragOver, true);
+      document.removeEventListener('drop', handleDrop, true);
+    };
+  }, [setDragPosition, setDragging]);
 
   // Blender-style keyboard shortcuts
   useEffect(() => {
@@ -301,78 +391,9 @@ export const EditorPage = () => {
   // but for full screen editor, window coordinates are fine for NDC.
   
   return (
-    <div 
+    <div
+        ref={containerRef}
         style={{ width: '100%', height: '100%', position: 'relative' }}
-        onDragOver={(e) => {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            // Calculate properties relative to the generic container
-            const rect = e.currentTarget.getBoundingClientRect();
-            const x = e.clientX - rect.left;
-            const y = e.clientY - rect.top;
-            
-            // Calculate NDC
-            const ndcX = (x / rect.width) * 2 - 1;
-            const ndcY = -(y / rect.height) * 2 + 1;
-            
-            setDragPosition({ x: ndcX, y: ndcY });
-        }}
-        onDrop={async (e) => {
-            e.preventDefault();
-            e.stopPropagation();
-
-            const { isDragging, validPlacement, draggedAsset } = useEditorStore.getState().dragState;
-
-            // If we have a valid placement from the Raycaster (via store), place it.
-            if (isDragging && validPlacement && draggedAsset) {
-                if (!useEditorStore.getState().activeVersionId) {
-                    gooeyToast.error("No Project Selected", {
-                        description: "Please select or create a project first.",
-                    });
-                } else {
-                try {
-                    const { position, rotation } = validPlacement;
-                    const assetType = draggedAsset.assetType || 'image';
-
-                    const snapshot: PendingVideoDrop = {
-                        position,
-                        rotation,
-                        wallId: validPlacement.wallId ?? null,
-                        draggedAsset,
-                    };
-
-                    if (assetType === 'video') {
-                        // Defer placement until the user picks Monitor or Beamer in the modal.
-                        setPendingVideoDrop(snapshot);
-                    } else {
-                        const medium: MediumType = assetType === 'model3d' ? 'model3d' : 'frame';
-                        placeInstance(medium, snapshot);
-
-                        const label = assetType === 'model3d' ? '3D Model' : 'Artwork';
-                        gooeyToast.success(`${label} Placed`, {
-                            description: `Placed ${draggedAsset.url.split('/').pop()}`,
-                        });
-                    }
-                } catch (err) {
-                    console.error("Placement error:", err);
-                    gooeyToast.error("Placement Failed", {
-                        description: "Could not place artwork.",
-                    });
-                }
-                } // end else for version check
-            } else if (isDragging && !validPlacement) {
-                 gooeyToast.error("Invalid Placement", {
-                    description: draggedAsset?.assetType === 'model3d'
-                        ? "Cannot place here. Try the floor."
-                        : "Cannot place here. Try a wall.",
-                });
-            }
-
-            // Reset dragging state (the modal, if shown, owns its own captured snapshot)
-            setDragging(false, null);
-            setDragPosition(null);
-        }}
     >
       <Canvas 
         shadows 
