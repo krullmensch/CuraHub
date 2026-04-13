@@ -1,23 +1,32 @@
 import { memo } from 'react';
+import type React from 'react';
 import { Handle, Position } from '@xyflow/react';
 import type { NodeProps, Node } from '@xyflow/react';
 import { Globe, Star } from 'lucide-react';
 import type { VersionNodeData } from './buildVersionGraph';
 
 export const VersionNode = memo(({ data }: NodeProps<Node<VersionNodeData>>) => {
-  const { version, isActive } = data;
+  const { version, isActive, isOnActiveBranch, isLatestOnBranch, branchColor } = data;
 
-  const dotColor = isActive
-    ? 'bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.9)]'
-    : version.is_featured
-    ? 'bg-yellow-400'
+  const dotStyle: React.CSSProperties = version.is_featured
+    ? { backgroundColor: '#facc15' }
     : version.is_published
-    ? 'bg-green-500'
-    : 'bg-zinc-500';
+    ? { backgroundColor: '#22c55e' }
+    : isActive
+    ? { backgroundColor: branchColor, boxShadow: `0 0 12px ${branchColor}, 0 0 4px ${branchColor}` }
+    : isOnActiveBranch
+    ? { backgroundColor: branchColor, boxShadow: `0 0 8px ${branchColor}cc` }
+    : isLatestOnBranch
+    ? { backgroundColor: branchColor, boxShadow: `0 0 5px ${branchColor}99` }
+    : { backgroundColor: `${branchColor}88` };
 
-  const cardClass = isActive
-    ? 'bg-blue-500/10 border-blue-500/60 shadow-[0_0_12px_rgba(59,130,246,0.2)]'
-    : 'bg-zinc-900 border-zinc-700 hover:border-zinc-500';
+  const cardStyle: React.CSSProperties = isActive
+    ? { borderColor: branchColor, backgroundColor: `${branchColor}25`, boxShadow: `0 0 30px ${branchColor}99, 0 0 12px ${branchColor}66, 0 0 4px ${branchColor}` }
+    : isOnActiveBranch
+    ? { borderColor: branchColor, backgroundColor: `${branchColor}18`, boxShadow: `0 0 18px ${branchColor}66, 0 0 6px ${branchColor}44` }
+    : isLatestOnBranch
+    ? { borderColor: branchColor, backgroundColor: `${branchColor}0c` }
+    : { borderColor: `${branchColor}44`, backgroundColor: `${branchColor}07` };
 
   const shortComment = version.comment
     ? version.comment.length > 28
@@ -35,18 +44,21 @@ export const VersionNode = memo(({ data }: NodeProps<Node<VersionNodeData>>) => 
 
   return (
     <div
-      className={`w-44 rounded-lg border text-left transition-all duration-150 select-none ${cardClass}`}
-      style={{ cursor: 'context-menu' }}
+      className="w-44 rounded-lg border text-left transition-all duration-150 select-none"
+      style={{ cursor: 'pointer', ...cardStyle }}
     >
-      <Handle type="target" position={Position.Left} className="!bg-zinc-600 !w-2 !h-2 !border-zinc-500" />
-      <Handle type="source" position={Position.Right} className="!bg-zinc-600 !w-2 !h-2 !border-zinc-500" />
+      <Handle type="target" position={Position.Left} className="!opacity-0 !pointer-events-none !w-1 !h-1" />
+      <Handle type="source" position={Position.Right} className="!opacity-0 !pointer-events-none !w-1 !h-1" />
 
       <div className="px-3 pt-2.5 pb-2">
         {/* Top row: dot + branch chip + badges */}
         <div className="flex items-center gap-1.5 mb-1.5">
-          <div className={`shrink-0 w-2 h-2 rounded-full ${dotColor}`} />
-          <span className={`text-[10px] font-medium uppercase tracking-wider truncate ${isActive ? 'text-blue-400' : 'text-zinc-500'}`}>
-            {isActive ? 'Aktiv' : version.branch_name}
+          <div className="shrink-0 w-2 h-2 rounded-full" style={dotStyle} />
+          <span
+            className="text-[10px] font-medium uppercase tracking-wider truncate"
+            style={{ color: branchColor }}
+          >
+            {version.branch_name}
           </span>
           <div className="ml-auto flex items-center gap-1">
             {version.is_featured && <Star className="h-3 w-3 text-yellow-400 shrink-0" />}

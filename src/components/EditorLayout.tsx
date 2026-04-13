@@ -157,6 +157,12 @@ export const EditorLayout = () => {
                     <BookOpen className="h-3.5 w-3.5" />
                     Wiki
                 </a>
+                <Link
+                    to="/exhibitions"
+                    className={`transition-colors ${isActive('/exhibitions') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
+                >
+                    Ausstellungen
+                </Link>
                 {user?.role === 'admin' && (
                     <Link
                         to="/users"

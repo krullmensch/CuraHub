@@ -185,6 +185,9 @@ export const EditorPage = () => {
   useEffect(() => {
     const handleDragOver = (e: DragEvent) => {
       if (!e.dataTransfer?.types.includes('asset-id')) return;
+      // Skip when the target is inside a zone that handles its own asset drops
+      // (Asset Library overlay, sidebar folder strip, etc.)
+      if ((e.target as Element).closest?.('[data-asset-drop-zone]')) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       if (e.clientX < rect.left || e.clientX > rect.right ||
@@ -198,6 +201,7 @@ export const EditorPage = () => {
 
     const handleDrop = async (e: DragEvent) => {
       if (!e.dataTransfer?.types.includes('asset-id')) return;
+      if ((e.target as Element).closest?.('[data-asset-drop-zone]')) return;
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       if (e.clientX < rect.left || e.clientX > rect.right ||

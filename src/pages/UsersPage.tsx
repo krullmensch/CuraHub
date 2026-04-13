@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Trash2, Layers, ArrowLeft } from 'lucide-react';
 import { UserExhibitionsModal } from '../components/UserExhibitionsModal';
@@ -30,6 +30,7 @@ const ROLE_LABELS: Record<AppRole, string> = {
 };
 
 export const UsersPage = () => {
+  const navigate = useNavigate();
   const token = useAuthStore((s) => s.token);
   const currentUser = useAuthStore((s) => s.user);
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -98,10 +99,10 @@ export const UsersPage = () => {
         <Link to="/" className="font-display text-xl font-light tracking-wide text-white">
           Cura<span className="font-semibold">Hub</span>
         </Link>
-        <Link to="/" className="flex items-center gap-1.5 text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
+        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
           <ArrowLeft className="w-3 h-3" />
           Zurück
-        </Link>
+        </button>
       </nav>
 
       <div className="pt-24 px-8 pb-16 max-w-5xl mx-auto">

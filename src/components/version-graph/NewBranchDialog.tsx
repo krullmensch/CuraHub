@@ -4,17 +4,20 @@ import type { Version } from './buildVersionGraph';
 
 interface NewBranchDialogProps {
   sourceVersion: Version;
+  existingBranchNames: string[];
   onConfirm: (branchName: string) => Promise<void>;
   onCancel: () => void;
 }
 
-export const NewBranchDialog = ({ sourceVersion, onConfirm, onCancel }: NewBranchDialogProps) => {
+export const NewBranchDialog = ({ sourceVersion, existingBranchNames, onConfirm, onCancel }: NewBranchDialogProps) => {
   const [branchName, setBranchName] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const isReserved = branchName.trim().toLowerCase() === 'main';
-  const isValid = branchName.trim().length > 0 && !isReserved;
+  const trimmed = branchName.trim();
+  const isReserved = trimmed.toLowerCase() === 'main';
+  const isDuplicate = !isReserved && existingBranchNames.includes(trimmed);
+  const isValid = trimmed.length > 0 && !isReserved && !isDuplicate;
 
   const handleConfirm = async () => {
     if (!isValid) return;
@@ -62,7 +65,10 @@ export const NewBranchDialog = ({ sourceVersion, onConfirm, onCancel }: NewBranc
               autoFocus
             />
             {isReserved && (
-              <p className="text-xs text-red-400 mt-1">"main" ist reserviert und kann nicht als Branch-Name verwendet werden.</p>
+              <p className="text-xs text-red-400 mt-1">„main" ist reserviert und kann nicht als Branch-Name verwendet werden.</p>
+            )}
+            {isDuplicate && (
+              <p className="text-xs text-red-400 mt-1">Ein Branch mit diesem Namen existiert bereits.</p>
             )}
           </div>
 

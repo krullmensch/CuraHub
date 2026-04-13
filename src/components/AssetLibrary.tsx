@@ -800,7 +800,7 @@ export const AssetLibrary = () => {
       onUploadError={(msg) => gooeyToast.error('Upload fehlgeschlagen', { description: msg })}
       className="h-full w-full flex flex-col bg-zinc-950"
     >
-      <div className="h-full w-full flex min-h-0">
+      <div data-asset-drop-zone className="h-full w-full flex min-h-0">
         {/* Left rail — folders */}
         <aside className="w-64 shrink-0 border-r border-zinc-800 bg-zinc-950 flex flex-col min-h-0">
           <div className="p-4 border-b border-zinc-800">

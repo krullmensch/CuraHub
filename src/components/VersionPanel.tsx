@@ -12,7 +12,7 @@ import {
   type Edge,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { History, ChevronDown, Layers, Save } from 'lucide-react';
+import { ChevronDown, Layers, Save, LayoutDashboard, GitBranch } from 'lucide-react';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { SaveVersionDialog } from './SaveVersionDialog';
@@ -61,6 +61,9 @@ export const VersionPanel = ({
   const resizeStartRef = useRef<{ y: number; height: number } | null>(null);
   const rfInstanceRef = useRef<ReactFlowInstance<Node<VersionNodeData>, Edge> | null>(null);
   const hasInitialFit = useRef(false);
+  const activeVersionIdRef = useRef<number | null>(null);
+  const prevVersionCountRef = useRef<number>(0);
+  const versionsRef = useRef<Version[]>([]);
 
   const token = useAuthStore((state) => state.token);
   const isCurator = useAuthStore((state) => state.isCurator);
@@ -71,6 +74,10 @@ export const VersionPanel = ({
 
   const canCurate = isCurator;
 
+  // Keep refs in sync so effects can read latest values without re-triggering
+  activeVersionIdRef.current = activeVersionId ?? null;
+  versionsRef.current = versions;
+
   // --- Graph state ---
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
     () => buildVersionGraph(versions, activeVersionId ?? null),
@@ -79,11 +86,47 @@ export const VersionPanel = ({
   const [nodes, setNodes, onNodesChange] = useNodesState<Node<VersionNodeData>>(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+  // When versions list changes → recompute layout.
+  // If count grew (new version/branch created) → full tidy + fitView.
+  // Otherwise (initial load, deletion) → preserve existing positions.
   useEffect(() => {
-    const { nodes: n, edges: e } = buildVersionGraph(versions, activeVersionId ?? null);
-    setNodes(n);
-    setEdges(e);
-  }, [versions, activeVersionId, setNodes, setEdges]);
+    const { nodes: n, edges: e } = buildVersionGraph(versions, activeVersionIdRef.current);
+    const prev = prevVersionCountRef.current;
+    prevVersionCountRef.current = versions.length;
+
+    if (versions.length !== prev) {
+      // Count changed (new version/branch added, or deletion) → full tidy + fitView
+      setNodes(n);
+      setEdges(e);
+      setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.3, maxZoom: 1.2 }), 50);
+    } else {
+      // Same count (e.g. exhibition switched, data refreshed) → preserve positions
+      setNodes((prevNodes) => {
+        const existingPositions = new Map(prevNodes.map((node) => [node.id, node.position]));
+        return n.map((node) => ({
+          ...node,
+          position: existingPositions.get(node.id) ?? node.position,
+        }));
+      });
+      setEdges(e);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [versions, setNodes, setEdges]);
+
+  // When only activeVersionId changes → update isActive + isOnActiveBranch without touching positions
+  useEffect(() => {
+    const activeBranch = versionsRef.current.find((v) => v.id === activeVersionId)?.branch_name ?? null;
+    setNodes((prev) =>
+      prev.map((node) => ({
+        ...node,
+        data: {
+          ...node.data,
+          isActive: node.id === String(activeVersionId),
+          isOnActiveBranch: (node.data as VersionNodeData).version.branch_name === activeBranch,
+        },
+      }))
+    );
+  }, [activeVersionId, setNodes]);
 
   // --- Fetch ---
   const fetchVersions = useCallback(async () => {
@@ -145,11 +188,19 @@ export const VersionPanel = ({
   }, [isResizing]);
 
   // --- Context menu ---
-  const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
+  const openContextMenu = useCallback((event: { clientX: number; clientY: number; preventDefault: () => void }, node: Node<VersionNodeData>) => {
     event.preventDefault();
     const version = (node.data as VersionNodeData).version;
     setContextMenu({ version, x: event.clientX, y: event.clientY });
   }, []);
+
+  const onNodeContextMenu: NodeMouseHandler = useCallback((event, node) => {
+    openContextMenu(event, node as Node<VersionNodeData>);
+  }, [openContextMenu]);
+
+  const onNodeClick: NodeMouseHandler = useCallback((event, node) => {
+    openContextMenu(event, node as Node<VersionNodeData>);
+  }, [openContextMenu]);
 
   // --- Actions ---
   const handleLoad = useCallback(
@@ -178,7 +229,11 @@ export const VersionPanel = ({
         );
         if (res.ok) {
           if (activeVersionId === version.id) {
-            setActiveVersion(null);
+            const fallback =
+              versions.find((v) => v.id === version.parent_version_id) ??
+              versions.find((v) => v.parent_version_id === null) ??
+              null;
+            setActiveVersion(fallback?.id ?? null);
             triggerRefresh();
           }
           fetchVersions();
@@ -191,6 +246,27 @@ export const VersionPanel = ({
       }
     },
     [token, activeExhibitionId, activeVersionId, setActiveVersion, triggerRefresh, fetchVersions]
+  );
+
+  const handlePublish = useCallback(
+    async (version: Version) => {
+      if (!token || !activeExhibitionId) return;
+      try {
+        const res = await fetch(
+          `/api/exhibitions/${activeExhibitionId}/versions/${version.id}/publish`,
+          { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (res.ok) {
+          fetchVersions();
+        } else {
+          const err = await res.json();
+          alert(err.error || 'Fehler beim Veröffentlichen');
+        }
+      } catch {
+        alert('Netzwerkfehler beim Veröffentlichen');
+      }
+    },
+    [token, activeExhibitionId, fetchVersions]
   );
 
   const handleConfirmBranch = useCallback(
@@ -238,16 +314,58 @@ export const VersionPanel = ({
     triggerRefresh();
   }, [mergeSourceVersion, token, activeExhibitionId, fetchVersions, setActiveVersion, triggerRefresh]);
 
+  // --- Tidy layout ---
+  const handleTidyLayout = useCallback(() => {
+    const { nodes: n, edges: e } = buildVersionGraph(versions, activeVersionId ?? null);
+    setNodes(n);
+    setEdges(e);
+    setTimeout(() => rfInstanceRef.current?.fitView({ padding: 0.3, maxZoom: 1.2 }), 50);
+  }, [versions, activeVersionId, setNodes, setEdges]);
+
   // --- Toggle button ---
+  const activeVersion = versions.find((v) => v.id === activeVersionId);
+  const branchLabel = activeVersion?.branch_name ?? '–';
+  const versionLabel = activeVersion
+    ? (activeVersion.comment || `v${activeVersion.id}`)
+    : '–';
+  const toggleText = `${branchLabel} / ${versionLabel}`;
+
+  const toggleTextRef = useRef<HTMLSpanElement>(null);
+  const toggleContainerRef = useRef<HTMLSpanElement>(null);
+  const [needsMarquee, setNeedsMarquee] = useState(false);
+
+  useEffect(() => {
+    const textEl = toggleTextRef.current;
+    const containerEl = toggleContainerRef.current;
+    if (!textEl || !containerEl) { setNeedsMarquee(false); return; }
+    setNeedsMarquee(textEl.scrollWidth > containerEl.clientWidth);
+  }, [toggleText, isOpen]);
+
   const toggleButton = (
     <button
       onClick={onToggle}
       title="Versionen anzeigen"
-      className={`absolute bottom-0 ${rightSidebarOpen ? 'right-[20.25rem]' : 'right-9'} w-10 h-10 bg-blue-600 border border-blue-700 border-b-0 rounded-t-xl flex items-center justify-center hover:bg-blue-500 transition-all duration-300 z-10 shadow-[0_-4px_15px_-3px_rgba(59,130,246,0.3)] ${
+      className={`absolute bottom-0 ${rightSidebarOpen ? 'right-[20.25rem]' : 'right-9'} h-8 max-w-[16rem] bg-blue-600 border border-blue-700 border-b-0 rounded-t-xl flex items-center gap-2 px-3 hover:bg-blue-500 transition-all duration-300 z-10 shadow-[0_-4px_15px_-3px_rgba(59,130,246,0.3)] ${
         isOpen ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
       }`}
     >
-      <History className="h-4 w-4 text-white" />
+      <GitBranch className="h-3.5 w-3.5 text-blue-200 shrink-0" />
+      <span
+        ref={toggleContainerRef}
+        className="overflow-hidden whitespace-nowrap text-xs font-medium text-white min-w-0"
+      >
+        <span
+          ref={toggleTextRef}
+          className={needsMarquee ? 'inline-block animate-marquee' : ''}
+        >
+          {toggleText}
+        </span>
+        {needsMarquee && (
+          <span className="inline-block animate-marquee pl-8" aria-hidden>
+            {toggleText}
+          </span>
+        )}
+      </span>
     </button>
   );
 
@@ -284,6 +402,14 @@ export const VersionPanel = ({
               Version speichern
             </button>
             <button
+              onClick={handleTidyLayout}
+              disabled={versions.length === 0}
+              title="Nodes neu anordnen"
+              className="p-1 rounded-md text-blue-100 hover:text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              <LayoutDashboard className="h-4 w-4" />
+            </button>
+            <button
               onClick={onToggle}
               className="p-1 rounded-md text-blue-100 hover:text-white hover:bg-blue-700 transition-colors"
               title="Schließen"
@@ -311,6 +437,7 @@ export const VersionPanel = ({
               edges={edges}
               onNodesChange={onNodesChange}
               onEdgesChange={onEdgesChange}
+              onNodeClick={onNodeClick}
               onNodeContextMenu={onNodeContextMenu}
               nodeTypes={nodeTypes}
               onInit={(instance) => {
@@ -320,6 +447,9 @@ export const VersionPanel = ({
                   instance.fitView({ padding: 0.3, maxZoom: 1.2 });
                 }
               }}
+              nodesDraggable={false}
+              nodesConnectable={false}
+              connectOnClick={false}
               minZoom={0.3}
               maxZoom={2}
               proOptions={{ hideAttribution: true }}
@@ -349,6 +479,7 @@ export const VersionPanel = ({
           onLoad={handleLoad}
           onNewBranch={handleNewBranch}
           onMerge={handleMerge}
+          onPublish={handlePublish}
           onDelete={handleDelete}
         />
       )}
@@ -357,6 +488,7 @@ export const VersionPanel = ({
       {branchSourceVersion && (
         <NewBranchDialog
           sourceVersion={branchSourceVersion}
+          existingBranchNames={[...new Set(versions.map((v) => v.branch_name))]}
           onConfirm={handleConfirmBranch}
           onCancel={() => setBranchSourceVersion(null)}
         />

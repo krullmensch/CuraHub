@@ -15,7 +15,26 @@ export interface Version {
 export interface VersionNodeData {
   version: Version;
   isActive: boolean;
+  isOnActiveBranch: boolean;
+  isLatestOnBranch: boolean;
+  branchColor: string;
   [key: string]: unknown;
+}
+
+const BRANCH_PALETTE = [
+  '#3b82f6', // blue   — main
+  '#a855f7', // purple
+  '#ec4899', // pink
+  '#10b981', // emerald
+  '#f59e0b', // amber
+  '#06b6d4', // cyan
+  '#f97316', // orange
+  '#84cc16', // lime
+];
+
+function getBranchColor(branchOrder: string[], name: string): string {
+  const idx = branchOrder.indexOf(name);
+  return BRANCH_PALETTE[idx >= 0 ? idx % BRANCH_PALETTE.length : 0];
 }
 
 const NODE_WIDTH = 180;
@@ -45,14 +64,41 @@ export function buildVersionGraph(
 
   const byId = new Map(sorted.map((v) => [v.id, v]));
 
-  // Build parent → [children] map (sorted chronologically so fork order is stable)
+  // Assign stable color indices: main always first, others in first-appearance order
+  const branchOrder: string[] = ['main'];
+  for (const v of sorted) {
+    if (!branchOrder.includes(v.branch_name)) branchOrder.push(v.branch_name);
+  }
+
+  // Detect merge-back nodes: parent is on a different branch, but this node's
+  // branch_name already has earlier versions (i.e. it's merging back, not forking).
+  // For layout we re-parent these to their most recent same-branch predecessor so
+  // they land on the correct Y row. The real parent_version_id is kept for edges.
+  const layoutParentOf = new Map<number, number>();
+  for (const v of sorted) {
+    if (v.parent_version_id == null) continue;
+    const parent = byId.get(v.parent_version_id);
+    if (!parent || parent.branch_name === v.branch_name) continue;
+    // Child branch differs from parent branch — fork or merge-back?
+    const sameBranchBefore = sorted.filter(
+      (s) => s.branch_name === v.branch_name &&
+             new Date(s.created_at) < new Date(v.created_at)
+    );
+    if (sameBranchBefore.length > 0) {
+      // merge-back: layout parent = most recent same-branch predecessor
+      layoutParentOf.set(v.id, sameBranchBefore[sameBranchBefore.length - 1].id);
+    }
+  }
+
+  // Build parent → [children] map using layout parents for merge nodes
   const childrenOf = new Map<number, Version[]>();
   for (const v of sorted) {
     if (!childrenOf.has(v.id)) childrenOf.set(v.id, []);
-    if (v.parent_version_id != null) {
-      const arr = childrenOf.get(v.parent_version_id) ?? [];
+    const effectiveParentId = layoutParentOf.get(v.id) ?? v.parent_version_id;
+    if (effectiveParentId != null) {
+      const arr = childrenOf.get(effectiveParentId) ?? [];
       arr.push(v);
-      childrenOf.set(v.parent_version_id, arr);
+      childrenOf.set(effectiveParentId, arr);
     }
   }
 
@@ -73,14 +119,19 @@ export function buildVersionGraph(
       (c) => c.branch_name === byId.get(id)!.branch_name
     );
 
-    // Height of the linear chain is the height of the last same-branch child
+    // Height of the linear chain (follows same-branch succession)
     const chainHeight =
       sameBranch.length > 0 ? computeHeight(sameBranch[0].id) : 1;
 
-    // Height contributed by forks
+    // Height contributed by forks (stacked below the chain)
     const forkTotal = forks.reduce((sum, f) => sum + computeHeight(f.id), 0);
 
-    const h = Math.max(chainHeight, forkTotal === 0 ? 1 : forkTotal);
+    // When forks exist alongside a same-branch child they are placed BELOW the
+    // chain row, so the total height is chain + forks. Without a same-branch
+    // child they are centered around the parent so only their own total matters.
+    const h = sameBranch.length > 0
+      ? chainHeight + forkTotal
+      : forkTotal === 0 ? 1 : forkTotal;
     subtreeHeight.set(id, h);
     return h;
   }
@@ -109,12 +160,17 @@ export function buildVersionGraph(
 
     // Fork branches → step right + distribute vertically
     if (forks.length > 0) {
-      // Compute total height span needed for all forks
       const heights = forks.map((f) => subtreeHeight.get(f.id) ?? 1);
       const totalH = heights.reduce((s, h) => s + h, 0);
 
-      // Start Y so the block of forks is centered around parent Y
-      let curY = y - ((totalH - 1) * Y_FORK) / 2;
+      let curY: number;
+      if (sameBranch.length > 0) {
+        // Main chain continues at y — place forks below it to avoid overlap
+        curY = y + Y_FORK;
+      } else {
+        // No main chain — center the forks around the parent Y
+        curY = y - ((totalH - 1) * Y_FORK) / 2;
+      }
 
       for (let i = 0; i < forks.length; i++) {
         const forkCenterY = curY + ((heights[i] - 1) * Y_FORK) / 2;
@@ -130,13 +186,30 @@ export function buildVersionGraph(
     rootY += (subtreeHeight.get(root.id) ?? 1) * Y_FORK + Y_FORK;
   }
 
+  // Find the latest version per branch (leaf = no same-branch child)
+  const latestPerBranch = new Set<number>();
+  const branchNames = new Set(sorted.map((v) => v.branch_name));
+  for (const branch of branchNames) {
+    const branchVersions = sorted.filter((v) => v.branch_name === branch);
+    const leaf = branchVersions.find(
+      (v) => !(childrenOf.get(v.id) ?? []).some((c) => c.branch_name === branch)
+    );
+    if (leaf) latestPerBranch.add(leaf.id);
+  }
+
   const nodes: Node<VersionNodeData>[] = sorted.map((v) => {
     const pos = positions.get(v.id) ?? { x: 0, y: 0 };
     return {
       id: String(v.id),
       type: 'versionNode',
       position: pos,
-      data: { version: v, isActive: v.id === activeVersionId },
+      data: {
+        version: v,
+        isActive: v.id === activeVersionId,
+        isOnActiveBranch: v.branch_name === (byId.get(activeVersionId ?? -1)?.branch_name ?? null),
+        isLatestOnBranch: latestPerBranch.has(v.id),
+        branchColor: getBranchColor(branchOrder, v.branch_name),
+      },
       width: NODE_WIDTH,
       height: NODE_HEIGHT,
     };
@@ -145,17 +218,16 @@ export function buildVersionGraph(
   const edges: Edge[] = sorted
     .filter((v) => v.parent_version_id != null)
     .map((v) => {
-      const isFork =
-        byId.get(v.parent_version_id!)?.branch_name !== v.branch_name;
+      const color = getBranchColor(branchOrder, v.branch_name);
       return {
         id: `e${v.parent_version_id}-${v.id}`,
         source: String(v.parent_version_id),
         target: String(v.id),
-        type: isFork ? 'smoothstep' : 'default',
+        type: 'smoothstep',
         style: {
-          stroke: isFork ? '#6366f1' : '#3f3f46',
-          strokeWidth: isFork ? 1.5 : 1,
-          strokeDasharray: isFork ? '4 3' : undefined,
+          stroke: color,
+          strokeWidth: 1.5,
+          strokeDasharray: '4 3',
         },
         animated: false,
       };

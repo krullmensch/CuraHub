@@ -58,7 +58,18 @@ export const HomePage = () => {
   }, []);
 
   return (
-    <div className="h-screen w-full overflow-y-auto bg-black text-white">
+    <div className="h-screen w-full overflow-y-auto bg-black text-white relative">
+      {/* ── Background Video ── */}
+      <video
+        autoPlay
+        muted
+        loop
+        playsInline
+        className="fixed inset-0 w-full h-full object-cover pointer-events-none z-0 grayscale"
+        src="/BG_Video_CuraHub.webm"
+      />
+      <div className="fixed inset-0 bg-black/70 pointer-events-none z-0" />
+
       {/* ── Nav ── */}
       <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 bg-black/80 backdrop-blur-md border-b border-white/5">
         <Link to="/" className="font-display text-xl font-light tracking-wide text-white">
@@ -95,7 +106,7 @@ export const HomePage = () => {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="min-h-screen flex flex-col items-center justify-center px-8 pt-20 homepage-fade-up">
+      <section className="relative z-10 min-h-screen flex flex-col items-center justify-center px-8 pt-20 homepage-fade-up">
         {loading ? (
           <div className="flex flex-col items-center gap-6 w-full max-w-xl">
             <Skeleton className="h-4 w-32 bg-zinc-800" />
@@ -180,7 +191,7 @@ export const HomePage = () => {
 
       {/* ── Past Exhibitions ── */}
       {!loading && !error && exhibitions.length > 0 && (
-        <section className="px-8 pb-24 pt-12">
+        <section className="relative z-10 px-8 pb-24 pt-12">
           <div className="max-w-5xl mx-auto">
             <div className="flex items-center gap-4 mb-12 homepage-fade-up" style={{ animationDelay: '0.7s' }}>
               <div className="h-px flex-1 bg-zinc-800" />
@@ -225,7 +236,7 @@ export const HomePage = () => {
       )}
 
       {/* ── Footer ── */}
-      <footer className="border-t border-zinc-900 px-8 py-12 homepage-fade-up" style={{ animationDelay: '1s' }}>
+      <footer className="relative z-10 border-t border-zinc-900 px-8 py-12 homepage-fade-up" style={{ animationDelay: '1s' }}>
         <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-600">
           <p>
             CuraHub ist ein digitales Ausstellungstool der{' '}

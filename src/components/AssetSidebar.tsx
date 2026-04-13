@@ -6,7 +6,7 @@ import { ModelPreviewCard } from './ModelPreviewCard';
 import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/store/editorStore';
-import { type Folder, listFolders } from '@/lib/folders';
+import { type Folder, listFolders, moveAssetToFolder } from '@/lib/folders';
 
 interface AssetSidebarProps {
     isOpen: boolean;
@@ -35,20 +35,27 @@ type FolderFilter = 'all' | number;
 
 export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [assets, setAssets] = useState<Asset[]>([]);
-    const [loading, setLoading] = useState(true);
+    const [loading, setLoading] = useState(false);
     const [folders, setFolders] = useState<Folder[]>([]);
     const [activeFilter, setActiveFilter] = useState<FolderFilter>('all');
+    const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+    const [dragOverFolderId, setDragOverFolderId] = useState<number | 'all' | null>(null);
     const setDragging = useEditorStore((state) => state.setDragging);
     const activeProjectId = useEditorStore((state) => state.activeProjectId);
 
     const fetchAssets = useCallback(async (filter: FolderFilter) => {
+        if (!activeProjectId) {
+            setAssets([]);
+            setLoading(false);
+            return;
+        }
         try {
             setLoading(true);
             const params = new URLSearchParams();
-            if (activeProjectId) params.set('projectId', String(activeProjectId));
+            params.set('projectId', String(activeProjectId));
             if (typeof filter === 'number') params.set('folderId', String(filter));
             const qs = params.toString();
-            const res = await fetch(`/api/assets${qs ? `?${qs}` : ''}`);
+            const res = await fetch(`/api/assets?${qs}`);
             if (!res.ok) throw new Error('Failed to fetch assets');
             const data = await res.json();
             setAssets(data);
@@ -70,17 +77,39 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
             .catch(() => { /* silently ignore — folders are optional */ });
     }, [activeProjectId]);
 
-    // Reset filter and reload assets when project changes
+    // Reset filter and selection when project changes
     useEffect(() => {
         setActiveFilter('all');
+        setSelectedIds(new Set());
     }, [activeProjectId]);
 
     useEffect(() => {
         fetchAssets(activeFilter);
     }, [activeFilter, fetchAssets]);
 
+    const handleAssetClick = (e: React.MouseEvent, assetId: number) => {
+        if (e.ctrlKey || e.metaKey) {
+            setSelectedIds(prev => {
+                const next = new Set(prev);
+                if (next.has(assetId)) next.delete(assetId);
+                else next.add(assetId);
+                return next;
+            });
+        } else {
+            setSelectedIds(prev => prev.size === 1 && prev.has(assetId) ? new Set() : new Set([assetId]));
+        }
+    };
+
     const handleDragStart = (e: React.DragEvent, asset: Asset) => {
-        // Replace browser drag ghost with an invisible image
+        // If the dragged asset isn't selected, treat it as a solo drag
+        const dragIds = selectedIds.has(asset.id) && selectedIds.size > 1
+            ? Array.from(selectedIds)
+            : [asset.id];
+
+        // Store IDs for folder drop targets
+        e.dataTransfer.setData('asset-ids', JSON.stringify(dragIds));
+
+        // Replace browser drag ghost with an invisible image (canvas drop uses store state instead)
         const emptyImg = document.createElement('canvas');
         emptyImg.width = 1;
         emptyImg.height = 1;
@@ -88,13 +117,11 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
 
         e.dataTransfer.setData('asset-id', asset.id.toString());
         e.dataTransfer.setData('asset-data', JSON.stringify(asset));
-        e.dataTransfer.effectAllowed = 'copy';
-        
-        // Map asset path to url property expected by store
-        // Use Artwork ID if available, otherwise fallback to Asset ID (though backend likely needs Artwork ID)
+        e.dataTransfer.effectAllowed = 'copyMove';
+
         const isArtwork = !!asset.artwork;
         const id = isArtwork ? asset.artwork!.id : asset.id;
-        
+
         setDragging(true, {
             id,
             type: isArtwork ? 'artwork' : 'asset',
@@ -111,6 +138,42 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
 
     const handleDragEnd = () => {
         setDragging(false, null);
+        setDragOverFolderId(null);
+    };
+
+    const handleFolderDragOver = (e: React.DragEvent, folderId: number | 'all') => {
+        if (!e.dataTransfer.types.includes('asset-ids')) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        setDragOverFolderId(folderId);
+    };
+
+    const handleFolderDragLeave = (e: React.DragEvent) => {
+        // Only clear if leaving to outside the pill element
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+            setDragOverFolderId(null);
+        }
+    };
+
+    const handleFolderDrop = async (e: React.DragEvent, targetFolderId: number | null) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setDragOverFolderId(null);
+        setDragging(false, null);
+
+        const idsJson = e.dataTransfer.getData('asset-ids');
+        if (!idsJson) return;
+        const ids: number[] = JSON.parse(idsJson);
+
+        try {
+            await Promise.all(ids.map(id => moveAssetToFolder(id, targetFolderId)));
+            const label = ids.length === 1 ? '1 Asset' : `${ids.length} Assets`;
+            gooeyToast.success(`${label} verschoben`);
+            setSelectedIds(new Set());
+            fetchAssets(activeFilter);
+        } catch {
+            gooeyToast.error("Fehler", { description: "Assets konnten nicht verschoben werden." });
+        }
     };
 
     return (
@@ -133,14 +196,19 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                     </Button>
                 </CardHeader>
                 {folders.length > 0 && (
-                    <div className="flex gap-1.5 px-3 py-2 border-b border-zinc-800 overflow-x-auto no-scrollbar">
+                    <div data-asset-drop-zone className="flex gap-1.5 px-3 py-2 border-b border-zinc-800 overflow-x-auto no-scrollbar">
                         <button
                             onClick={() => setActiveFilter('all')}
+                            onDragOver={(e) => handleFolderDragOver(e, 'all')}
+                            onDragLeave={handleFolderDragLeave}
+                            onDrop={(e) => handleFolderDrop(e, null)}
                             className={cn(
                                 'shrink-0 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors',
-                                activeFilter === 'all'
-                                    ? 'bg-blue-600 text-white'
-                                    : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                                dragOverFolderId === 'all'
+                                    ? 'bg-blue-400 text-white ring-2 ring-blue-300'
+                                    : activeFilter === 'all'
+                                        ? 'bg-blue-600 text-white'
+                                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
                             )}
                         >
                             Alle
@@ -149,12 +217,18 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                             <button
                                 key={f.id}
                                 onClick={() => setActiveFilter(f.id)}
+                                onDragOver={(e) => handleFolderDragOver(e, f.id)}
+                                onDragLeave={handleFolderDragLeave}
+                                onDrop={(e) => handleFolderDrop(e, f.id)}
                                 className={cn(
                                     'shrink-0 flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium transition-colors',
-                                    activeFilter === f.id
-                                        ? 'bg-blue-600 text-white'
-                                        : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
+                                    dragOverFolderId === f.id
+                                        ? 'text-white ring-2 ring-white/60'
+                                        : activeFilter === f.id
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-zinc-800 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-200'
                                 )}
+                                style={dragOverFolderId === f.id ? { backgroundColor: f.color } : undefined}
                             >
                                 <span
                                     className="h-2 w-2 rounded-full shrink-0"
@@ -172,17 +246,25 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                          </div>
                     ) : assets.length === 0 ? (
                         <div className="text-center py-8 text-zinc-500 text-xs">
-                            No assets found. Upload some in the main library.
+                            {!activeProjectId
+                                ? 'Kein Projekt ausgewählt.'
+                                : 'Keine Assets gefunden. Lade welche in der Asset-Bibliothek hoch.'}
                         </div>
                     ) : (
                         <div className="grid grid-cols-2 gap-2">
                             {assets.map((asset) => (
-                                <div 
+                                <div
                                     key={asset.id}
                                     draggable
+                                    onClick={(e) => handleAssetClick(e, asset.id)}
                                     onDragStart={(e) => handleDragStart(e, asset)}
                                     onDragEnd={handleDragEnd}
-                                    className="group relative aspect-square bg-zinc-900 rounded-md overflow-hidden border border-zinc-800 cursor-grab active:cursor-grabbing hover:border-zinc-600 transition-colors"
+                                    className={cn(
+                                        "group relative aspect-square bg-zinc-900 rounded-md overflow-hidden border cursor-grab active:cursor-grabbing transition-colors",
+                                        selectedIds.has(asset.id)
+                                            ? "border-blue-500 ring-2 ring-blue-500/50"
+                                            : "border-zinc-800 hover:border-zinc-600"
+                                    )}
                                     title={asset.artwork?.title || asset.filename}
                                 >
                                     {(asset.type || 'image') === 'image' ? (

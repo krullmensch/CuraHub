@@ -53,7 +53,7 @@ function detectAssetType(mimetype: string, filename: string): 'image' | 'video' 
 // Per-type file size limits
 const SIZE_LIMITS: Record<string, number> = {
     image: 200 * 1024 * 1024,   // 200MB (increased from 10MB as client handles optimization)
-    video: 200 * 1024 * 1024,   // 200MB
+    video: Infinity,             // no limit
     model3d: 100 * 1024 * 1024, // 100MB (source formats are larger, output is compressed)
 };
 
@@ -78,7 +78,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 200 * 1024 * 1024 }, // 200MB max (validated per-type in handler)
+  limits: { fileSize: Infinity }, // no global cap — per-type limits enforced in handler
   fileFilter: (req, file, cb) => {
       const type = detectAssetType(file.mimetype, file.originalname);
       if (type) {

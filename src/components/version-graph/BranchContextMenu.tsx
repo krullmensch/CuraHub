@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { CheckCircle, GitBranch, GitMerge, Trash2 } from 'lucide-react';
+import { CheckCircle, GitBranch, GitMerge, Globe, Trash2 } from 'lucide-react';
 import type { Version } from './buildVersionGraph';
 
 interface BranchContextMenuProps {
@@ -12,6 +12,7 @@ interface BranchContextMenuProps {
   onLoad: (version: Version) => void;
   onNewBranch: (version: Version) => void;
   onMerge: (version: Version) => void;
+  onPublish: (version: Version) => void;
   onDelete: (version: Version) => void;
 }
 
@@ -25,6 +26,7 @@ export const BranchContextMenu = ({
   onLoad,
   onNewBranch,
   onMerge,
+  onPublish,
   onDelete,
 }: BranchContextMenuProps) => {
   const menuRef = useRef<HTMLDivElement>(null);
@@ -93,15 +95,27 @@ export const BranchContextMenu = ({
         </button>
       )}
 
-      <div className="border-t border-zinc-800 mt-1 pt-1">
+      {canCurate && !version.is_published && (
         <button
-          onClick={() => { onDelete(version); onClose(); }}
-          className="w-full flex items-center gap-2.5 px-3 py-2 text-red-400 hover:bg-red-500/10 transition-colors"
+          onClick={() => { onPublish(version); onClose(); }}
+          className="w-full flex items-center gap-2.5 px-3 py-2 text-white hover:bg-zinc-800 transition-colors"
         >
-          <Trash2 className="h-4 w-4 shrink-0" />
-          Löschen
+          <Globe className="h-4 w-4 text-emerald-400 shrink-0" />
+          Veröffentlichen
         </button>
-      </div>
+      )}
+
+      {version.parent_version_id !== null && (
+        <div className="border-t border-zinc-800 mt-1 pt-1">
+          <button
+            onClick={() => { onDelete(version); onClose(); }}
+            className="w-full flex items-center gap-2.5 px-3 py-2 text-red-400 hover:bg-red-500/10 transition-colors"
+          >
+            <Trash2 className="h-4 w-4 shrink-0" />
+            Löschen
+          </button>
+        </div>
+      )}
     </div>
   );
 };

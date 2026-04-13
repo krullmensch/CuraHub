@@ -144,6 +144,13 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
             if (!allowedRoles.includes(userRole)) {
                 return res.status(403).json({ error: 'Branches können nur von Kuratoren, Profs oder Admins erstellt werden' });
             }
+            // Forbid duplicate branch names within the same exhibition
+            const existing = await prisma.exhibitionVersion.findFirst({
+                where: { exhibition_id: exhibitionId, branch_name: data.branch_name },
+            });
+            if (existing) {
+                return res.status(400).json({ error: 'Ein Branch mit diesem Namen existiert bereits.' });
+            }
         }
 
         // Verify user has access (owner or collaborator, or admin)
@@ -369,6 +376,11 @@ versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenti
             where: { id: versionId, exhibition_id: exhibitionId }
         });
         if (!version) return res.status(404).json({ error: 'Version not found' });
+
+        // Prevent deletion of the initial (root) version
+        if (version.parent_version_id === null) {
+            return res.status(400).json({ error: 'Die initiale Version kann nicht gelöscht werden.' });
+        }
 
         // Delete the version. Prisma cascade will delete ArtworkInstances automatically.
         await prisma.exhibitionVersion.delete({
