@@ -20,10 +20,11 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { cn } from '@/lib/utils';
+import { preprocessImageForUpload, type PreprocessResult } from '@/lib/imageUtils';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type FileStatus = 'pending' | 'uploading' | 'processing' | 'done' | 'error' | 'duplicate';
+type FileStatus = 'pending' | 'optimizing' | 'uploading' | 'processing' | 'done' | 'error' | 'duplicate';
 
 interface UploadFileItem {
   id: string;
@@ -37,6 +38,9 @@ interface UploadFileItem {
   compressedSize?: number;
   errorMsg?: string;
   existingAsset?: Record<string, unknown>; // for duplicates
+  /** Result of client-side preprocessing (images only) — computed once, reused on force-retry. */
+  preprocessed?: PreprocessResult;
+  xhr?: XMLHttpRequest;
 }
 
 interface UploadPreviewModalProps {
@@ -58,18 +62,35 @@ const formatBytes = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
+interface UploadXHROpts {
+  projectId: number | null;
+  folderId: number | null;
+  token: string;
+  force?: boolean;
+  clientHash?: string;
+  originalWidth?: number;
+  originalHeight?: number;
+  dpi?: number;
+}
+
 function uploadXHR(
   file: File,
-  opts: { projectId: number | null; folderId: number | null; token: string; force?: boolean },
+  opts: UploadXHROpts,
   onProgress: (pct: number) => void,
+  onXhrReady: (xhr: XMLHttpRequest) => void,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    onXhrReady(xhr);
     const form = new FormData();
     form.append('file', file);
     if (opts.projectId) form.append('projectId', opts.projectId.toString());
     if (opts.folderId) form.append('folderId', opts.folderId.toString());
     if (opts.force) form.append('force', 'true');
+    if (opts.clientHash) form.append('clientHash', opts.clientHash);
+    if (opts.originalWidth) form.append('originalWidth', opts.originalWidth.toString());
+    if (opts.originalHeight) form.append('originalHeight', opts.originalHeight.toString());
+    if (opts.dpi) form.append('dpi', opts.dpi.toString());
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 90));
@@ -92,10 +113,32 @@ function uploadXHR(
       }
     };
     xhr.onerror = () => reject(new Error('Netzwerkfehler beim Upload'));
+    xhr.onabort = () => reject(new Error('Abgebrochen'));
     xhr.open('POST', '/upload');
     xhr.setRequestHeader('Authorization', `Bearer ${opts.token}`);
     xhr.send(form);
   });
+}
+
+const UPLOAD_CONCURRENCY = 3;
+
+/** Runs `worker` over `items` with at most `limit` in flight at once. */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+  isAborted: () => boolean,
+): Promise<void> {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      if (isAborted()) return;
+      const item = items[cursor];
+      cursor += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -152,20 +195,50 @@ export const UploadPreviewModal = ({
 
   const uploadOne = async (item: UploadFileItem, force = false) => {
     if (!token) return;
+    if (abortRef.current) return;
 
-    // Build a File with the (possibly renamed) name
+    // Preprocess images once (resize + hash + dims); reuse on force-retry.
+    let preprocessed = item.preprocessed;
+    const isImage = item.file.type.startsWith('image/');
+    if (isImage && !preprocessed) {
+      patchItem(item.id, { status: 'optimizing', progress: 0, errorMsg: undefined });
+      try {
+        preprocessed = await preprocessImageForUpload(item.file);
+      } catch {
+        preprocessed = { file: item.file };
+      }
+      if (abortRef.current) return;
+      patchItem(item.id, { preprocessed });
+    }
+
+    const baseFile = preprocessed?.file ?? item.file;
+
+    // Build a File with the (possibly renamed) name, preserving the (possibly changed) extension
+    const dot = baseFile.name.lastIndexOf('.');
+    const processedExt = dot > 0 ? baseFile.name.slice(dot) : item.ext;
+    const desiredName = item.name + processedExt;
     const uploadFile =
-      item.name + item.ext !== item.file.name
-        ? new File([item.file], item.name + item.ext, { type: item.file.type })
-        : item.file;
+      desiredName !== baseFile.name
+        ? new File([baseFile], desiredName, { type: baseFile.type })
+        : baseFile;
 
     patchItem(item.id, { status: 'uploading', progress: 0, errorMsg: undefined });
 
     try {
       const { status, body } = await uploadXHR(
         uploadFile,
-        { projectId, folderId, token, force },
+        {
+          projectId,
+          folderId,
+          token,
+          force,
+          clientHash: preprocessed?.clientHash,
+          originalWidth: preprocessed?.originalWidth,
+          originalHeight: preprocessed?.originalHeight,
+          dpi: preprocessed?.dpi,
+        },
         (pct) => patchItem(item.id, { progress: pct }),
+        (xhr) => patchItem(item.id, { xhr }),
       );
 
       if (status === 409 && body.duplicate) {
@@ -193,6 +266,10 @@ export const UploadPreviewModal = ({
       });
       onAssetUploaded(body);
     } catch (err) {
+      if (abortRef.current) {
+        patchItem(item.id, { status: 'error', errorMsg: 'Abgebrochen' });
+        return;
+      }
       patchItem(item.id, {
         status: 'error',
         errorMsg: err instanceof Error ? err.message : 'Unbekannter Fehler',
@@ -203,10 +280,12 @@ export const UploadPreviewModal = ({
   const handleUpload = async () => {
     setPhase('uploading');
     const pending = items.filter((it) => it.status === 'pending');
-    for (const item of pending) {
-      if (abortRef.current) break;
-      await uploadOne(item);
-    }
+    await runWithConcurrency(
+      pending,
+      UPLOAD_CONCURRENCY,
+      (item) => uploadOne(item),
+      () => abortRef.current,
+    );
     setPhase('done');
   };
 
@@ -220,6 +299,12 @@ export const UploadPreviewModal = ({
 
   const handleClose = () => {
     abortRef.current = true;
+    // Abort any in-flight uploads so the browser stops sending bytes.
+    items.forEach((it) => {
+      if (it.status === 'uploading' && it.xhr) {
+        it.xhr.abort();
+      }
+    });
     onClose();
   };
 
@@ -317,10 +402,12 @@ export const UploadPreviewModal = ({
               className="border-amber-700 text-amber-300 hover:bg-amber-900/30 hover:text-amber-100"
               onClick={async () => {
                 setPhase('uploading');
-                for (const it of duplicateItems) {
-                  if (abortRef.current) break;
-                  await uploadOne(it, true);
-                }
+                await runWithConcurrency(
+                  duplicateItems,
+                  UPLOAD_CONCURRENCY,
+                  (it) => uploadOne(it, true),
+                  () => abortRef.current,
+                );
                 setPhase('done');
               }}
             >
@@ -393,7 +480,7 @@ function FileCard({
             <AlertCircle className="h-9 w-9 text-amber-400 drop-shadow" />
           </div>
         )}
-        {item.status === 'processing' && (
+        {(item.status === 'processing' || item.status === 'optimizing') && (
           <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-lg">
             <Loader2 className="h-9 w-9 text-blue-400 animate-spin" />
           </div>
@@ -402,6 +489,9 @@ function FileCard({
 
       {/* Progress bar */}
       <div className="h-1 rounded-full overflow-hidden bg-zinc-800">
+        {item.status === 'optimizing' && (
+          <div className="h-full bg-blue-400/60 w-1/3 animate-pulse rounded-full" />
+        )}
         {item.status === 'uploading' && (
           <div
             className="h-full bg-blue-500 transition-all duration-200 rounded-full"
@@ -449,6 +539,10 @@ function FileCard({
           </span>
         ) : item.status === 'error' ? (
           <span className="text-red-400">{item.errorMsg}</span>
+        ) : item.status === 'optimizing' ? (
+          <span className="text-blue-400">Wird optimiert …</span>
+        ) : item.status === 'uploading' ? (
+          <span>{formatBytes(item.originalSize)} · {item.progress}%</span>
         ) : (
           <span>{formatBytes(item.originalSize)}</span>
         )}

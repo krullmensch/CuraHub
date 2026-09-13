@@ -1,16 +1,20 @@
 import { Canvas } from '@react-three/fiber';
-import { Loader } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
+import { Loader, useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Scene } from '../components/Scene';
 // Player is now handled inside PlannerCameraSystem
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
-import { useEditorStore, type MediumType } from '../store/editorStore';
+import { FrameloopController } from '../components/FrameloopController';
+import { useEditorStore, nextTempId, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
-import { useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Move, RotateCw, Maximize2 } from 'lucide-react';
+import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
+
+// Only imported while in first-person mode (LOAD-01 / RND-08) — see
+// src/components/physics/PhysicsLayer.tsx, the sole importer of @react-three/rapier.
+const PhysicsLayer = lazy(() => import('../components/physics/PhysicsLayer'));
 
 // Snapshot of a pending placement awaiting user choice (used for the video drop modal)
 type DraggedAssetSnapshot = NonNullable<ReturnType<typeof useEditorStore.getState>['dragState']['draggedAsset']>;
@@ -95,9 +99,15 @@ const GL_CONFIG = {
     outputColorSpace: THREE.SRGBColorSpace,
 };
 
-export const EditorPage = () => {
+interface EditorPageProps {
+  /** false while the editor Canvas is hidden behind another route (e.g. /assets) — stops the render loop entirely. */
+  isVisible?: boolean;
+}
+
+export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const isPlacing = useEditorStore((state) => state.isPlacing);
   const viewMode = useEditorStore((state) => state.plannerViewMode);
+  const setPlannerViewMode = useEditorStore((state) => state.setPlannerViewMode);
   const setDragPosition = useEditorStore((state) => state.setDragPosition);
   const setDragging = useEditorStore((state) => state.setDragging);
   // Do not subscribe to dragState here to avoid re-renders on every mouse move/raycast
@@ -130,7 +140,7 @@ export const EditorPage = () => {
   // and the deferred video-drop path (after Monitor/Beamer is picked).
   const placeInstance = (medium: MediumType, snapshot: PendingVideoDrop): number => {
     const store = useEditorStore.getState();
-    const newInstanceId = -Date.now(); // Temporary ID until saved
+    const newInstanceId = nextTempId(); // Unique temporary ID until saved (STATE-03)
     const { draggedAsset } = snapshot;
     const assetType = draggedAsset.assetType || 'image';
 
@@ -175,6 +185,15 @@ export const EditorPage = () => {
   };
   // Keep ref in sync every render
   placeInstanceRef.current = placeInstance;
+
+  // Preload the room model and the models used by placed artworks (Monitor GLB + picture frame
+  // GLB) once the editor actually mounts — moved off module scope so the home page no longer
+  // downloads them (LOAD-02).
+  useEffect(() => {
+    useGLTF.preload('/models/Satellit_new-optimized.glb');
+    useGLTF.preload('/models/Monitor65.glb');
+    useGLTF.preload('/models/Halbe_Classic_Alu8.glb');
+  }, []);
 
   // ── Capture-phase drag listeners ──────────────────────────────────────────
   // UploadDropzone (a common ancestor) calls e.stopPropagation() in its
@@ -294,12 +313,25 @@ export const EditorPage = () => {
       const hasSelection = !!(store.selectedInstanceId || store.selectedWallId || store.selectedZoneId);
       const key = e.key.toLowerCase();
 
-      // Escape always works — deselect everything
+      // Escape always works — deselect everything, and leave first-person mode if active
       if (key === 'escape') {
+        if (useEditorStore.getState().plannerViewMode === 'firstPerson') {
+          setPlannerViewMode('perspective');
+          if (document.pointerLockElement) document.exitPointerLock();
+        }
         selectInstance(null);
         selectWall(null);
         selectZone(null);
         setTransformAxisLock('none');
+        return;
+      }
+
+      // First-person preview toggle — works regardless of current selection
+      if (key === 'v' && !cmdOrCtrl) {
+        e.preventDefault();
+        if (useEditorStore.getState().plannerViewMode !== 'firstPerson') {
+          setPlannerViewMode('firstPerson');
+        }
         return;
       }
 
@@ -390,26 +422,39 @@ export const EditorPage = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock]);
-  // We need a ref to the container to calculate relative coordinates if needed, 
+  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock, setPlannerViewMode]);
+  // We need a ref to the container to calculate relative coordinates if needed,
   // but for full screen editor, window coordinates are fine for NDC.
-  
+
+  // RND-02: render continuously only in first-person mode (player movement, idle head
+  // bob). Otherwise render on demand (orbit/transform/drag already call invalidate()).
+  // While the editor is hidden behind another route (e.g. /assets) stop rendering
+  // entirely — FrameloopController fires one invalidate() when isVisible flips back on.
+  const frameloop: 'always' | 'demand' | 'never' =
+    viewMode === 'firstPerson' ? 'always' : (isVisible ? 'demand' : 'never');
+
   return (
     <div
         ref={containerRef}
         style={{ width: '100%', height: '100%', position: 'relative' }}
     >
-      <Canvas 
-        shadows 
+      <Canvas
+        shadows
+        dpr={[1, 1.5]}
+        frameloop={frameloop}
         // Camera is managed by PlannerCameraSystem in Scene
         style={{ width: '100%', height: '100%' }}
         gl={GL_CONFIG}
         onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
       >
-        <Physics gravity={[0, -9.81, 0]}>
-            <Scene />
-            <ArtworkPlacement />
-        </Physics>
+        <FrameloopController isVisible={isVisible} />
+        <Scene />
+        <ArtworkPlacement />
+        {viewMode === 'firstPerson' && (
+          <Suspense fallback={null}>
+            <PhysicsLayer isEditor />
+          </Suspense>
+        )}
       </Canvas>
       <Loader />
       
@@ -423,7 +468,7 @@ export const EditorPage = () => {
                background: 'rgba(0,0,0,0.7)', color: 'white', padding: '10px 20px', borderRadius: '20px',
                zIndex: 20
            }}>
-               Placing Artwork... Click to place.
+               Werk wird platziert … Klicken zum Platzieren.
            </div>
       )}
 
@@ -460,6 +505,11 @@ export const EditorPage = () => {
 
           {/* Traverses */}
           <ToolButton icon={showTraverses ? <Eye size={16} /> : <EyeOff size={16} />} tooltip={showTraverses ? 'Traverses ausblenden' : 'Traverses einblenden'} active={showTraverses} onClick={toggleTraverses} />
+
+          <ToolSeparator />
+
+          {/* First-person preview */}
+          <ToolButton icon={<Footprints size={16} />} tooltip="Ego-Perspektive (V)" onClick={() => setPlannerViewMode('firstPerson')} />
         </div>
       )}
 

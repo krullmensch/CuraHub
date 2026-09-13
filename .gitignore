@@ -45,3 +45,6 @@ Sample Files/
 
 # Web weblocs
 *.webloc
+
+# Archived large binaries (moved out of public/, see docs/performance-audit-2026-09-13.md LOAD-09)
+_archive/

@@ -140,4 +140,6 @@ export const ModularFrame = forwardRef<THREE.Group, ModularFrameProps>(
 
 ModularFrame.displayName = 'ModularFrame';
 
-useGLTF.preload(FRAME_MODEL);
+// Preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing this
+// component no longer downloads the frame GLB on every route, including the home page
+// (LOAD-02).

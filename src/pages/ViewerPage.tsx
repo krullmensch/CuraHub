@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Canvas } from '@react-three/fiber';
-import { useProgress } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
+import { useProgress, useGLTF } from '@react-three/drei';
 import { Scene } from '../components/Scene';
 import { Player } from '../components/Player';
 import { ArrowLeft } from 'lucide-react';
@@ -46,6 +45,7 @@ export const ViewerPage = () => {
     const [loading, setLoading] = useState(true);
     const [showLoading, setShowLoading] = useState(true);
     const [isLocked, setIsLocked] = useState(false);
+    const [isTabVisible, setIsTabVisible] = useState(document.visibilityState === 'visible');
     const [error, setError] = useState<string | null>(null);
 
     // Track pointer lock state
@@ -61,6 +61,22 @@ export const ViewerPage = () => {
         document.addEventListener('pointerlockchange', handler);
         return () => document.removeEventListener('pointerlockchange', handler);
     }, [loading]);
+
+    // Track tab visibility — stop rendering when the tab is backgrounded (RND-02)
+    useEffect(() => {
+        const handler = () => setIsTabVisible(document.visibilityState === 'visible');
+        document.addEventListener('visibilitychange', handler);
+        return () => document.removeEventListener('visibilitychange', handler);
+    }, []);
+
+    // Preload the models used by placed artworks (Monitor GLB + picture frame GLB). Moved
+    // off module scope so importing these components no longer downloads them eagerly
+    // (LOAD-02).
+    useEffect(() => {
+        useGLTF.preload('/models/Satellit_new-optimized.glb');
+        useGLTF.preload('/models/Monitor65.glb');
+        useGLTF.preload('/models/Halbe_Classic_Alu8.glb');
+    }, []);
 
     useEffect(() => {
         if (!slug) {
@@ -130,10 +146,17 @@ export const ViewerPage = () => {
         );
     }
 
+    // RND-02: render continuously only while the player is actually in the scene
+    // (pointer-locked) and the tab is visible. Otherwise render on demand — the entry
+    // overlay is static HTML on top of the canvas, not a reason to keep rendering.
+    const frameloop: 'always' | 'demand' = isLocked && isTabVisible ? 'always' : 'demand';
+
     return (
         <>
             <Canvas
                 shadows
+                dpr={[1, 1.5]}
+                frameloop={frameloop}
                 camera={{ position: [0, 1.7, 0], fov: 60 }}
                 style={{ width: '100vw', height: '100vh' }}
                 gl={{
@@ -142,16 +165,14 @@ export const ViewerPage = () => {
                     outputColorSpace: THREE.SRGBColorSpace,
                 }}
             >
-                <Physics gravity={[0, -9.81, 0]}>
-                    {data && (
-                        <Scene
-                            isEditor={false}
-                            viewerInstances={data.instances}
-                            viewerWalls={data.walls}
-                        />
-                    )}
-                    <Player />
-                </Physics>
+                {data && (
+                    <Scene
+                        isEditor={false}
+                        viewerInstances={data.instances}
+                        viewerWalls={data.walls}
+                    />
+                )}
+                <Player viewerInstances={data?.instances} viewerWalls={data?.walls} />
             </Canvas>
 
             {/* FPV Crosshair + Artwork Info Overlay */}

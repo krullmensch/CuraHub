@@ -2,7 +2,6 @@ import { useEffect, useRef, useCallback, useMemo, Suspense, Fragment } from 'rea
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { TransformControls } from '@react-three/drei';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { useEditorStore, instanceRefMap, type ModularWallData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { ModularWallMesh } from './ModularWallMesh';
@@ -447,15 +446,9 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
                             selected={isEditor ? wall.id === selectedWallId : false}
                             isEditor={isEditor}
                         />
-                        {/* Physics collider for first-person collision */}
-                        <RigidBody
-                            type="fixed"
-                            colliders={false}
-                            position={[wall.position_x, wall.position_y, wall.position_z]}
-                            rotation={[wall.rotation_x, wall.rotation_y, wall.rotation_z]}
-                        >
-                            <CuboidCollider args={[wall.width / 2, wall.height / 2, wall.thickness / 2]} />
-                        </RigidBody>
+                        {/* Physics collider for first-person collision now lives in
+                            src/components/physics/PhysicsLayer.tsx (RND-08 / LOAD-01) —
+                            this controller no longer imports @react-three/rapier. */}
                     </Fragment>
                 ))}
             </Suspense>

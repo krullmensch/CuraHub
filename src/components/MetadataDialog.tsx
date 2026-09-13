@@ -1,6 +1,6 @@
 import { useState, Suspense, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { useGLTF, Center, OrbitControls, Environment } from '@react-three/drei';
+import { useGLTF, Center, OrbitControls, Environment, Lightformer } from '@react-three/drei';
 import * as THREE from 'three';
 import { useAuthStore } from '../store/authStore';
 import {
@@ -48,7 +48,8 @@ interface MetadataDialogProps {
 }
 
 function InteractiveModel({ url }: { url: string }) {
-  const { scene } = useGLTF(url);
+  // Uploaded GLBs are Draco-compressed; decoder served same-origin (no gstatic CDN).
+  const { scene } = useGLTF(url, '/draco/gltf/');
   const clonedScene = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((child) => {
@@ -187,7 +188,14 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
                         >
                             <ambientLight intensity={1.0} />
                             <directionalLight position={[2, 3, 4]} intensity={1.2} />
-                            <Environment preset="warehouse" background={false} environmentIntensity={0.3} />
+                            {/* LOAD-08: no external HDR (previously Environment preset="warehouse"
+                                fetched an HDR from raw.githack.com). Lightformer children bake a
+                                neutral studio environment entirely client-side, no file needed. */}
+                            <Environment background={false} environmentIntensity={0.3} resolution={64}>
+                                <Lightformer intensity={2} color="white" position={[0, 5, 0]} scale={[10, 10, 1]} />
+                                <Lightformer intensity={1} color="white" position={[-5, 1, 3]} rotation={[0, Math.PI / 2, 0]} scale={[10, 5, 1]} />
+                                <Lightformer intensity={1} color="white" position={[5, 1, 3]} rotation={[0, -Math.PI / 2, 0]} scale={[10, 5, 1]} />
+                            </Environment>
                             <Suspense fallback={null}>
                                 <InteractiveModel url={getImageUrl(asset.path)} />
                             </Suspense>

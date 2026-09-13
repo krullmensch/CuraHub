@@ -1,18 +1,31 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
-import { authenticate } from '../lib/middleware';
+import { authenticate, userCanAccessProject } from '../lib/middleware';
 
 export const assetsRouter = Router();
 const prisma = new PrismaClient();
 
-// GET all assets — supports projectId and folderId query params
-assetsRouter.get('/', async (req, res) => {
+// GET all assets — supports projectId and folderId query params.
+// SEC-03: authenticated; non-admins must pass a projectId they can access
+// (owner, exhibition collaborator). Admins may omit projectId to list everything.
+assetsRouter.get('/', authenticate, async (req: Request, res) => {
     try {
         const projectId = req.query.projectId ? parseInt(req.query.projectId as string, 10) : undefined;
         const folderIdRaw = req.query.folderId as string | undefined;
+        const isAdmin = req.user!.role === 'admin';
+
+        if (!isAdmin) {
+            if (projectId === undefined || isNaN(projectId)) {
+                return res.status(403).json({ error: 'projectId erforderlich' });
+            }
+            const canAccess = await userCanAccessProject(prisma, req.user!.userId, projectId, false);
+            if (!canAccess) {
+                return res.status(404).json({ error: 'Project not found' });
+            }
+        }
 
         const where: any = {};
         if (projectId && !isNaN(projectId)) {
@@ -48,13 +61,13 @@ const patchAssetSchema = z.object({
     folderId: z.union([z.number().int().positive(), z.null()]),
 });
 
-assetsRouter.patch('/:id', authenticate, async (req: any, res) => {
+assetsRouter.patch('/:id', authenticate, async (req: Request, res) => {
     try {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
         const data = patchAssetSchema.parse(req.body);
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = req.user!.role === 'admin';
 
         const asset = await prisma.asset.findUnique({
             where: { id },
@@ -64,7 +77,7 @@ assetsRouter.patch('/:id', authenticate, async (req: any, res) => {
 
         // Ownership check: assets without a project are admin-only
         if (!isAdmin) {
-            if (!asset.project || asset.project.ownerId !== req.user.userId) {
+            if (!asset.project || asset.project.ownerId !== req.user!.userId) {
                 return res.status(404).json({ error: 'Asset not found' });
             }
         }
@@ -97,47 +110,91 @@ assetsRouter.patch('/:id', authenticate, async (req: any, res) => {
     }
 });
 
-// DELETE asset
-assetsRouter.delete('/:id', async (req, res) => {
-    const { id } = req.params;
+// Uploads directory (real, resolved path) — used to guard against path traversal on delete.
+const uploadsDir = path.resolve(__dirname, '../../uploads');
+
+/**
+ * Resolves a stored asset path (e.g. '/uploads/xyz.webp') to an absolute path on disk,
+ * using only its basename joined onto the uploads dir. Returns null if the resolved
+ * path would escape the uploads directory (SEC-05 path traversal guard).
+ */
+function resolveUploadPath(storedPath: string): string | null {
+    const filename = path.basename(storedPath);
+    const resolved = path.resolve(uploadsDir, filename);
+    if (resolved !== uploadsDir && !resolved.startsWith(uploadsDir + path.sep)) {
+        return null;
+    }
+    return resolved;
+}
+
+// DELETE asset — authenticated; ownership check mirrors PATCH above.
+// SEC-05: unlinks path.basename(asset.path) (not the DB `filename`, which is the
+// original/human-readable name), and only when no other Asset row still references
+// the same physical file (shared via fileHash de-dup).
+assetsRouter.delete('/:id', authenticate, async (req: Request, res) => {
     try {
-        const assetId = parseInt(id);
+        const assetId = parseInt(req.params.id, 10);
         if (isNaN(assetId)) {
             return res.status(400).json({ error: 'Invalid ID' });
         }
 
-        // Find asset first to get filename
+        const isAdmin = req.user!.role === 'admin';
+
+        // Find asset first to get its path + verify ownership
         const asset = await prisma.asset.findUnique({
-            where: { id: assetId }
+            where: { id: assetId },
+            include: { project: { select: { id: true, ownerId: true } } },
         });
 
         if (!asset) {
             return res.status(404).json({ error: 'Asset not found' });
         }
 
-        // Delete from DB
+        if (!isAdmin) {
+            if (!asset.project || asset.project.ownerId !== req.user!.userId) {
+                return res.status(404).json({ error: 'Asset not found' });
+            }
+        }
+
+        // Delete from DB first, then clean up the filesystem
         await prisma.asset.delete({
             where: { id: assetId }
         });
 
-        // Delete from filesystem
-        // Construct full path. Asset path in DB is relative URL like '/uploads/filename.webp'
-        // We need system path.
-        const filename = asset.filename;
-        const filepath = path.join(__dirname, '../../uploads', filename);
-
-        if (fs.existsSync(filepath)) {
-            fs.unlinkSync(filepath);
-        } else {
-            console.warn(`File not found on disk: ${filepath}`);
+        // Delete the stored file — only if no other Asset row still points at it
+        // (duplicate-detection can make several Asset rows share one physical file).
+        if (asset.path) {
+            const stillReferenced = await prisma.asset.count({ where: { path: asset.path } });
+            if (stillReferenced === 0) {
+                const filepath = resolveUploadPath(asset.path);
+                if (!filepath) {
+                    console.warn(`Refusing to delete file outside uploads dir for asset ${assetId}: ${asset.path}`);
+                } else if (fs.existsSync(filepath)) {
+                    fs.unlinkSync(filepath);
+                } else {
+                    console.warn(`File not found on disk: ${filepath}`);
+                }
+            }
         }
 
-        // Also delete thumbnail if present (video poster frames)
+        // Also delete thumbnail if present (video poster frames) — same reference check
         if (asset.thumbnailPath) {
-            const thumbFilename = path.basename(asset.thumbnailPath);
-            const thumbPath = path.join(__dirname, '../../uploads', thumbFilename);
-            if (fs.existsSync(thumbPath)) {
-                fs.unlinkSync(thumbPath);
+            const stillReferenced = await prisma.asset.count({ where: { thumbnailPath: asset.thumbnailPath } });
+            if (stillReferenced === 0) {
+                const thumbPath = resolveUploadPath(asset.thumbnailPath);
+                if (!thumbPath) {
+                    console.warn(`Refusing to delete thumbnail outside uploads dir for asset ${assetId}: ${asset.thumbnailPath}`);
+                } else if (fs.existsSync(thumbPath)) {
+                    fs.unlinkSync(thumbPath);
+                }
+                // Image thumbnails come in two sizes; only the 512 variant is stored in the DB
+                // (see server/src/lib/thumbnails.ts), the 256 variant is derived by name.
+                if (/-thumb-512\.webp$/.test(asset.thumbnailPath)) {
+                    const thumb256Path = resolveUploadPath(asset.thumbnailPath.replace(/-thumb-512\.webp$/, '-thumb-256.webp'));
+                    if (thumb256Path && fs.existsSync(thumb256Path)) {
+                        fs.unlinkSync(thumb256Path);
+                    }
+                }
             }
         }
 
@@ -146,11 +203,11 @@ assetsRouter.delete('/:id', async (req, res) => {
     } catch (error) {
         console.error('Error deleting asset:', error);
         // Check for constraint violation (e.g. if linked to artwork and cascade delete not set)
-        // By default Prisma might error if Artwork depends on Asset. 
+        // By default Prisma might error if Artwork depends on Asset.
         // Our schema has Asset optional in Artwork? No, Artwork has unique assetId.
-        // Let's check Schema. 
+        // Let's check Schema.
         // Artwork: asset Asset? @relation...
-        // Asset: artwork Artwork? 
+        // Asset: artwork Artwork?
         // If we delete Asset, Artwork's assetId becomes null? Or is it enforced?
         // Usually need to handle unlink. For now, strictly deleting.
         res.status(500).json({ error: 'Failed to delete asset' });

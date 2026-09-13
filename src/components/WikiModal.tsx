@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { X } from 'lucide-react';
-import { WikiView } from './WikiView';
+
+const WikiView = lazy(() =>
+  import('./WikiView').then((m) => ({ default: m.WikiView }))
+);
 
 interface WikiModalProps {
   isOpen: boolean;
@@ -40,7 +43,15 @@ export const WikiModal = ({ isOpen, onClose }: WikiModalProps) => {
         </button>
 
         {/* Wiki content rendered in-app */}
-        <WikiView />
+        <Suspense
+          fallback={
+            <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
+              Lädt …
+            </div>
+          }
+        >
+          <WikiView />
+        </Suspense>
       </div>
     </div>
   );

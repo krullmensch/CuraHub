@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { TransformControls } from '@react-three/drei';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useEditorStore, artworkMinY } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
@@ -15,6 +15,7 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     const transformMode = useEditorStore((state) => state.transformMode);
     const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
     const setIsTransforming = useEditorStore((state) => state.setIsTransforming);
+    const invalidate = useThree((state) => state.invalidate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const controlsRef = useRef<any>(null);
 
@@ -42,6 +43,11 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
             rotation: { x: group.rotation.x, y: group.rotation.y, z: group.rotation.z },
             scale: { x: group.scale.x, y: group.scale.y, z: group.scale.z },
         });
+
+        // RND-02: the Y-clamp above mutates the object directly (bypassing JSX props), and
+        // the PropertiesPanel's live readout depends on setLiveTransform — keep requesting
+        // frames under frameloop="demand" for the duration of the drag.
+        invalidate();
     });
 
     // Persist transform to backend on mouse up

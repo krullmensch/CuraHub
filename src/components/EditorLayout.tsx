@@ -1,24 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, lazy, Suspense } from 'react';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { UploadDropzone } from './UploadDropzone';
-import { MetadataDialog } from './MetadataDialog';
 import { useEditorStore } from '../store/editorStore';
 import { Button } from '@/components/ui/button';
 import { LogOut, BookOpen, ExternalLink, Globe, Settings } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { VersionPanel } from './VersionPanel';
-import { WikiModal } from './WikiModal';
-import { ProjectSettingsDialog } from './ProjectSettingsDialog';
-
-// ViewModeControls import causes a white screen crash (likely due to circular dependency or build issue).
-// Temporarily disabled to allow the app to run.
-// import { ViewModeControls } from './ViewModeControls';
-
 
 import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
+
+const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
+const ProjectSettingsDialog = lazy(() =>
+  import('./ProjectSettingsDialog').then((m) => ({ default: m.ProjectSettingsDialog }))
+);
+const MetadataDialog = lazy(() =>
+  import('./MetadataDialog').then((m) => ({ default: m.MetadataDialog }))
+);
 
 export const EditorLayout = () => {
   const { user, logout } = useAuthStore();
@@ -268,7 +268,7 @@ export const EditorLayout = () => {
          >
             {/* Persistent Editor Background */}
             <div className="absolute inset-0 z-0">
-                 <EditorPage />
+                 <EditorPage isVisible={!isAssetRoute} />
             </div>
 
             {/* Content Overlay (Asset Library or empty for Edit route) */}
@@ -292,25 +292,35 @@ export const EditorLayout = () => {
          </UploadDropzone>
 
          {uploadedAsset && isPlanningMode && (
-             <MetadataDialog 
-                asset={uploadedAsset}
-                onSave={onMetadataSaved}
-                onCancel={() => { setUploadedAsset(null); setDialogOpen(false); }}
-             />
+             <Suspense fallback={null}>
+               <MetadataDialog
+                  asset={uploadedAsset}
+                  onSave={onMetadataSaved}
+                  onCancel={() => { setUploadedAsset(null); setDialogOpen(false); }}
+               />
+             </Suspense>
          )}
          
          {!isPlanningMode && (
              <div className="absolute bottom-8 left-1/2 -translate-x-1/2 text-white bg-black/60 px-4 py-2 rounded-lg pointer-events-none backdrop-blur-sm text-sm">
-                 First Person Preview (Press ESC to exit)
+                 Ego-Perspektive (ESC zum Beenden)
              </div>
          )}
       </div>
 
       {/* Wiki Modal */}
-      <WikiModal isOpen={wikiOpen} onClose={() => setWikiOpen(false)} />
+      {wikiOpen && (
+        <Suspense fallback={null}>
+          <WikiModal isOpen={wikiOpen} onClose={() => setWikiOpen(false)} />
+        </Suspense>
+      )}
 
       {/* Project Settings Dialog */}
-      <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+      {settingsOpen && (
+        <Suspense fallback={null}>
+          <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
+        </Suspense>
+      )}
     </div>
   );
 };

@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
+import { gooeyToast } from 'goey-toast';
 import { Plus, ChevronDown, Search, FolderOpen, Trash2, AlertTriangle } from 'lucide-react';
 
 interface Project {
@@ -12,6 +13,10 @@ interface Project {
   exhibitions: { id: number; title: string; slug: string; versions?: { id: number }[] }[];
   _count: { assets: number };
 }
+
+// How long a fetched project list is considered fresh — avoids re-fetching /api/projects
+// every time the dropdown is opened (see performance audit API-01).
+const PROJECTS_CACHE_TTL_MS = 30_000;
 
 export const ProjectSelector = () => {
   const [isOpen, setIsOpen] = useState(false);
@@ -31,63 +36,50 @@ export const ProjectSelector = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const fetchProjects = useCallback(async () => {
-    if (!token) return;
+  // Timestamp of the last successful /api/projects fetch — drives the 30s dropdown-open cache.
+  const lastFetchedAtRef = useRef(0);
+  const projectsAbortRef = useRef<AbortController | null>(null);
+  // Aborts a still-in-flight "resolve exhibition + version" call when the user picks a
+  // different project (or the URL slug changes) before the previous one resolves.
+  const selectionAbortRef = useRef<AbortController | null>(null);
+
+  const fetchProjects = useCallback(async (): Promise<Project[] | null> => {
+    if (!token) return null;
+    projectsAbortRef.current?.abort();
+    const controller = new AbortController();
+    projectsAbortRef.current = controller;
     try {
       const res = await fetch('/api/projects', {
-        headers: { 'Authorization': `Bearer ${token}` }
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal: controller.signal,
       });
       if (res.ok) {
-        const data = await res.json();
+        const data: Project[] = await res.json();
         setProjects(data);
-        
-        // Auto-select project if none selected
-        const currentProjectId = useEditorStore.getState().activeProjectId;
-        if (!currentProjectId && data.length > 0) {
-          
-          // Check current URL to see if user is requesting a specific project by slug
-          const path = window.location.pathname;
-          const slugMatch = path.match(/^\/([^/]+)\/(edit|assets)/);
-          const requestedSlug = slugMatch ? slugMatch[1] : null;
-
-          let project = data[0];
-          if (requestedSlug) {
-            const matchedProject = data.find((p: Project) => p.slug === requestedSlug);
-            if (matchedProject) project = matchedProject;
-          }
-
-          const exhibition = project.exhibitions?.[0];
-          let versionId: number | null = null;
-          if (exhibition) {
-            try {
-              const vRes = await fetch(`/api/exhibitions/${exhibition.id}/versions`, {
-                headers: { 'Authorization': `Bearer ${token}` }
-              });
-              if (vRes.ok) {
-                const versions = await vRes.json();
-                if (versions.length > 0) versionId = versions[0].id;
-              }
-            } catch { /* ignore */ }
-          }
-          setActiveProject(project.id, project.name, project.slug, exhibition?.id ?? null, versionId, exhibition?.slug ?? null);
-          triggerRefresh();
-
-          if (path.includes('/assets')) {
-            navigate(`/exhibition/${project.slug}/assets`, { replace: true });
-          } else {
-            navigate(`/exhibition/${project.slug}/edit`, { replace: true });
-          }
-        }
+        lastFetchedAtRef.current = Date.now();
+        return data;
       }
     } catch (e) {
-      console.error('Failed to fetch projects:', e);
+      if ((e as Error).name !== 'AbortError') {
+        console.error('Failed to fetch projects:', e);
+      }
     }
-  }, [token, setActiveProject, triggerRefresh, navigate]);
+    return null;
+  }, [token]);
 
   // Fetch projects on mount
   useEffect(() => {
     fetchProjects();
+    return () => projectsAbortRef.current?.abort();
   }, [fetchProjects]);
+
+  // Re-fetch on dropdown open only if the cached list is older than 30s (see audit API-01).
+  const openDropdown = () => {
+    if (!isOpen && Date.now() - lastFetchedAtRef.current > PROJECTS_CACHE_TTL_MS) {
+      fetchProjects();
+    }
+    setIsOpen((o) => !o);
+  };
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -101,36 +93,115 @@ export const ProjectSelector = () => {
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const selectProject = async (project: Project) => {
-    // Get first exhibition and its latest version
-    const exhibition = project.exhibitions[0];
+  // Shared helper: resolve a project's first exhibition + its latest version. Used by both
+  // the URL-driven selection effect and the manual dropdown pick, so the versions endpoint
+  // is only ever hit once per selection instead of being duplicated across call sites
+  // (see audit API-01).
+  const resolveExhibitionAndVersion = useCallback(async (
+    project: Project,
+    signal?: AbortSignal
+  ): Promise<{ exhibitionId: number | null; exhibitionSlug: string | null; versionId: number | null }> => {
+    const exhibition = project.exhibitions?.[0];
+    if (!exhibition) return { exhibitionId: null, exhibitionSlug: null, versionId: null };
+
     let versionId: number | null = null;
-    
-    if (exhibition) {
-      try {
-        const res = await fetch(`/api/exhibitions/${exhibition.id}/versions`, {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (res.ok) {
-          const versions = await res.json();
-          if (versions.length > 0) {
-            versionId = versions[0].id; // Most recent version
-          }
-        }
-      } catch (e) {
+    try {
+      const res = await fetch(`/api/exhibitions/${exhibition.id}/versions`, {
+        headers: { 'Authorization': `Bearer ${token}` },
+        signal,
+      });
+      if (res.ok) {
+        const versions = await res.json();
+        if (versions.length > 0) versionId = versions[0].id; // Most recent version
+      }
+    } catch (e) {
+      if ((e as Error).name !== 'AbortError') {
         console.error('Failed to fetch versions:', e);
       }
     }
+    return { exhibitionId: exhibition.id, exhibitionSlug: exhibition.slug ?? null, versionId };
+  }, [token]);
 
-    setActiveProject(project.id, project.name, project.slug, exhibition?.id ?? null, versionId, exhibition?.slug ?? null);
+  // Activates a project in the store (+ optional navigation). Cancels any previous
+  // in-flight resolution first, so rapid re-selection (or a fast back/forward) can't
+  // let a stale resolve() overwrite a newer one.
+  const activateProject = useCallback(async (
+    project: Project,
+    opts: { navigateMode?: 'edit' | 'assets'; replace?: boolean } = {}
+  ) => {
+    selectionAbortRef.current?.abort();
+    const controller = new AbortController();
+    selectionAbortRef.current = controller;
+
+    const { exhibitionId, exhibitionSlug, versionId } = await resolveExhibitionAndVersion(project, controller.signal);
+    if (controller.signal.aborted) return;
+
+    setActiveProject(project.id, project.name, project.slug, exhibitionId, versionId, exhibitionSlug);
     triggerRefresh();
+
+    if (opts.navigateMode) {
+      navigate(`/exhibition/${project.slug}/${opts.navigateMode}`, { replace: opts.replace });
+    }
+  }, [resolveExhibitionAndVersion, setActiveProject, triggerRefresh, navigate]);
+
+  // ── FUNC-01: keep the active project in sync with the URL slug ───────────────────────
+  // Handles the initial deep link (e.g. `/exhibition/yol/edit`), an unknown/inaccessible
+  // slug (toast + fallback), and the URL slug changing while mounted (browser back/forward,
+  // header links). Loop guard: we only act when the resolved URL slug differs from
+  // `activeProjectSlug`, and every activation WE trigger calls `setActiveProject` before
+  // `navigate` — so by the time the URL updates, the store already matches it and this
+  // effect no-ops on the next run instead of re-activating.
+  useEffect(() => {
+    if (!token || projects.length === 0) return;
+
+    const match = matchPath({ path: '/exhibition/:projectSlug/:mode' }, location.pathname);
+    const requestedSlug = match?.params.projectSlug ?? null;
+    const requestedMode: 'edit' | 'assets' = match?.params.mode === 'assets' ? 'assets' : 'edit';
+    const currentSlug = useEditorStore.getState().activeProjectSlug;
+
+    if (requestedSlug === currentSlug) return; // already in sync
+
+    if (!requestedSlug) {
+      // No project slug in the URL (e.g. `/project`) — only auto-pick a project if none is
+      // selected yet; don't fight the user after e.g. deleting the active project.
+      if (!currentSlug) {
+        const fallback = projects[0];
+        if (fallback) {
+          activateProject(fallback, {
+            navigateMode: location.pathname.includes('/assets') ? 'assets' : 'edit',
+            replace: true,
+          });
+        }
+      }
+      return;
+    }
+
+    const project = projects.find((p) => p.slug === requestedSlug);
+    if (!project) {
+      gooeyToast.error('Projekt nicht gefunden', {
+        description: `Das Projekt "${requestedSlug}" existiert nicht oder du hast keinen Zugriff darauf.`,
+      });
+      const fallback = projects[0];
+      if (fallback) {
+        activateProject(fallback, { navigateMode: requestedMode, replace: true });
+      }
+      return;
+    }
+
+    // Valid slug — select it and keep the current URL as-is.
+    activateProject(project);
+  }, [location.pathname, projects, token, activateProject]);
+
+  const selectProject = async (project: Project) => {
     setIsOpen(false);
     setSearch('');
-    
-    // Only navigate to the editor if we are not on the assets page
-    if (!location.pathname.includes('/assets')) {
-      navigate(`/exhibition/${project.slug}/edit`);
-    }
+    // Always navigate to the new project's current mode (edit/assets) — skipping navigation
+    // on the assets page would leave the URL pointing at the old project's slug, which the
+    // FUNC-01 URL-sync effect above would then "correct" straight back. Navigating keeps
+    // URL and store in lockstep and avoids that loop.
+    await activateProject(project, {
+      navigateMode: location.pathname.includes('/assets') ? 'assets' : 'edit',
+    });
   };
 
   const createProject = async () => {
@@ -163,11 +234,10 @@ export const ProjectSelector = () => {
           exhibition?.slug ?? null
         );
         triggerRefresh();
-        
-        // Only navigate to the editor if we are not on the assets page
-        if (!location.pathname.includes('/assets')) {
-          navigate(`/exhibition/${project.slug}/edit`);
-        }
+
+        // Always navigate to the new project's current mode — see the comment in
+        // selectProject() for why skipping this on the assets page would loop.
+        navigate(`/exhibition/${project.slug}/${location.pathname.includes('/assets') ? 'assets' : 'edit'}`);
       } else {
         const errData = await res.json().catch(() => ({}));
         console.error('Failed to create project HTTP error:', res.status, errData);
@@ -216,7 +286,7 @@ export const ProjectSelector = () => {
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        onClick={() => { if (!isOpen) fetchProjects(); setIsOpen(!isOpen); }}
+        onClick={openDropdown}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-sm text-white transition-colors min-w-[160px]"
       >
         <FolderOpen className="h-3.5 w-3.5 text-blue-400" />

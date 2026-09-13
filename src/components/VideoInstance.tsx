@@ -5,8 +5,9 @@ import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
 
-// Preload the monitor GLB so the first Monitor placement doesn't stall the main scene.
-useGLTF.preload('/models/Monitor65.glb');
+// Monitor GLB preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing
+// this component no longer downloads the model on every route, including the home page
+// (LOAD-02).
 
 interface VideoInstanceProps {
     instance: ArtworkInstanceData;
@@ -19,6 +20,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
         const asset = instance.artwork.asset;
         const selectInstance = useEditorStore((state) => state.selectInstance);
         const gl = useThree((state) => state.gl);
+        const invalidate = useThree((state) => state.invalidate);
         const [muted, setMuted] = useState(true);
 
         // DPI-based sizing (same as SelectableInstance) — used as the base unit before user scale
@@ -38,7 +40,9 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             vid.loop = true;
             vid.muted = true;
             vid.playsInline = true;
-            vid.preload = 'auto';
+            // Load metadata only — full data loads on play() (VID-01). The viewer still
+            // autoplays because play() itself triggers loading.
+            vid.preload = 'metadata';
 
             const tex = new THREE.VideoTexture(vid);
             tex.minFilter = THREE.LinearFilter;
@@ -111,13 +115,16 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 let handle: number;
                 const onFrame = () => {
                     hasNewFrame.current = true;
+                    // RND-02: under frameloop="demand" nothing else requests a new frame
+                    // while a video plays — ask for one whenever a decoded frame is ready.
+                    invalidate();
                     handle = vid.requestVideoFrameCallback(onFrame);
                 };
                 handle = vid.requestVideoFrameCallback(onFrame);
                 return () => vid.cancelVideoFrameCallback(handle);
             }
             return undefined;
-        }, [video]);
+        }, [video, invalidate]);
 
         useFrame(() => {
             if (video.paused || video.readyState < 2) return;
@@ -133,6 +140,9 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 if (frameCounter.current % 2 === 0) {
                     texture.needsUpdate = true;
                 }
+                // No requestVideoFrameCallback here to drive invalidate() — keep requesting
+                // frames every tick while playing so the texture actually advances under demand.
+                invalidate();
             }
         });
 

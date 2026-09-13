@@ -40,7 +40,7 @@ type SatellitProps = React.JSX.IntrinsicElements['group'] & {
 }
 
 export function Satellit({ viewMode = 'firstPerson', ...props }: SatellitProps) {
-  const { nodes, materials } = useGLTF('/models/Satellit_new.glb') as unknown as GLTFResult
+  const { nodes, materials } = useGLTF('/models/Satellit_new-optimized.glb') as unknown as GLTFResult
   const showTraverses = useEditorStore((state) => state.showTraverses);
 
   // Ensure wall material is visible from both sides (inside the room in first-person)
@@ -92,4 +92,7 @@ export function Satellit({ viewMode = 'firstPerson', ...props }: SatellitProps) 
   )
 }
 
-useGLTF.preload('/models/Satellit_new.glb')
+// Module-level preload removed (LOAD-02): it forced every route, including
+// the public home page, to download this model. The editor/viewer should
+// call `useGLTF.preload('/models/Satellit_new-optimized.glb')` themselves
+// once mounted instead.

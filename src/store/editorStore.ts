@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as THREE from 'three';
 import { useAuthStore } from './authStore';
+import { gooeyToast } from 'goey-toast';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -14,6 +15,9 @@ export const modelBBoxMap = new Map<number, THREE.Vector3>();
 // so the visible back of the artwork sits flush on the wall surface for both old
 // and new instances (the offset is baked into stored positions). Single source of truth.
 export const WALL_PLACEMENT_OFFSET = 0.01;
+
+// STATE-01: cap undo/redo snapshot stacks so they can't grow unbounded during a long session.
+const MAX_HISTORY_SIZE = 50;
 
 /**
  * Mutable cache for the Monitor65.glb bottom extent in its local Y space.
@@ -174,6 +178,9 @@ interface EditorState {
   pastInstances: ArtworkInstanceData[][];
   futureInstances: ArtworkInstanceData[][];
   hasUnsavedChanges: boolean;
+  // STATE-02: reflects the auto-sync module's in-flight/failed state, for a future
+  // "Gespeichert / Speichert … / Fehler" status badge in the UI.
+  syncStatus: 'idle' | 'saving' | 'error';
 
   // Modular Walls State
   localWalls: ModularWallData[];
@@ -219,6 +226,7 @@ interface EditorState {
   undo: () => void;
   redo: () => void;
   markSaved: () => void;
+  setSyncStatus: (status: 'idle' | 'saving' | 'error') => void;
 
   // Modular Walls Actions
   setLocalWalls: (walls: ModularWallData[]) => void;
@@ -230,6 +238,13 @@ interface EditorState {
   // FPV Actions
   setFpvHoveredInfo: (info: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null) => void;
 }
+
+// STATE-02 / FUNC-04: monotonically incremented by every store action below that marks the
+// exhibition dirty (hasUnsavedChanges = true). The auto-sync module at the bottom of this
+// file snapshots this counter at the start of a sync batch and only clears
+// `hasUnsavedChanges` once the batch (including its retries) finishes if the counter hasn't
+// moved since — i.e. no further edits happened while the batch was in flight.
+let localEditSeq = 0;
 
 export const useEditorStore = create<EditorState>((set) => ({
   isPlacing: false,
@@ -286,6 +301,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   pastInstances: [],
   futureInstances: [],
   hasUnsavedChanges: false,
+  syncStatus: 'idle',
 
   // Modular Walls defaults
   localWalls: [],
@@ -333,8 +349,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   deleteSelectedInstance: () => set((state) => {
     if (!state.selectedInstanceId) return state;
     const newInstances = state.localInstances.filter(inst => inst.id !== state.selectedInstanceId);
+    localEditSeq++;
     return {
-      pastInstances: [...state.pastInstances, state.localInstances],
+      pastInstances: [...state.pastInstances, state.localInstances].slice(-MAX_HISTORY_SIZE),
       localInstances: newInstances,
       futureInstances: [],
       hasUnsavedChanges: true,
@@ -368,8 +385,9 @@ export const useEditorStore = create<EditorState>((set) => ({
         scale_z: ref.scale.z,
       };
 
+      localEditSeq++;
       return {
-        pastInstances: [...state.pastInstances, state.localInstances],
+        pastInstances: [...state.pastInstances, state.localInstances].slice(-MAX_HISTORY_SIZE),
         localInstances: state.localInstances.map(i => i.id === id ? newInst : i),
         futureInstances: [],
         hasUnsavedChanges: true,
@@ -379,6 +397,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     // If wall is selected
     if (state.selectedWallId) {
       const id = state.selectedWallId;
+      localEditSeq++;
       return {
         localWalls: state.localWalls.map(w => w.id === id ? {
           ...w,
@@ -423,19 +442,25 @@ export const useEditorStore = create<EditorState>((set) => ({
       selectedInstanceId: null
     });
   },
-  commitLocalChange: (newInstances) => set((state) => ({
-    pastInstances: [...state.pastInstances, state.localInstances],
-    localInstances: newInstances,
-    futureInstances: [],
-    hasUnsavedChanges: true,
-  })),
+  commitLocalChange: (newInstances) => {
+    localEditSeq++;
+    return set((state) => ({
+      pastInstances: [...state.pastInstances, state.localInstances].slice(-MAX_HISTORY_SIZE),
+      localInstances: newInstances,
+      futureInstances: [],
+      hasUnsavedChanges: true,
+    }));
+  },
   undo: () => set((state) => {
     if (state.pastInstances.length === 0) return state;
     const previous = state.pastInstances[state.pastInstances.length - 1];
     const newPast = state.pastInstances.slice(0, state.pastInstances.length - 1);
+    localEditSeq++;
     return {
       pastInstances: newPast,
-      futureInstances: [state.localInstances, ...state.futureInstances],
+      // Cap from the front — futureInstances[0] is the most-recently-undone state, so
+      // dropping from the tail keeps the entries redo can actually reach.
+      futureInstances: [state.localInstances, ...state.futureInstances].slice(0, MAX_HISTORY_SIZE),
       localInstances: previous,
       hasUnsavedChanges: true, // Might transition to clean, but typically considered dirty until manually saved
       selectedInstanceId: null,
@@ -445,8 +470,9 @@ export const useEditorStore = create<EditorState>((set) => ({
     if (state.futureInstances.length === 0) return state;
     const next = state.futureInstances[0];
     const newFuture = state.futureInstances.slice(1);
+    localEditSeq++;
     return {
-      pastInstances: [...state.pastInstances, state.localInstances],
+      pastInstances: [...state.pastInstances, state.localInstances].slice(-MAX_HISTORY_SIZE),
       futureInstances: newFuture,
       localInstances: next,
       hasUnsavedChanges: true,
@@ -456,6 +482,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   markSaved: () => set({
     hasUnsavedChanges: false
   }),
+  setSyncStatus: (status) => set({ syncStatus: status }),
 
   // Modular Walls actions
   setLocalWalls: (walls) => {
@@ -464,35 +491,157 @@ export const useEditorStore = create<EditorState>((set) => ({
     prevWalls = walls.filter(w => w.id > 0);
     return set({ localWalls: walls });
   },
-  addWall: (wall) => set((state) => ({
-    localWalls: [...state.localWalls, wall],
-    hasUnsavedChanges: true,
-  })),
-  updateWall: (id, updates) => set((state) => ({
-    localWalls: state.localWalls.map(w => w.id === id ? { ...w, ...updates } : w),
-    hasUnsavedChanges: true,
-  })),
-  deleteWall: (id) => set((state) => ({
-    localWalls: state.localWalls.filter(w => w.id !== id),
-    // Detach artworks from deleted wall
-    localInstances: state.localInstances.map(inst =>
-      inst.wallId === id ? { ...inst, wallId: null } : inst
-    ),
-    selectedWallId: state.selectedWallId === id ? null : state.selectedWallId,
-    hasUnsavedChanges: true,
-  })),
-  toggleWallLock: (id) => set((state) => ({
-    localWalls: state.localWalls.map(w =>
-      w.id === id ? { ...w, isLocked: !w.isLocked } : w
-    ),
-    hasUnsavedChanges: true,
-  })),
+  addWall: (wall) => {
+    localEditSeq++;
+    return set((state) => ({
+      localWalls: [...state.localWalls, wall],
+      hasUnsavedChanges: true,
+    }));
+  },
+  updateWall: (id, updates) => {
+    localEditSeq++;
+    return set((state) => ({
+      localWalls: state.localWalls.map(w => w.id === id ? { ...w, ...updates } : w),
+      hasUnsavedChanges: true,
+    }));
+  },
+  deleteWall: (id) => {
+    localEditSeq++;
+    return set((state) => ({
+      localWalls: state.localWalls.filter(w => w.id !== id),
+      // Detach artworks from deleted wall
+      localInstances: state.localInstances.map(inst =>
+        inst.wallId === id ? { ...inst, wallId: null } : inst
+      ),
+      selectedWallId: state.selectedWallId === id ? null : state.selectedWallId,
+      hasUnsavedChanges: true,
+    }));
+  },
+  toggleWallLock: (id) => {
+    localEditSeq++;
+    return set((state) => ({
+      localWalls: state.localWalls.map(w =>
+        w.id === id ? { ...w, isLocked: !w.isLocked } : w
+      ),
+      hasUnsavedChanges: true,
+    }));
+  },
 
   // FPV actions
   setFpvHoveredInfo: (info) => set({ fpvHoveredInfo: info }),
 }));
 
 // ─── Auto-sync: persist every local change to backend immediately ────────────
+//
+// STATE-02 invariants (read before touching this section):
+//
+// 1. `isSyncing` now spans the ENTIRE async batch, including retries (up to ~6s per failing
+//    request). Because scheduleSync() reschedules itself whenever it fires while isSyncing is
+//    true, sync batches are fully serialized — batch N+1 never starts until batch N (and every
+//    request it kicked off, success or failure) has completely settled. That means two batches
+//    never have requests in flight for the same item at the same time.
+// 2. `syncingInstanceTempIds` / `syncingWallTempIds` are kept anyway as defense-in-depth (per
+//    the audit's explicit instruction) — with (1) holding, they should always be empty by the
+//    time a new batch starts, but they cost nothing and guard against this module ever being
+//    invoked re-entrantly in the future.
+// 3. `prevInstances` / `prevWalls` represent "what we believe is currently persisted in the
+//    DB", not "the last local state we saw". Each batch starts a fresh map seeded from the
+//    previous snapshot and only advances an entry when that entry's request actually
+//    succeeds. A failed create leaves its (negative) id absent → retried as "new" next time. A
+//    failed update leaves the OLD value in place → the next diff sees the same delta again and
+//    retries the PATCH. A failed delete leaves the entry in place → the next diff sees it's
+//    still "missing from curr" and retries the DELETE. This is what makes failed changes
+//    recoverable instead of silently dropped.
+// 4. Edits made by the user WHILE a batch is in flight are not lost: they mutate
+//    `localInstances`/`localWalls` (and hasUnsavedChanges + localEditSeq) immediately as
+//    always; the subscribe listener below calls scheduleSync(), which — since isSyncing is
+//    true — reschedules until the current batch finishes. The next batch then reads fresh
+//    state via `getState()` and diffs it against the snapshot the just-finished batch produced,
+//    so newer edits are always captured, even ones to an item this same batch just
+//    created/updated (that item's temp id has already been remapped by then, so the next
+//    diff's PATCH targets the real id — no duplicate POST).
+// 5. Idempotency keys (Work Package E): every instance/wall POST sends an `Idempotency-Key`
+//    header generated once per logical create (`idempotencyKeyFor`: random, NOT derived from
+//    the temp id, because temp ids get reused — e.g. default walls are -1…-n for every fresh
+//    version) and kept until that POST succeeds — see #3. The server (`server/src/lib/idempotency.ts`)
+//    caches the first 2xx response per key and replays it byte-for-byte to any retry of the
+//    same POST, so `fetchWithRetry` retrying a POST whose response was lost in transit (but
+//    whose insert actually committed) can no longer create a duplicate row. Because the key
+//    stays identical across `fetchWithRetry`'s own retries AND
+//    across a later batch re-POSTing the same still-unsynced temp id, this covers both cases.
+// 6. Automatic recovery: a batch that ends in `syncStatus: 'error'` (i.e. `anyFailure` after
+//    `fetchWithRetry` already exhausted its own retries) schedules a follow-up sync on its own
+//    — see `scheduleAutoRetry()` below — instead of waiting for the user's next edit. 401 is
+//    excluded (no amount of retrying fixes an expired session). The `online` window event also
+//    triggers an immediate retry. The failure toast only fires on the transition INTO
+//    `'error'` (tracked via `lastSyncStatus`), not on every subsequent automatic attempt that
+//    still fails, to avoid spamming the user with toasts while offline.
+
+const RETRY_DELAYS_MS = [500, 1500, 4000];
+const sleep = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+// Stable for the lifetime of this page load. Used to build Idempotency-Key headers (see
+// invariant #5 above) — a fresh page load naturally gets a fresh key space, which is fine
+// since prevInstances/prevWalls also reset on load and any not-yet-synced temp ids are
+// re-POSTed with a key derived from this new session id.
+// crypto.randomUUID is only available in secure contexts (https / localhost). Fall back so the
+// store module does not crash when the dev server is opened via a LAN IP over plain http.
+const randomId = (): string =>
+  typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}${Math.random().toString(36).slice(2)}`;
+
+const SYNC_SESSION_ID = randomId();
+
+// One Idempotency-Key per *logical* create (kind + temp id): generated on the first POST attempt,
+// reused by fetchWithRetry's retries and by later batches re-POSTing the same still-unsynced temp
+// id, deleted as soon as that POST succeeds, cleared on version change.
+const createIdempotencyKeys = new Map<string, string>();
+const idempotencyKeyFor = (kind: 'inst' | 'wall', tempId: number): string => {
+  const mapKey = `${kind}:${tempId}`;
+  let key = createIdempotencyKeys.get(mapKey);
+  if (!key) {
+    key = `${kind}:${SYNC_SESSION_ID}:${randomId()}`;
+    createIdempotencyKeys.set(mapKey, key);
+  }
+  return key;
+};
+
+// Unique negative temp id for locally created instances (STATE-03). `-Date.now()` collided when
+// two placements happened in the same millisecond. Stays a safe integer (~1.8e15 < 2^53).
+let tempIdSeq = 0;
+export const nextTempId = (): number => {
+  tempIdSeq = (tempIdSeq + 1) % 1000;
+  return -(Date.now() * 1000 + tempIdSeq);
+};
+
+/**
+ * fetch() with retry + exponential backoff for transient failures.
+ * - Network errors (e.g. offline) and 5xx/408/429 responses are retried, up to
+ *   RETRY_DELAYS_MS.length times.
+ * - Other 4xx responses (400, 403, 404, 409, 422, ...) are caller/data errors a retry can't
+ *   fix, so they are NOT retried.
+ * - 401 is never retried; the caller is responsible for surfacing a session-expired toast.
+ * Returns the last Response received, or null if every attempt threw (fully offline).
+ */
+async function fetchWithRetry(url: string, init: RequestInit): Promise<Response | null> {
+  for (let attempt = 0; ; attempt++) {
+    let res: Response | null = null;
+    try {
+      res = await fetch(url, init);
+    } catch {
+      // Network error — fall through to the retryable check below.
+    }
+
+    if (res?.ok) return res;
+    if (res?.status === 401) return res; // no retry — caller shows the session-expired toast
+
+    const retryable = !res || res.status >= 500 || res.status === 408 || res.status === 429;
+    if (!retryable || attempt >= RETRY_DELAYS_MS.length) return res;
+
+    await sleep(RETRY_DELAYS_MS[attempt]);
+  }
+}
 
 const getAuthHeaders = (): Record<string, string> | null => {
   const token = useAuthStore.getState().token;
@@ -500,7 +649,7 @@ const getAuthHeaders = (): Record<string, string> | null => {
   return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
 };
 
-// Track previous state for diffing
+// "Believed persisted in DB" snapshots, used for diffing (see invariant #3 above).
 let prevInstances: ArtworkInstanceData[] = [];
 let prevWalls: ModularWallData[] = [];
 
@@ -517,101 +666,168 @@ const scheduleSync = () => {
   syncTimer = setTimeout(syncToBackend, 150);
 };
 
-const syncToBackend = () => {
-  // Prevent concurrent sync runs — reschedule if already syncing
+// ── Automatic recovery for failed batches (invariant #6 above) ──────────────────────────────
+// A batch that ends in error retries itself instead of waiting for the user's next edit.
+// Exponential backoff starting at 15s, capped at 2 minutes; reset back to the initial delay as
+// soon as a batch succeeds (or goes idle with nothing to do).
+const AUTO_RETRY_INITIAL_MS = 15_000;
+const AUTO_RETRY_MAX_MS = 120_000;
+let autoRetryDelayMs = AUTO_RETRY_INITIAL_MS;
+let autoRetryTimer: ReturnType<typeof setTimeout> | null = null;
+// Tracks the syncStatus as of the end of the previous batch, so the failure toast only fires
+// on the transition INTO 'error' — not on every subsequent automatic retry that still fails.
+let lastSyncStatus: 'idle' | 'saving' | 'error' = 'idle';
+
+const scheduleAutoRetry = () => {
+  if (autoRetryTimer) return; // already scheduled
+  autoRetryTimer = setTimeout(() => {
+    autoRetryTimer = null;
+    scheduleSync();
+  }, autoRetryDelayMs);
+  autoRetryDelayMs = Math.min(autoRetryDelayMs * 2, AUTO_RETRY_MAX_MS);
+};
+
+const cancelAutoRetry = () => {
+  if (autoRetryTimer) {
+    clearTimeout(autoRetryTimer);
+    autoRetryTimer = null;
+  }
+  autoRetryDelayMs = AUTO_RETRY_INITIAL_MS;
+};
+
+// Retry immediately when connectivity comes back, rather than waiting out the current backoff
+// delay. Guarded for non-browser environments (SSR / tests). Registered once at module level.
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    cancelAutoRetry();
+    scheduleSync();
+  });
+}
+
+function remapInstanceRefs(oldId: number, newId: number) {
+  const ref = instanceRefMap.get(oldId);
+  if (ref) { instanceRefMap.set(newId, ref); instanceRefMap.delete(oldId); }
+  const videoEl = videoRefMap.get(oldId);
+  if (videoEl) { videoRefMap.set(newId, videoEl); videoRefMap.delete(oldId); }
+  const bboxSize = modelBBoxMap.get(oldId);
+  if (bboxSize) { modelBBoxMap.set(newId, bboxSize); modelBBoxMap.delete(oldId); }
+}
+
+const syncToBackend = async () => {
+  // Prevent concurrent sync runs — reschedule if already syncing (see invariant #1 above).
   if (isSyncing) { scheduleSync(); return; }
   isSyncing = true;
 
+  // Snapshot the "dirty counter" before doing any work — used at the end to tell whether a
+  // newer edit arrived while this batch (including retries) was in flight (FUNC-04).
+  const batchStartEditSeq = localEditSeq;
+  useEditorStore.setState({ syncStatus: 'saving' });
+
+  let has401 = false;
+  let anyFailure = false;
+
   try {
     const headers = getAuthHeaders();
-    if (!headers) return;
+    if (!headers) {
+      useEditorStore.setState({ syncStatus: 'idle' });
+      lastSyncStatus = 'idle';
+      cancelAutoRetry();
+      return;
+    }
 
     const state = useEditorStore.getState();
     const { localInstances, localWalls, activeVersionId } = state;
-    if (!activeVersionId) return;
+    if (!activeVersionId) {
+      useEditorStore.setState({ syncStatus: 'idle' });
+      lastSyncStatus = 'idle';
+      cancelAutoRetry();
+      return;
+    }
 
     const currInstances = localInstances;
     const currWalls = localWalls;
 
+    const tasks: Promise<void>[] = [];
+
     // ── Instance sync ──
     const prevMap = new Map(prevInstances.map(i => [i.id, i]));
     const currMap = new Map(currInstances.map(i => [i.id, i]));
+    const nextInstancesMap = new Map(prevInstances.map(i => [i.id, i]));
 
-    // New instances (in curr but not prev)
+    // New instances (in curr but not prev) → POST
     for (const inst of currInstances) {
-      if (!prevMap.has(inst.id)) {
-        // Skip if this temp ID is already being POSTed
-        if (syncingInstanceTempIds.has(inst.id)) continue;
+      if (prevMap.has(inst.id)) continue;
+      // Skip if this temp ID is already being POSTed (see invariant #2 above)
+      if (syncingInstanceTempIds.has(inst.id)) continue;
 
-        // Determine artwork/asset IDs
-        const artworkId = inst.artworkId ?? inst.artwork?.id;
-        const assetId = inst.assetId;
-        if (!artworkId && !assetId) continue;
+      // Determine artwork/asset IDs
+      const artworkId = inst.artworkId ?? inst.artwork?.id;
+      const assetId = inst.assetId;
+      if (!artworkId && !assetId) continue;
 
-        syncingInstanceTempIds.add(inst.id);
+      syncingInstanceTempIds.add(inst.id);
+      tasks.push((async () => {
+        try {
+          const res = await fetchWithRetry('/api/instances', {
+            method: 'POST',
+            headers: { ...headers, 'Idempotency-Key': idempotencyKeyFor('inst', inst.id) },
+            body: JSON.stringify({
+              versionId: activeVersionId,
+              artworkId: artworkId || undefined,
+              assetId: assetId || undefined,
+              wallId: inst.wallId ?? null,
+              medium: inst.medium ?? 'frame',
+              position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
+              rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
+              scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
+            }),
+          });
 
-        fetch('/api/instances', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            versionId: activeVersionId,
-            artworkId: artworkId || undefined,
-            assetId: assetId || undefined,
-            wallId: inst.wallId ?? null,
-            medium: inst.medium ?? 'frame',
-            position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
-            rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
-            scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
-          }),
-        }).then(res => res.ok ? res.json() : null).then(created => {
-          if (created) {
-            // Replace temp ID with real DB ID
-            const current = useEditorStore.getState();
-            useEditorStore.setState({
-              localInstances: current.localInstances.map(i =>
-                i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i
-              ),
-              // Also update undo history to reference the real ID
-              pastInstances: current.pastInstances.map(snapshot =>
-                snapshot.map(i => i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i)
-              ),
-              selectedInstanceId: current.selectedInstanceId === inst.id ? created.id : current.selectedInstanceId,
-            });
-            // Keep prevInstances in sync so the next diff doesn't re-POST the real ID
-            prevInstances = prevInstances.map(p =>
-              p.id === inst.id ? { ...p, id: created.id, artworkId: created.artworkId } : p
-            );
-            // Update the shared ref maps
-            const ref = instanceRefMap.get(inst.id);
-            if (ref) {
-              instanceRefMap.set(created.id, ref);
-              instanceRefMap.delete(inst.id);
-            }
-            const videoEl = videoRefMap.get(inst.id);
-            if (videoEl) {
-              videoRefMap.set(created.id, videoEl);
-              videoRefMap.delete(inst.id);
-            }
-            const bboxSize = modelBBoxMap.get(inst.id);
-            if (bboxSize) {
-              modelBBoxMap.set(created.id, bboxSize);
-              modelBBoxMap.delete(inst.id);
-            }
+          if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (!res?.ok) {
+            anyFailure = true;
+            console.error('[AutoSync] Failed to create instance after retries:', inst.id, res?.status);
+            return; // absent from nextInstancesMap → treated as "new" again next diff
           }
-        }).catch(err => console.error('[AutoSync] Failed to create instance:', err))
-          .finally(() => syncingInstanceTempIds.delete(inst.id));
-      }
+
+          const created = await res.json();
+          // Replace temp ID with real DB ID
+          const current = useEditorStore.getState();
+          useEditorStore.setState({
+            localInstances: current.localInstances.map(i =>
+              i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i
+            ),
+            // Also update undo history to reference the real ID
+            pastInstances: current.pastInstances.map(snapshot =>
+              snapshot.map(i => i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i)
+            ),
+            selectedInstanceId: current.selectedInstanceId === inst.id ? created.id : current.selectedInstanceId,
+          });
+          nextInstancesMap.set(created.id, { ...inst, id: created.id, artworkId: created.artworkId });
+          remapInstanceRefs(inst.id, created.id);
+          createIdempotencyKeys.delete(`inst:${inst.id}`);
+        } finally {
+          syncingInstanceTempIds.delete(inst.id);
+        }
+      })());
     }
 
-    // Deleted instances (in prev but not curr, only for real IDs)
+    // Deleted instances (in prev but not curr, only for real IDs) → DELETE
     for (const prev of prevInstances) {
-      if (prev.id > 0 && !currMap.has(prev.id)) {
-        fetch(`/api/instances/${prev.id}`, { method: 'DELETE', headers })
-          .catch(err => console.error('[AutoSync] Failed to delete instance:', err));
-      }
+      if (prev.id <= 0 || currMap.has(prev.id)) continue;
+      tasks.push((async () => {
+        const res = await fetchWithRetry(`/api/instances/${prev.id}`, { method: 'DELETE', headers });
+        if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (!res?.ok) {
+          anyFailure = true;
+          console.error('[AutoSync] Failed to delete instance after retries:', prev.id, res?.status);
+          return; // left in nextInstancesMap (seeded from prevInstances) → retried next diff
+        }
+        nextInstancesMap.delete(prev.id);
+      })());
     }
 
-    // Updated instances (same ID, different transform or wallId)
+    // Updated instances (same ID, different transform or wallId) → PATCH
     for (const curr of currInstances) {
       if (curr.id < 0) continue; // temp IDs handled above
       const prev = prevMap.get(curr.id);
@@ -621,71 +837,97 @@ const syncToBackend = () => {
       const scaleChanged = curr.scale_x !== prev.scale_x || curr.scale_y !== prev.scale_y || curr.scale_z !== prev.scale_z;
       const wallChanged = curr.wallId !== prev.wallId;
       const mediumChanged = curr.medium !== prev.medium;
-      if (posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged) {
-        const body: Record<string, unknown> = {};
-        if (posChanged) body.position = { x: curr.position_x, y: curr.position_y, z: curr.position_z };
-        if (rotChanged) body.rotation = { x: curr.rotation_x, y: curr.rotation_y, z: curr.rotation_z };
-        if (scaleChanged) body.scale = { x: curr.scale_x, y: curr.scale_y, z: curr.scale_z };
-        if (wallChanged) body.wallId = curr.wallId ?? null;
-        if (mediumChanged) body.medium = curr.medium;
-        fetch(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) })
-          .catch(err => console.error('[AutoSync] Failed to update instance:', err));
+      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged)) {
+        nextInstancesMap.set(curr.id, curr); // no pending op — keep the snapshot in sync
+        continue;
       }
+
+      const body: Record<string, unknown> = {};
+      if (posChanged) body.position = { x: curr.position_x, y: curr.position_y, z: curr.position_z };
+      if (rotChanged) body.rotation = { x: curr.rotation_x, y: curr.rotation_y, z: curr.rotation_z };
+      if (scaleChanged) body.scale = { x: curr.scale_x, y: curr.scale_y, z: curr.scale_z };
+      if (wallChanged) body.wallId = curr.wallId ?? null;
+      if (mediumChanged) body.medium = curr.medium;
+
+      tasks.push((async () => {
+        const res = await fetchWithRetry(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
+        if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (!res?.ok) {
+          anyFailure = true;
+          console.error('[AutoSync] Failed to update instance after retries:', curr.id, res?.status);
+          return; // nextInstancesMap keeps the OLD value (seeded) → retried next diff
+        }
+        nextInstancesMap.set(curr.id, curr);
+      })());
     }
 
-    // ── Wall sync ──
+    // ── Wall sync (mirrors instance sync above) ──
     const prevWallMap = new Map(prevWalls.map(w => [w.id, w]));
     const currWallMap = new Map(currWalls.map(w => [w.id, w]));
+    const nextWallsMap = new Map(prevWalls.map(w => [w.id, w]));
 
-    // New walls (temp negative IDs → POST)
+    // New walls (temp negative IDs) → POST
     for (const wall of currWalls) {
-      if (wall.id < 0 && !prevWallMap.has(wall.id)) {
-        // Skip if this temp wall ID is already being POSTed
-        if (syncingWallTempIds.has(wall.id)) continue;
+      if (wall.id >= 0 || prevWallMap.has(wall.id)) continue;
+      if (syncingWallTempIds.has(wall.id)) continue;
 
-        syncingWallTempIds.add(wall.id);
+      syncingWallTempIds.add(wall.id);
+      tasks.push((async () => {
+        try {
+          const res = await fetchWithRetry('/api/walls', {
+            method: 'POST',
+            headers: { ...headers, 'Idempotency-Key': idempotencyKeyFor('wall', wall.id) },
+            body: JSON.stringify({
+              versionId: activeVersionId,
+              label: wall.label,
+              position_x: wall.position_x, position_y: wall.position_y, position_z: wall.position_z,
+              rotation_x: wall.rotation_x, rotation_y: wall.rotation_y, rotation_z: wall.rotation_z,
+              width: wall.width, height: wall.height, thickness: wall.thickness,
+              color: wall.color, isLocked: wall.isLocked,
+            }),
+          });
 
-        fetch('/api/walls', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            versionId: activeVersionId,
-            label: wall.label,
-            position_x: wall.position_x, position_y: wall.position_y, position_z: wall.position_z,
-            rotation_x: wall.rotation_x, rotation_y: wall.rotation_y, rotation_z: wall.rotation_z,
-            width: wall.width, height: wall.height, thickness: wall.thickness,
-            color: wall.color, isLocked: wall.isLocked,
-          }),
-        }).then(res => res.ok ? res.json() : null).then(created => {
-          if (created) {
-            const current = useEditorStore.getState();
-            useEditorStore.setState({
-              localWalls: current.localWalls.map(w => w.id === wall.id ? { ...created } : w),
-              // Remap wallId on any instances pointing to the temp wall
-              localInstances: current.localInstances.map(i =>
-                i.wallId === wall.id ? { ...i, wallId: created.id } : i
-              ),
-              selectedWallId: current.selectedWallId === wall.id ? created.id : current.selectedWallId,
-            });
-            // Keep prevWalls in sync so the next diff doesn't re-POST the real ID
-            prevWalls = prevWalls.map(p =>
-              p.id === wall.id ? { ...created } : p
-            );
+          if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (!res?.ok) {
+            anyFailure = true;
+            console.error('[AutoSync] Failed to create wall after retries:', wall.id, res?.status);
+            return;
           }
-        }).catch(err => console.error('[AutoSync] Failed to create wall:', err))
-          .finally(() => syncingWallTempIds.delete(wall.id));
-      }
+
+          const created = await res.json();
+          const current = useEditorStore.getState();
+          useEditorStore.setState({
+            localWalls: current.localWalls.map(w => w.id === wall.id ? { ...created } : w),
+            // Remap wallId on any instances pointing to the temp wall
+            localInstances: current.localInstances.map(i =>
+              i.wallId === wall.id ? { ...i, wallId: created.id } : i
+            ),
+            selectedWallId: current.selectedWallId === wall.id ? created.id : current.selectedWallId,
+          });
+          nextWallsMap.set(created.id, { ...created });
+          createIdempotencyKeys.delete(`wall:${wall.id}`);
+        } finally {
+          syncingWallTempIds.delete(wall.id);
+        }
+      })());
     }
 
-    // Deleted walls (real IDs only)
+    // Deleted walls (real IDs only) → DELETE
     for (const prev of prevWalls) {
-      if (prev.id > 0 && !currWallMap.has(prev.id)) {
-        fetch(`/api/walls/${prev.id}`, { method: 'DELETE', headers })
-          .catch(err => console.error('[AutoSync] Failed to delete wall:', err));
-      }
+      if (prev.id <= 0 || currWallMap.has(prev.id)) continue;
+      tasks.push((async () => {
+        const res = await fetchWithRetry(`/api/walls/${prev.id}`, { method: 'DELETE', headers });
+        if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (!res?.ok) {
+          anyFailure = true;
+          console.error('[AutoSync] Failed to delete wall after retries:', prev.id, res?.status);
+          return;
+        }
+        nextWallsMap.delete(prev.id);
+      })());
     }
 
-    // Updated walls
+    // Updated walls → PATCH
     for (const curr of currWalls) {
       if (curr.id < 0) continue;
       const prev = prevWallMap.get(curr.id);
@@ -693,22 +935,68 @@ const syncToBackend = () => {
       const changed = curr.position_x !== prev.position_x || curr.position_z !== prev.position_z ||
         curr.rotation_y !== prev.rotation_y || curr.isLocked !== prev.isLocked ||
         curr.label !== prev.label || curr.color !== prev.color;
-      if (changed) {
-        fetch(`/api/walls/${curr.id}`, {
+      if (!changed) {
+        nextWallsMap.set(curr.id, curr);
+        continue;
+      }
+      tasks.push((async () => {
+        const res = await fetchWithRetry(`/api/walls/${curr.id}`, {
           method: 'PATCH', headers,
           body: JSON.stringify({
             position_x: curr.position_x, position_y: curr.position_y, position_z: curr.position_z,
             rotation_x: curr.rotation_x, rotation_y: curr.rotation_y, rotation_z: curr.rotation_z,
             label: curr.label, color: curr.color, isLocked: curr.isLocked,
           }),
-        }).catch(err => console.error('[AutoSync] Failed to update wall:', err));
+        });
+        if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (!res?.ok) {
+          anyFailure = true;
+          console.error('[AutoSync] Failed to update wall after retries:', curr.id, res?.status);
+          return;
+        }
+        nextWallsMap.set(curr.id, curr);
+      })());
+    }
+
+    // Wait for every request in this batch (including its retries) to settle before touching
+    // prev*/isSyncing/hasUnsavedChanges — see invariant #1.
+    await Promise.allSettled(tasks);
+
+    prevInstances = Array.from(nextInstancesMap.values());
+    prevWalls = Array.from(nextWallsMap.values());
+
+    const newSyncStatus: 'idle' | 'error' = anyFailure ? 'error' : 'idle';
+    // Only toast on the transition INTO 'error' — repeated automatic retries that keep
+    // failing (see invariant #6) must not spam a new toast each time.
+    if (newSyncStatus === 'error' && lastSyncStatus !== 'error') {
+      if (has401) {
+        gooeyToast.error('Sitzung abgelaufen', {
+          description: 'Bitte lade die Seite neu und melde dich erneut an, um weiter zu speichern.',
+        });
+      } else {
+        gooeyToast.error('Speichern fehlgeschlagen', {
+          description: 'Einige Änderungen konnten nicht gespeichert werden. Wir versuchen es automatisch erneut.',
+        });
       }
     }
 
-    // Update prev snapshots
-    prevInstances = [...currInstances];
-    prevWalls = [...currWalls];
+    useEditorStore.setState({
+      syncStatus: newSyncStatus,
+      // FUNC-04: only clear the dirty flag if this batch fully succeeded AND no further local
+      // edit happened while it (including retries) was in flight.
+      ...(!anyFailure && localEditSeq === batchStartEditSeq ? { hasUnsavedChanges: false } : {}),
+    });
 
+    // Schedule an automatic follow-up sync so a failed batch recovers on its own instead of
+    // waiting for the user's next edit (invariant #6). 401 is excluded — retrying without a
+    // fresh login can't succeed, so let it wait for an explicit user action instead of backing
+    // off forever in the background.
+    if (newSyncStatus === 'error' && !has401) {
+      scheduleAutoRetry();
+    } else if (newSyncStatus === 'idle') {
+      cancelAutoRetry();
+    }
+    lastSyncStatus = newSyncStatus;
   } finally {
     isSyncing = false;
   }
@@ -729,5 +1017,6 @@ useEditorStore.subscribe((state, prevState) => {
     prevWalls = [];
     syncingInstanceTempIds.clear();
     syncingWallTempIds.clear();
+    createIdempotencyKeys.clear();
   }
 });

@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
 import { Grid } from '@react-three/drei';
-import { RigidBody } from '@react-three/rapier';
 import { Satellit } from './Satellit';
 import { PlacedArtworks } from './PlacedArtworks';
 import { ModularWallsController } from './ModularWallsController';
@@ -54,9 +53,9 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls }: ScenePr
                 <Grid args={[20, 20]} cellColor="white" sectionColor="gray" infiniteGrid fadeDistance={50} position={[0, -0.01, 0]} />
             )}
 
-            <RigidBody type="fixed" colliders="trimesh">
-                <Satellit viewMode={viewMode} />
-            </RigidBody>
+            {/* Room collision now lives in src/components/physics/PhysicsLayer.tsx
+                (RND-08 / LOAD-01) — this component no longer imports @react-three/rapier. */}
+            <Satellit viewMode={viewMode} />
 
             <Suspense fallback={null}>
                 <PlacedArtworks viewerInstances={viewerInstances} isEditor={isEditor} />

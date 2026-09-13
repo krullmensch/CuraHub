@@ -3,7 +3,6 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
-import { imageSize } from 'image-size';
 import sharp from 'sharp';
 import { PrismaClient } from '@prisma/client';
 import ExifParser from 'exif-parser';
@@ -14,6 +13,8 @@ import { NodeIO } from '@gltf-transform/core';
 import { ALL_EXTENSIONS } from '@gltf-transform/extensions';
 import { dedup, draco, textureCompress, prune, quantize } from '@gltf-transform/functions';
 import draco3d from 'draco3dgltf';
+import { authenticate, requireCurator, userCanAccessProject } from '../lib/middleware';
+import { tryGenerateImageThumbnails } from '../lib/thumbnails';
 
 export const uploadRouter = Router();
 const prisma = new PrismaClient();
@@ -50,10 +51,17 @@ function detectAssetType(mimetype: string, filename: string): 'image' | 'video' 
     return null;
 }
 
+// Hard cap on the raw upload size (multer-level), before per-type checks run.
+// Overridable via env for deployments that need a different ceiling.
+const UPLOAD_MAX_BYTES = (() => {
+    const parsed = parseInt(process.env.UPLOAD_MAX_BYTES || '', 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 2 * 1024 * 1024 * 1024; // default 2GB
+})();
+
 // Per-type file size limits
 const SIZE_LIMITS: Record<string, number> = {
     image: 200 * 1024 * 1024,   // 200MB (increased from 10MB as client handles optimization)
-    video: Infinity,             // no limit
+    video: 2 * 1024 * 1024 * 1024, // 2GB (was Infinity — see SEC-01)
     model3d: 100 * 1024 * 1024, // 100MB (source formats are larger, output is compressed)
 };
 
@@ -70,15 +78,21 @@ const storage = multer.diskStorage({
     const sanitizedTitle = basename
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
-        .replace(/^-+|-+$/g, '');
+        .replace(/^-+|-+$/g, '') || 'file';
 
-    cb(null, `${sanitizedTitle}${ext}`);
+    // Unique prefix prevents different files with the same sanitized name from
+    // overwriting each other on disk (SEC-04). Derived filenames (webp/mp4/thumb/glb)
+    // are built from this stored filename in processImage/processVideo/processModel,
+    // so they inherit the uniqueness automatically.
+    const uniquePrefix = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+
+    cb(null, `${uniquePrefix}-${sanitizedTitle}${ext}`);
   }
 });
 
 const upload = multer({
   storage,
-  limits: { fileSize: Infinity }, // no global cap — per-type limits enforced in handler
+  limits: { fileSize: UPLOAD_MAX_BYTES }, // hard cap; per-type limits enforced in handler
   fileFilter: (req, file, cb) => {
       const type = detectAssetType(file.mimetype, file.originalname);
       if (type) {
@@ -139,7 +153,7 @@ function extractThumbnail(inputPath: string, outputPath: string): Promise<void> 
     });
 }
 
-uploadRouter.post('/', (req, res, next) => {
+uploadRouter.post('/', authenticate, requireCurator, (req, res, next) => {
     upload.single('file')(req, res, (err) => {
         if (err) {
             if (err instanceof multer.MulterError) {
@@ -160,6 +174,26 @@ uploadRouter.post('/', (req, res, next) => {
       console.log(`[Upload] Processing upload for Project ID: ${projectId}${folderIdRaw ? `, Folder ID: ${folderIdRaw}` : ''}`);
   }
 
+  // Resolve + validate projectId once, reused for the access check, folder
+  // validation and duplicate detection below.
+  let parsedProjectId: number | undefined = undefined;
+  if (projectId) {
+      parsedProjectId = parseInt(String(projectId), 10);
+      if (isNaN(parsedProjectId)) {
+          fs.unlinkSync(req.file.path);
+          return res.status(400).json({ error: 'Invalid projectId' });
+      }
+
+      // SEC-01: only owners, exhibition collaborators, or admins may upload into a project
+      // (req.user is always set here — this handler runs after `authenticate`)
+      const isAdmin = req.user!.role === 'admin';
+      const canAccess = await userCanAccessProject(prisma, req.user!.userId, parsedProjectId, isAdmin);
+      if (!canAccess) {
+          fs.unlinkSync(req.file.path);
+          return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt' });
+      }
+  }
+
   // Validate folder belongs to project (if both provided)
   let folderId: number | undefined = undefined;
   if (folderIdRaw) {
@@ -168,7 +202,6 @@ uploadRouter.post('/', (req, res, next) => {
           fs.unlinkSync(req.file.path);
           return res.status(400).json({ error: 'Invalid folderId' });
       }
-      const parsedProjectId = projectId ? parseInt(String(projectId), 10) : undefined;
       const folder = await prisma.folder.findUnique({
           where: { id: parsed },
           select: { id: true, projectId: true },
@@ -188,11 +221,35 @@ uploadRouter.post('/', (req, res, next) => {
 
   // ── Duplicate detection (unless force=true) ──
   const force = req.body.force === 'true' || req.query.force === 'true';
-  const parsedProjectId = projectId ? parseInt(String(projectId), 10) : undefined;
+
+  // UPL-01: optional client-computed hash/dimensions/dpi for images — validated
+  // and used in place of server-side computation when present. The client now
+  // uploads a resized copy, so the server can no longer derive these from the
+  // uploaded file alone.
+  const clientHashRaw = req.body.clientHash;
+  const clientHash = typeof clientHashRaw === 'string' && /^[a-f0-9]{64}$/.test(clientHashRaw)
+      ? clientHashRaw
+      : undefined;
+
+  const parsePositiveIntField = (raw: unknown, max: number): number | undefined => {
+      if (typeof raw !== 'string' && typeof raw !== 'number') return undefined;
+      const n = typeof raw === 'number' ? raw : parseInt(raw, 10);
+      return Number.isInteger(n) && n > 0 && n <= max ? n : undefined;
+  };
+  const parsePositiveNumberField = (raw: unknown, min: number, max: number): number | undefined => {
+      if (typeof raw !== 'string' && typeof raw !== 'number') return undefined;
+      const n = typeof raw === 'number' ? raw : parseFloat(raw);
+      return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
+  };
+
+  const clientOriginalWidth = parsePositiveIntField(req.body.originalWidth, 100000);
+  const clientOriginalHeight = parsePositiveIntField(req.body.originalHeight, 100000);
+  const clientDpi = parsePositiveNumberField(req.body.dpi, 1, 2400);
 
   if (!force) {
-      const fileBuffer = fs.readFileSync(req.file.path);
-      const fileHash = crypto.createHash('sha256').update(fileBuffer).digest('hex');
+      // UPL-02: stream the hash instead of reading the whole file into memory,
+      // so large uploads don't block the event loop for other requests.
+      const fileHash = clientHash ?? await streamFileHash(req.file.path);
 
       const existing = await prisma.asset.findFirst({
           where: {
@@ -213,6 +270,10 @@ uploadRouter.post('/', (req, res, next) => {
 
       // Store hash on req for use in processX helpers via a side-channel
       (req as any)._fileHash = fileHash;
+  } else if (clientHash) {
+      // force=true skips duplicate detection but a validated client hash
+      // should still be recorded as Asset.fileHash.
+      (req as any)._fileHash = clientHash;
   }
 
   // Validate per-type size limit
@@ -228,7 +289,11 @@ uploadRouter.post('/', (req, res, next) => {
 
   try {
       if (assetType === 'image') {
-          const asset = await processImage(req.file, projectId, folderId, fileHash);
+          const asset = await processImage(req.file, projectId, folderId, fileHash, {
+              width: clientOriginalWidth,
+              height: clientOriginalHeight,
+              dpi: clientDpi,
+          });
           return res.json(asset);
       }
 
@@ -249,25 +314,53 @@ uploadRouter.post('/', (req, res, next) => {
 });
 
 // ── Image processing (original pipeline) ──
-async function processImage(file: Express.Multer.File, projectId: string | undefined, folderId?: number, fileHash?: string) {
-    const buffer = fs.readFileSync(file.path);
+interface ClientImageMeta {
+    width?: number;
+    height?: number;
+    dpi?: number;
+}
 
+async function processImage(
+    file: Express.Multer.File,
+    projectId: string | undefined,
+    folderId?: number,
+    fileHash?: string,
+    clientMeta?: ClientImageMeta,
+) {
     let dimensions = { width: 0, height: 0 };
     let dpi = 72;
 
-    const size = imageSize(buffer);
-    if (size) {
-        dimensions = { width: size.width || 0, height: size.height || 0 };
+    const hasClientDims = clientMeta?.width !== undefined && clientMeta?.height !== undefined;
+
+    if (hasClientDims) {
+        // UPL-01: trust the client-supplied original dimensions/DPI — the
+        // uploaded file itself may already be a resized copy.
+        dimensions = { width: clientMeta!.width!, height: clientMeta!.height! };
+        if (clientMeta?.dpi !== undefined) {
+            dpi = clientMeta.dpi;
+        }
+    } else {
+        // UPL-02: use sharp's metadata reader instead of loading the whole
+        // buffer into memory just to measure it.
+        const meta = await sharp(file.path).metadata();
+        dimensions = { width: meta.width || 0, height: meta.height || 0 };
+        if (meta.density) {
+            dpi = meta.density;
+        }
     }
 
-    try {
-        const parser = ExifParser.create(buffer);
-        const result = parser.parse();
-        if (result && result.tags && result.tags.XResolution) {
-            dpi = result.tags.XResolution;
+    if (!hasClientDims || clientMeta?.dpi === undefined) {
+        // Fall back to EXIF DPI when sharp density is missing / no client value given.
+        try {
+            const buffer = fs.readFileSync(file.path);
+            const parser = ExifParser.create(buffer);
+            const result = parser.parse();
+            if (result && result.tags && result.tags.XResolution) {
+                dpi = result.tags.XResolution;
+            }
+        } catch {
+            // Ignore EXIF parsing errors
         }
-    } catch {
-        // Ignore EXIF parsing errors
     }
 
     const widthCm = dimensions.width > 0 ? parseFloat(((dimensions.width / dpi) * 2.54).toFixed(1)) : 0;
@@ -287,9 +380,12 @@ async function processImage(file: Express.Multer.File, projectId: string | undef
 
     const stats = fs.statSync(newPath);
 
+    // LOAD-04: generate 256px/512px thumbnails. Best-effort — never fails the upload.
+    const thumbnailPath = await tryGenerateImageThumbnails(newPath);
+
     return prisma.asset.create({
         data: {
-            filename: path.basename(file.originalname, path.extname(file.originalname)) + '.webp',
+            filename: path.basename(file.originalname, path.extname(file.originalname)),
             path: `/uploads/${newFilename}`,
             mimetype: 'image/webp',
             size: stats.size,
@@ -297,11 +393,23 @@ async function processImage(file: Express.Multer.File, projectId: string | undef
             width: dimensions.width,
             height: dimensions.height,
             dpi,
+            thumbnailPath: thumbnailPath ?? undefined,
             fileHash,
             projectId: projectId ? parseInt(projectId as string, 10) : undefined,
             folderId,
             metadata: { widthCm, heightCm, projectId: projectId ? String(projectId) : undefined },
         }
+    });
+}
+
+// UPL-02: stream a file's SHA-256 hash instead of reading it fully into memory.
+function streamFileHash(filePath: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+        const hash = crypto.createHash('sha256');
+        const stream = fs.createReadStream(filePath);
+        stream.on('data', (chunk) => hash.update(chunk));
+        stream.on('error', reject);
+        stream.on('end', () => resolve(hash.digest('hex')));
     });
 }
 

@@ -6,6 +6,7 @@ import { ModelPreviewCard } from './ModelPreviewCard';
 import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/store/editorStore';
+import { useAuthStore } from '@/store/authStore';
 import { type Folder, listFolders, moveAssetToFolder } from '@/lib/folders';
 
 interface AssetSidebarProps {
@@ -33,6 +34,14 @@ interface Asset {
 
 type FolderFilter = 'all' | number;
 
+// LOAD-04: `Asset.thumbnailPath` stores the 512px variant; the 256px variant
+// is derived by naming convention (see server/src/lib/thumbnails.ts).
+function thumbnailSrcSet(asset: Asset): string | undefined {
+    if (!asset.thumbnailPath || !asset.thumbnailPath.endsWith('-thumb-512.webp')) return undefined;
+    const path256 = asset.thumbnailPath.replace(/-thumb-512\.webp$/, '-thumb-256.webp');
+    return `${path256} 256w, ${asset.thumbnailPath} 512w`;
+}
+
 export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [assets, setAssets] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(false);
@@ -42,6 +51,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [dragOverFolderId, setDragOverFolderId] = useState<number | 'all' | null>(null);
     const setDragging = useEditorStore((state) => state.setDragging);
     const activeProjectId = useEditorStore((state) => state.activeProjectId);
+    const token = useAuthStore((state) => state.token);
 
     const fetchAssets = useCallback(async (filter: FolderFilter) => {
         if (!activeProjectId) {
@@ -55,7 +65,9 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
             params.set('projectId', String(activeProjectId));
             if (typeof filter === 'number') params.set('folderId', String(filter));
             const qs = params.toString();
-            const res = await fetch(`/api/assets?${qs}`);
+            const res = await fetch(`/api/assets?${qs}`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+            });
             if (!res.ok) throw new Error('Failed to fetch assets');
             const data = await res.json();
             setAssets(data);
@@ -67,7 +79,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
         } finally {
             setLoading(false);
         }
-    }, [activeProjectId]);
+    }, [activeProjectId, token]);
 
     // Fetch folders list
     useEffect(() => {
@@ -266,13 +278,18 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                             : "border-zinc-800 hover:border-zinc-600"
                                     )}
                                     title={asset.artwork?.title || asset.filename}
+                                    style={{ contentVisibility: 'auto', containIntrinsicSize: '256px 256px' }}
                                 >
                                     {(asset.type || 'image') === 'image' ? (
                                         <img
-                                            src={asset.path}
+                                            src={asset.thumbnailPath || asset.path}
+                                            srcSet={thumbnailSrcSet(asset)}
+                                            sizes="128px"
                                             alt={asset.filename}
                                             className="w-full h-full object-cover"
                                             draggable={false}
+                                            loading="lazy"
+                                            decoding="async"
                                         />
                                     ) : asset.type === 'video' ? (
                                         <div className="relative w-full h-full flex items-center justify-center bg-zinc-800">

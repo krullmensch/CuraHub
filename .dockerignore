@@ -12,4 +12,14 @@ PRD.xml
 phase*.xml
 Sample Files
 docs
+_archive
+server/uploads
+.vitepress
+.vexp
+.serena
+.claude
+*.xml
+.env
+server/.env
+**/.DS_Store
 # server <-- Das muss raus, damit Docker den Ordner sieht!

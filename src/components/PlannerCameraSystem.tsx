@@ -1,10 +1,9 @@
 import { useRef, useEffect } from 'react';
-import { useFrame } from '@react-three/fiber';
-import { PerspectiveCamera, OrbitControls, PointerLockControls, KeyboardControls } from '@react-three/drei';
+import { useFrame, useThree } from '@react-three/fiber';
+import { PerspectiveCamera, OrbitControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { useEditorStore } from '../store/editorStore';
-import { PlayerController } from './Player';
 
 // --- CONFIGURATION ---
 const CAMERA_LIMITS = {
@@ -24,11 +23,11 @@ export const PlannerCameraSystem = () => {
     const fpState = useEditorStore(state => state.firstPersonCameraState);
     const updateOrbitState = useEditorStore(state => state.updateOrbitCameraState);
     const updateFPState = useEditorStore(state => state.updateFirstPersonCameraState);
-    const isDialogOpen = useEditorStore(state => state.isDialogOpen);
     const isTransforming = useEditorStore(state => state.isTransforming);
 
     const focusTarget = useEditorStore(state => state.focusTarget);
     const setFocusTarget = useEditorStore(state => state.setFocusTarget);
+    const invalidate = useThree(state => state.invalidate);
 
     const perspRef = useRef<THREE.PerspectiveCamera>(null);
     const fpRef = useRef<THREE.PerspectiveCamera>(null);
@@ -80,11 +79,14 @@ export const PlannerCameraSystem = () => {
             if (e.key.toLowerCase() === 'h') {
                 if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
                 setFocusTarget({ target: [0, 0, 0], isHoming: true });
+                // RND-02: the store change alone doesn't touch any r3f-managed prop, so under
+                // frameloop="demand" nothing would kick off the homing animation below.
+                invalidate();
             }
         };
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [setFocusTarget]);
+    }, [setFocusTarget, invalidate]);
 
     // Continuous State Update & Animation
     useFrame((_, delta) => {
@@ -116,8 +118,13 @@ export const PlannerCameraSystem = () => {
                 if (t.distanceTo(targetV) < 0.1 && p.distanceTo(desiredPos) < 0.1) {
                     setFocusTarget(null);
                 }
-                
+
                 orbitControlsRef.current.update();
+
+                // RND-02: keep requesting frames for the duration of the homing/focus lerp
+                // under frameloop="demand" (OrbitControls.update() also invalidates when it
+                // detects a real change, but this guarantees the animation completes).
+                invalidate();
             }
         }
     });
@@ -158,23 +165,10 @@ export const PlannerCameraSystem = () => {
                 />
             )}
 
-            {viewMode === 'firstPerson' && (
-                <>
-                    <PointerLockControls selector="#root" /> 
-                    <KeyboardControls
-                        map={[
-                            { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
-                            { name: 'backward', keys: ['ArrowDown', 's', 'S'] },
-                            { name: 'left', keys: ['ArrowLeft', 'a', 'A'] },
-                            { name: 'right', keys: ['ArrowRight', 'd', 'D'] },
-                            { name: 'jump', keys: ['Space'] },
-                            { name: 'run', keys: ['Shift'] },
-                        ]}
-                    >
-                         <PlayerController paused={isDialogOpen} />
-                    </KeyboardControls>
-                </>
-            )}
+            {/* First-person KeyboardControls/PointerLockControls/player body now live in
+                <PhysicsLayer> (mounted by EditorPage only while firstPerson — LOAD-01 /
+                RND-08), so this component no longer needs to import @react-three/rapier
+                transitively via Player.tsx. */}
         </>
     );
 };

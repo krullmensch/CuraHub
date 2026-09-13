@@ -1,9 +1,9 @@
 import { forwardRef, useMemo, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
+import { modelBBoxCenterMap } from './physics/modelBBoxCenterMap';
 
 interface ModelInstanceProps {
     instance: ArtworkInstanceData;
@@ -16,19 +16,46 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
         const asset = instance.artwork.asset;
         const selectInstance = useEditorStore((state) => state.selectInstance);
 
-        const { scene } = useGLTF(asset.path);
+        // Uploaded GLBs are Draco-compressed; decoder served same-origin (no gstatic CDN).
+        const { scene } = useGLTF(asset.path, '/draco/gltf/');
 
-        // Clone the scene so multiple instances of the same model don't conflict
+        // Clone the scene AND its materials so multiple instances of the same model
+        // (and the shared useGLTF cache) don't conflict when we mutate emissive
+        // below on selection (RND-10).
         const clonedScene = useMemo(() => {
             const clone = scene.clone(true);
             clone.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
+                    const mesh = child as THREE.Mesh;
+                    mesh.castShadow = true;
+                    mesh.receiveShadow = true;
+                    if (Array.isArray(mesh.material)) {
+                        mesh.material = mesh.material.map((m) => m.clone());
+                    } else if (mesh.material) {
+                        mesh.material = mesh.material.clone();
+                    }
                 }
             });
             return clone;
         }, [scene]);
+
+        // Dispose the per-instance cloned materials on unmount / re-clone so we
+        // don't leak GPU resources (geometries are shared with the useGLTF cache
+        // and must NOT be disposed here).
+        useEffect(() => {
+            return () => {
+                clonedScene.traverse((child) => {
+                    if ((child as THREE.Mesh).isMesh) {
+                        const mesh = child as THREE.Mesh;
+                        if (Array.isArray(mesh.material)) {
+                            mesh.material.forEach((m) => m.dispose());
+                        } else {
+                            mesh.material?.dispose();
+                        }
+                    }
+                });
+            };
+        }, [clonedScene]);
 
         // Compute bounding box from the cloned scene
         const bbox = useMemo(() => {
@@ -40,11 +67,17 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             return { size, center };
         }, [clonedScene]);
 
-        // Publish natural (unscaled) bbox size so PropertiesPanel can show real-world dimensions
+        // Publish natural (unscaled) bbox size + center so PropertiesPanel can show
+        // real-world dimensions, and PhysicsLayer can build a matching collider
+        // (RND-08 — physics colliders live outside this component now).
         useEffect(() => {
             modelBBoxMap.set(instance.id, bbox.size.clone());
-            return () => { modelBBoxMap.delete(instance.id); };
-        }, [instance.id, bbox.size]);
+            modelBBoxCenterMap.set(instance.id, bbox.center.clone());
+            return () => {
+                modelBBoxMap.delete(instance.id);
+                modelBBoxCenterMap.delete(instance.id);
+            };
+        }, [instance.id, bbox.size, bbox.center]);
 
         // Selection highlight: apply emissive to all meshes
         useMemo(() => {
@@ -75,13 +108,9 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             >
                 <primitive object={clonedScene} />
 
-                {/* Physics collider for first-person collision */}
-                <RigidBody type="fixed" colliders={false}>
-                    <CuboidCollider
-                        args={[bbox.size.x / 2, bbox.size.y / 2, bbox.size.z / 2]}
-                        position={[bbox.center.x, bbox.center.y, bbox.center.z]}
-                    />
-                </RigidBody>
+                {/* Physics collider for first-person collision now lives in
+                    src/components/physics/PhysicsLayer.tsx (RND-08 / LOAD-01) — this
+                    visual component no longer imports @react-three/rapier. */}
 
                 {/* Bounding box wireframe — only when selected */}
                 {selected && (

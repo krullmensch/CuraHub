@@ -1,5 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import type { PrismaClient } from '@prisma/client';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
 
@@ -78,4 +79,29 @@ export const exhibitionAccessFilter = (userId: number, isAdmin = false) => {
       { collaborators: { some: { userId } } },
     ],
   };
+};
+
+/**
+ * Returns true if the user may access the given project: owner of the project,
+ * a collaborator on one of its exhibitions, or an admin (isAdmin=true bypasses the check).
+ * Mirrors exhibitionAccessFilter's ownership/collaborator logic, scoped to a project id.
+ */
+export const userCanAccessProject = async (
+  prisma: PrismaClient,
+  userId: number,
+  projectId: number,
+  isAdmin = false
+): Promise<boolean> => {
+  if (isAdmin) return true;
+  const project = await prisma.project.findFirst({
+    where: {
+      id: projectId,
+      OR: [
+        { ownerId: userId },
+        { exhibitions: { some: { collaborators: { some: { userId } } } } },
+      ],
+    },
+    select: { id: true },
+  });
+  return project !== null;
 };

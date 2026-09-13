@@ -1,45 +1,10 @@
-import { useState, useRef, useEffect, Suspense, useMemo } from 'react';
-import { Canvas, useFrame } from '@react-three/fiber';
-import { useGLTF, Center, Environment } from '@react-three/drei';
-import { Box, Loader2 } from 'lucide-react';
-import * as THREE from 'three';
+import { useState, useRef, useEffect } from 'react';
+import { Box, Loader2, AlertTriangle } from 'lucide-react';
+import { getModelThumbnail } from '@/lib/modelThumbnailRenderer';
 
 interface ModelPreviewCardProps {
     url: string;
     compact?: boolean;
-}
-
-function AutoRotate({ children }: { children: React.ReactNode }) {
-    const groupRef = useRef<THREE.Group>(null);
-
-    useFrame((_, delta) => {
-        if (groupRef.current) {
-            groupRef.current.rotation.y += delta * 0.4;
-        }
-    });
-
-    return <group ref={groupRef}>{children}</group>;
-}
-
-function PreviewModel({ url }: { url: string }) {
-    const { scene } = useGLTF(url);
-
-    const clonedScene = useMemo(() => {
-        const clone = scene.clone(true);
-        clone.traverse((child) => {
-            if ((child as THREE.Mesh).isMesh) {
-                child.castShadow = false;
-                child.receiveShadow = false;
-            }
-        });
-        return clone;
-    }, [scene]);
-
-    return (
-        <Center>
-            <primitive object={clonedScene} />
-        </Center>
-    );
 }
 
 function FallbackSpinner() {
@@ -50,12 +15,18 @@ function FallbackSpinner() {
     );
 }
 
+// RND-09: previously mounted one <Canvas> (= one WebGL context) per card and
+// never unmounted it, exhausting Chrome's ~16-context budget and knocking
+// out the main editor canvas. Now renders through the single shared
+// offscreen renderer in `src/lib/modelThumbnailRenderer.ts` and just shows
+// the resulting cached image.
 export function ModelPreviewCard({ url, compact = false }: ModelPreviewCardProps) {
     const containerRef = useRef<HTMLDivElement>(null);
     const [isVisible, setIsVisible] = useState(false);
-    const [hasLoaded, setHasLoaded] = useState(false);
+    const [thumbnailUrl, setThumbnailUrl] = useState<string | null>(null);
+    const [hasError, setHasError] = useState(false);
 
-    // IntersectionObserver — mount canvas when card scrolls into view
+    // IntersectionObserver — only request a thumbnail once the card scrolls into view.
     useEffect(() => {
         const el = containerRef.current;
         if (!el) return;
@@ -67,20 +38,20 @@ export function ModelPreviewCard({ url, compact = false }: ModelPreviewCardProps
         return () => observer.disconnect();
     }, []);
 
-    // Preload the model
     useEffect(() => {
-        useGLTF.preload(url);
-    }, [url]);
-
-    // Show canvas when visible (or keep it if it already loaded once)
-    const showCanvas = isVisible || hasLoaded;
-
-    // Once loaded, keep it alive to avoid re-loading on scroll
-    useEffect(() => {
-        if (isVisible && !hasLoaded) {
-            setHasLoaded(true);
-        }
-    }, [isVisible, hasLoaded]);
+        if (!isVisible || thumbnailUrl || hasError) return;
+        let cancelled = false;
+        getModelThumbnail(url, compact ? 256 : 512)
+            .then((blobUrl) => {
+                if (!cancelled) setThumbnailUrl(blobUrl);
+            })
+            .catch(() => {
+                if (!cancelled) setHasError(true);
+            });
+        return () => {
+            cancelled = true;
+        };
+    }, [isVisible, url, compact, thumbnailUrl, hasError]);
 
     const iconSize = compact ? 'h-8 w-8' : 'h-12 w-12';
 
@@ -89,24 +60,19 @@ export function ModelPreviewCard({ url, compact = false }: ModelPreviewCardProps
             ref={containerRef}
             className="flex flex-col items-center justify-center gap-1 w-full h-full"
         >
-            {showCanvas ? (
-                <Suspense fallback={<FallbackSpinner />}>
-                    <Canvas
-                        dpr={compact ? [1, 1] : [1, 1.5]}
-                        style={{ width: '100%', height: '100%' }}
-                        camera={{ fov: 45, near: 0.01, far: 100, position: [0, 0.5, 2] }}
-                        gl={{ antialias: true, alpha: true }}
-                    >
-                        <ambientLight intensity={1.0} />
-                        <directionalLight position={[2, 3, 4]} intensity={1.2} />
-                        <Environment preset="warehouse" background={false} environmentIntensity={0.3} />
-                        <Suspense fallback={null}>
-                            <AutoRotate>
-                                <PreviewModel url={url} />
-                            </AutoRotate>
-                        </Suspense>
-                    </Canvas>
-                </Suspense>
+            {thumbnailUrl ? (
+                <img
+                    src={thumbnailUrl}
+                    alt="3D-Modell-Vorschau"
+                    className="w-full h-full object-contain"
+                />
+            ) : hasError ? (
+                <div className="flex flex-col items-center gap-1 text-red-400">
+                    <AlertTriangle className={iconSize} />
+                    <span className="text-[10px] text-center">Vorschau nicht verfügbar</span>
+                </div>
+            ) : isVisible ? (
+                <FallbackSpinner />
             ) : (
                 <Box className={`${iconSize} text-purple-400`} />
             )}

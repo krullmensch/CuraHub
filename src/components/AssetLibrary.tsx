@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { UploadDropzone } from './UploadDropzone';
-import { UploadPreviewModal } from './UploadPreviewModal';
 import { useEditorStore } from '../store/editorStore';
+import { useAuthStore } from '../store/authStore';
 import { Card, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -44,7 +44,6 @@ import {
   Upload,
 } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
-import { MetadataDialog } from './MetadataDialog';
 import { FolderColorPicker } from './FolderColorPicker';
 import {
   type Folder,
@@ -56,6 +55,15 @@ import {
   DEFAULT_FOLDER_COLOR,
 } from '@/lib/folders';
 import { cn } from '@/lib/utils';
+
+// LOAD-04: lazy-load these two dialogs — they pull in upload/preview/metadata
+// logic that isn't needed until the user actually uploads or edits an asset.
+const UploadPreviewModal = lazy(() =>
+  import('./UploadPreviewModal').then((m) => ({ default: m.UploadPreviewModal }))
+);
+const MetadataDialog = lazy(() =>
+  import('./MetadataDialog').then((m) => ({ default: m.MetadataDialog }))
+);
 
 interface Asset {
   id: number;
@@ -89,6 +97,14 @@ interface Asset {
 
 type FolderSelection = number | 'all' | 'unsorted';
 
+// LOAD-04: `Asset.thumbnailPath` stores the 512px variant; the 256px variant
+// is derived by naming convention (see server/src/lib/thumbnails.ts).
+function thumbnailSrcSet(asset: Asset): string | undefined {
+  if (!asset.thumbnailPath || !asset.thumbnailPath.endsWith('-thumb-512.webp')) return undefined;
+  const path256 = asset.thumbnailPath.replace(/-thumb-512\.webp$/, '-thumb-256.webp');
+  return `${path256} 256w, ${asset.thumbnailPath} 512w`;
+}
+
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
   const s = Math.floor(seconds % 60);
@@ -104,6 +120,7 @@ export const AssetLibrary = () => {
   const [contextMenu, setContextMenu] = useState<{ assetId: number; x: number; y: number } | null>(null);
   const activeProjectId = useEditorStore((state) => state.activeProjectId);
   const setDragging = useEditorStore((state) => state.setDragging);
+  const token = useAuthStore((state) => state.token);
 
   // Folder state
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -150,7 +167,9 @@ export const AssetLibrary = () => {
     async (folderSel: FolderSelection) => {
       try {
         setLoading(true);
-        const res = await fetch(buildAssetsUrl(folderSel));
+        const res = await fetch(buildAssetsUrl(folderSel), {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+        });
         if (!res.ok) throw new Error('Failed to fetch assets');
         const data = await res.json();
         setAssets(data);
@@ -163,7 +182,7 @@ export const AssetLibrary = () => {
         setLoading(false);
       }
     },
-    [buildAssetsUrl]
+    [buildAssetsUrl, token]
   );
 
   const fetchFolders = useCallback(async () => {
@@ -208,7 +227,10 @@ export const AssetLibrary = () => {
 
     try {
       const deletePromises = assetsToDelete.map((id) =>
-        fetch(`/api/assets/${id}`, { method: 'DELETE' }).then(async (res) => {
+        fetch(`/api/assets/${id}`, {
+          method: 'DELETE',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+        }).then(async (res) => {
           if (!res.ok) throw new Error(`Failed to delete asset ${id}`);
           return id;
         })
@@ -470,10 +492,10 @@ export const AssetLibrary = () => {
           `;
 
           const thumb =
-            asset.type === 'video' && asset.thumbnailPath
-              ? asset.thumbnailPath
+            asset.type === 'video'
+              ? asset.thumbnailPath || null
               : (asset.type || 'image') === 'image'
-              ? asset.path
+              ? asset.thumbnailPath || asset.path
               : null;
 
           if (thumb) {
@@ -990,6 +1012,7 @@ export const AssetLibrary = () => {
                         : 'border-zinc-800 hover:border-zinc-700'
                     )}
                     onClick={(e) => toggleSelect(asset.id, e)}
+                    style={{ contentVisibility: 'auto', containIntrinsicSize: '220px 220px' }}
                   >
                     <div className="aspect-square relative flex items-center justify-center bg-black/40 p-2">
                       {isModel ? (
@@ -1014,13 +1037,17 @@ export const AssetLibrary = () => {
                         </div>
                       ) : (asset.type || 'image') === 'image' ? (
                         <img
-                          src={asset.path}
+                          src={asset.thumbnailPath || asset.path}
+                          srcSet={thumbnailSrcSet(asset)}
+                          sizes="220px"
                           alt={asset.filename}
                           className={cn(
                             'max-h-full max-w-full object-contain transition-opacity',
                             isSelected ? 'opacity-90' : 'opacity-100'
                           )}
                           draggable={false}
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <FileIcon className="h-12 w-12 text-gray-600" />
@@ -1126,16 +1153,20 @@ export const AssetLibrary = () => {
             </>
           )}
 
-          {/* Upload Preview Modal */}
-          <UploadPreviewModal
-            key={uploadKey}
-            files={pendingFiles}
-            projectId={activeProjectId}
-            folderId={folderForUpload}
-            open={uploadModalOpen}
-            onClose={handleUploadModalClose}
-            onAssetUploaded={handleAssetUploaded}
-          />
+          {/* Upload Preview Modal — mounted (and its module loaded) only once needed */}
+          {(uploadModalOpen || pendingFiles.length > 0) && (
+            <Suspense fallback={null}>
+              <UploadPreviewModal
+                key={uploadKey}
+                files={pendingFiles}
+                projectId={activeProjectId}
+                folderId={folderForUpload}
+                open={uploadModalOpen}
+                onClose={handleUploadModalClose}
+                onAssetUploaded={handleAssetUploaded}
+              />
+            </Suspense>
+          )}
 
           {/* Delete Confirmation Dialog */}
           <Dialog
@@ -1166,11 +1197,13 @@ export const AssetLibrary = () => {
 
           {/* Metadata Edit Dialog */}
           {selectedAsset && (
-            <MetadataDialog
-              asset={selectedAsset}
-              onSave={handleMetadataSaved}
-              onCancel={() => setSelectedAsset(null)}
-            />
+            <Suspense fallback={null}>
+              <MetadataDialog
+                asset={selectedAsset}
+                onSave={handleMetadataSaved}
+                onCancel={() => setSelectedAsset(null)}
+              />
+            </Suspense>
           )}
 
           {/* Create Folder Dialog */}
