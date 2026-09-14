@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { UploadDropzone } from './UploadDropzone';
+import { VideoProcessingBadge } from './VideoProcessingBadge';
+import { setCompactDragImage } from '@/lib/dragPreview';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { Card, CardFooter } from '@/components/ui/card';
@@ -79,13 +81,12 @@ interface Asset {
     widthCm?: number;
     heightCm?: number;
     projectId?: string;
+    proxiesPending?: boolean;
   };
 }
 
 type FolderSelection = number | 'all' | 'unsorted';
 
-/** VID-03: refresh interval while a video is processed in the background. */
-const PROCESSING_POLL_MS = 5000;
 
 const isAssetReady = (asset: Asset) => asset.status !== 'processing' && asset.status !== 'failed';
 
@@ -113,6 +114,7 @@ export const AssetLibrary = () => {
   const activeProjectId = useEditorStore((state) => state.activeProjectId);
   const setDragging = useEditorStore((state) => state.setDragging);
   const token = useAuthStore((state) => state.token);
+  const isAdmin = useAuthStore((state) => state.isAdmin);
 
   // Folder state
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -157,6 +159,12 @@ export const AssetLibrary = () => {
 
   const fetchAssets = useCallback(
     async (folderSel: FolderSelection, silent = false) => {
+      // SEC-03: the API requires a projectId for non-admins — the project may not be resolved yet.
+      if (!activeProjectId && !isAdmin) {
+        setAssets([]);
+        setLoading(false);
+        return;
+      }
       try {
         if (!silent) setLoading(true);
         const res = await fetch(buildAssetsUrl(folderSel), {
@@ -174,7 +182,7 @@ export const AssetLibrary = () => {
         setLoading(false);
       }
     },
-    [buildAssetsUrl, token]
+    [buildAssetsUrl, token, activeProjectId, isAdmin]
   );
 
   const fetchFolders = useCallback(async () => {
@@ -206,13 +214,8 @@ export const AssetLibrary = () => {
     fetchAssets(selectedFolder);
   }, [selectedFolder, fetchAssets]);
 
-  // VID-03: videos are transcoded in the background — refresh until none is processing.
-  const hasProcessingAssets = assets.some((a) => a.status === 'processing');
-  useEffect(() => {
-    if (!hasProcessingAssets) return;
-    const timer = setInterval(() => fetchAssets(selectedFolder, true), PROCESSING_POLL_MS);
-    return () => clearInterval(timer);
-  }, [hasProcessingAssets, selectedFolder, fetchAssets]);
+  // VID-03: a tile's processing badge reloads the list once its video is done.
+  const refreshAssetsSilently = useCallback(() => fetchAssets(selectedFolder, true), [fetchAssets, selectedFolder]);
 
   // ── Derived ──
   const totalAssetsCount =
@@ -410,6 +413,8 @@ export const AssetLibrary = () => {
     e.stopPropagation();
     dragMovedRef.current = true;
     e.dataTransfer.setData('asset-id', assetId.toString());
+    // A standard type as well: Firefox/Zen can drop drags that only carry custom MIME types.
+    e.dataTransfer.setData('text/plain', String(assetId));
     e.dataTransfer.effectAllowed = 'move';
 
     // Set store drag state so ArtworkPlacement and EditorPage onDrop can work
@@ -431,126 +436,11 @@ export const AssetLibrary = () => {
       });
     }
 
-    // Build a custom drag ghost showing a stack of cards for multi-selections
+    // Subtle drag image: small thumbnail chip, with a count for multi-selections.
     const draggedIds = selectedIds.includes(assetId) && selectedIds.length > 1
       ? selectedIds
       : [assetId];
-
-    {
-      // Collect up to 3 thumbnails for the stack (front = dragged card)
-      const stackAssets = [
-        assets.find((a) => a.id === assetId),
-        ...assets.filter((a) => a.id !== assetId && draggedIds.includes(a.id)).slice(0, 2),
-      ].filter(Boolean) as Asset[];
-
-      const SIZE = 96;
-      const CARD_RADIUS = 10;
-      const PADDING = 20; // extra space for rotated back-cards
-      const TOTAL = SIZE + PADDING * 2;
-
-      const ghost = document.createElement('div');
-      ghost.style.cssText = `
-        position: fixed;
-        top: -1000px;
-        left: -1000px;
-        width: ${TOTAL}px;
-        height: ${TOTAL}px;
-        pointer-events: none;
-      `;
-
-      // Render back cards first (reversed), then front card on top
-      const rotations = [7, 3.5];
-      const offsets = [10, 5];
-
-      stackAssets
-        .slice()
-        .reverse()
-        .forEach((asset, reverseIdx) => {
-          const isFront = reverseIdx === stackAssets.length - 1;
-          const stackIdx = stackAssets.length - 1 - reverseIdx; // 0 = front
-          const card = document.createElement('div');
-
-          const rot = isFront ? 0 : rotations[Math.min(stackIdx - 1, rotations.length - 1)];
-          const tx = isFront ? 0 : offsets[Math.min(stackIdx - 1, offsets.length - 1)];
-          const shadow = isFront
-            ? '0 8px 24px rgba(0,0,0,0.55)'
-            : '0 4px 12px rgba(0,0,0,0.4)';
-
-          card.style.cssText = `
-            position: absolute;
-            top: ${PADDING}px;
-            left: ${PADDING}px;
-            width: ${SIZE}px;
-            height: ${SIZE}px;
-            border-radius: ${CARD_RADIUS}px;
-            overflow: hidden;
-            background: #18181b;
-            border: 1.5px solid #3f3f46;
-            box-shadow: ${shadow};
-            transform: rotate(${rot}deg) translateX(${tx}px);
-            transform-origin: center center;
-          `;
-
-          const thumb =
-            asset.type === 'video'
-              ? asset.thumbnailPath || null
-              : (asset.type || 'image') === 'image'
-              ? asset.thumbnailPath || asset.path
-              : null;
-
-          if (thumb) {
-            const img = document.createElement('img');
-            img.src = thumb;
-            img.style.cssText = `
-              width: 100%;
-              height: 100%;
-              object-fit: cover;
-              display: block;
-            `;
-            card.appendChild(img);
-          } else {
-            // Fallback for 3D models / unknown types
-            card.style.background = '#27272a';
-            card.style.display = 'flex';
-            card.style.alignItems = 'center';
-            card.style.justifyContent = 'center';
-            card.innerHTML = `<span style="color:#71717a;font-size:11px;font-family:sans-serif;text-transform:uppercase;letter-spacing:.05em;">${asset.filename.split('.').pop() ?? '3D'}</span>`;
-          }
-
-          ghost.appendChild(card);
-        });
-
-      // Count badge
-      if (draggedIds.length > 1) {
-        const badge = document.createElement('div');
-        badge.style.cssText = `
-          position: absolute;
-          top: ${PADDING - 8}px;
-          right: ${PADDING - 8}px;
-          min-width: 22px;
-          height: 22px;
-          padding: 0 6px;
-          border-radius: 11px;
-          background: #2563eb;
-          color: #fff;
-          font-size: 11px;
-          font-weight: 700;
-          font-family: sans-serif;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-          z-index: 10;
-        `;
-        badge.textContent = String(draggedIds.length);
-        ghost.appendChild(badge);
-      }
-
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, TOTAL / 2, TOTAL / 2);
-      // Remove after the browser has captured the drag image
-      requestAnimationFrame(() => document.body.removeChild(ghost));
-    }
+    setCompactDragImage(e.dataTransfer, (e.currentTarget as Element).querySelector('img'), draggedIds.length);
   }; // end handleAssetDragStart
 
   const handleFolderDragOver = (e: React.DragEvent, folderSel: FolderSelection) => {
@@ -702,7 +592,10 @@ export const AssetLibrary = () => {
   };
 
   // ── Render helpers ──
-  const FolderRow = ({
+  // Plain render function, not a component: a component defined inside render is a new type on
+  // every render, so React remounted all folder rows on each state change (e.g. the drop-target
+  // highlight while dragging, or asset polling) — drop targets were replaced mid-drag.
+  const renderFolderRow = ({
     sel,
     label,
     icon,
@@ -721,6 +614,7 @@ export const AssetLibrary = () => {
     const isDropTarget = dragOverFolder === sel && sel !== 'all';
     return (
       <div
+        key={String(sel)}
         onClick={() => setSelectedFolder(sel)}
         onDragOver={(e) => handleFolderDragOver(e, sel)}
         onDragLeave={handleFolderDragLeave}
@@ -831,30 +725,29 @@ export const AssetLibrary = () => {
             </h3>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            <FolderRow
-              sel="all"
-              label="Alle Assets"
-              icon={<Layers className="h-4 w-4" />}
-              count={totalAssetsCount}
-            />
-            <FolderRow
-              sel="unsorted"
-              label="Unsortiert"
-              icon={<Inbox className="h-4 w-4" />}
-              count={unsortedCount}
-            />
+            {renderFolderRow({
+              sel: 'all',
+              label: 'Alle Assets',
+              icon: <Layers className="h-4 w-4" />,
+              count: totalAssetsCount,
+            })}
+            {renderFolderRow({
+              sel: 'unsorted',
+              label: 'Unsortiert',
+              icon: <Inbox className="h-4 w-4" />,
+              count: unsortedCount,
+            })}
             {folders.length > 0 && (
               <div className="pt-2 mt-2 border-t border-zinc-800/50">
                 {folders.map((folder) => (
-                  <FolderRow
-                    key={folder.id}
-                    sel={folder.id}
-                    label={folder.name}
-                    icon={<FolderIcon className="h-4 w-4" />}
-                    color={folder.color}
-                    count={folder._count?.assets ?? 0}
-                    folder={folder}
-                  />
+                  renderFolderRow({
+                    sel: folder.id,
+                    label: folder.name,
+                    icon: <FolderIcon className="h-4 w-4" />,
+                    color: folder.color,
+                    count: folder._count?.assets ?? 0,
+                    folder,
+                  })
                 ))}
               </div>
             )}
@@ -1053,16 +946,19 @@ export const AssetLibrary = () => {
                         <FileIcon className="h-12 w-12 text-gray-600" />
                       )}
 
-                      {!isAssetReady(asset) && (
+                      {asset.status === 'failed' ? (
                         <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 px-2 text-center pointer-events-none">
-                          {asset.status === 'processing'
-                            ? <Loader2 className="h-6 w-6 text-white animate-spin" />
-                            : <AlertCircle className="h-6 w-6 text-amber-400" />}
-                          <span className="text-xs text-white">
-                            {asset.status === 'processing' ? 'Wird verarbeitet …' : 'Verarbeitung fehlgeschlagen'}
-                          </span>
+                          <AlertCircle className="h-6 w-6 text-amber-400" />
+                          <span className="text-xs text-white">Verarbeitung fehlgeschlagen</span>
                         </div>
-                      )}
+                      ) : (asset.status === 'processing' || asset.metadata?.proxiesPending) ? (
+                        <VideoProcessingBadge
+                          assetId={asset.id}
+                          blocking={asset.status === 'processing'}
+                          size="md"
+                          onSettled={refreshAssetsSilently}
+                        />
+                      ) : null}
 
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 pointer-events-none">
                         <Button

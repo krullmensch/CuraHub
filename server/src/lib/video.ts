@@ -56,10 +56,27 @@ export function isWebCompatible(probe: VideoProbe): boolean {
         && !!probe.formatName && /\b(mp4|mov)\b/.test(probe.formatName);
 }
 
-function run(command: ffmpeg.FfmpegCommand, outputPath: string): Promise<void> {
+/** 0–100 */
+export type VideoProgressCallback = (percent: number) => void;
+
+/** "HH:MM:SS.xx" → seconds */
+function parseTimemark(timemark: string): number {
+    const [h, m, sec] = timemark.split(':').map(Number);
+    return (h || 0) * 3600 + (m || 0) * 60 + (sec || 0);
+}
+
+function run(command: ffmpeg.FfmpegCommand, outputPath: string, onProgress?: VideoProgressCallback, durationSec?: number): Promise<void> {
     return new Promise((resolve, reject) => {
         command
             .output(outputPath)
+            .on('progress', (p: { percent?: number; timemark?: string }) => {
+                if (!onProgress) return;
+                let percent = typeof p.percent === 'number' && Number.isFinite(p.percent) ? p.percent : NaN;
+                if (!Number.isFinite(percent) && durationSec && p.timemark) {
+                    percent = (parseTimemark(p.timemark) / durationSec) * 100;
+                }
+                if (Number.isFinite(percent)) onProgress(Math.max(0, Math.min(100, percent)));
+            })
             .on('end', () => resolve())
             .on('error', (err: Error) => reject(err))
             .run();
@@ -67,14 +84,16 @@ function run(command: ffmpeg.FfmpegCommand, outputPath: string): Promise<void> {
 }
 
 /** Stream copy with the moov atom moved to the front (playback starts before full download). */
-export function remuxForWeb(inputPath: string, outputPath: string): Promise<void> {
+export function remuxForWeb(inputPath: string, outputPath: string, onProgress?: VideoProgressCallback, durationSec?: number): Promise<void> {
     return run(
         ffmpeg(inputPath).outputOptions(['-map 0:v:0', '-map 0:a:0?', '-c copy', '-movflags +faststart']),
         outputPath,
+        onProgress,
+        durationSec,
     );
 }
 
-export function transcodeForWeb(inputPath: string, outputPath: string): Promise<void> {
+export function transcodeForWeb(inputPath: string, outputPath: string, onProgress?: VideoProgressCallback, durationSec?: number): Promise<void> {
     return run(
         ffmpeg(inputPath)
             .videoFilters(SCALE_FILTER)
@@ -91,20 +110,31 @@ export function transcodeForWeb(inputPath: string, outputPath: string): Promise<
                 '-movflags +faststart',
             ]),
         outputPath,
+        onProgress,
+        durationSec,
     );
 }
 
 /** Writes a browser-safe MP4 to `outputPath`. `probe` may be null if ffprobe failed. */
-export async function makeWebVideo(inputPath: string, outputPath: string, probe: VideoProbe | null): Promise<'remux' | 'transcode'> {
+export interface WebVideoHooks {
+    /** Called before each ffmpeg pass (a failed remux falls back to a transcode). */
+    onStage?: (stage: 'remux' | 'transcode') => void;
+    onProgress?: VideoProgressCallback;
+}
+
+export async function makeWebVideo(inputPath: string, outputPath: string, probe: VideoProbe | null, hooks: WebVideoHooks = {}): Promise<'remux' | 'transcode'> {
+    const duration = probe?.duration || undefined;
     if (probe && isWebCompatible(probe)) {
         try {
-            await remuxForWeb(inputPath, outputPath);
+            hooks.onStage?.('remux');
+            await remuxForWeb(inputPath, outputPath, hooks.onProgress, duration);
             return 'remux';
         } catch (err) {
             console.warn('[Video] Remux failed, transcoding instead:', err);
         }
     }
-    await transcodeForWeb(inputPath, outputPath);
+    hooks.onStage?.('transcode');
+    await transcodeForWeb(inputPath, outputPath, hooks.onProgress, duration);
     return 'transcode';
 }
 
@@ -122,4 +152,37 @@ export function extractThumbnail(inputPath: string, outputPath: string): Promise
             .on('end', () => resolve())
             .on('error', (err) => reject(err));
     });
+}
+
+/** VID-04: proxy sizes (short edge, px) for the low (480) and medium (720) render presets. */
+export const VIDEO_PROXY_HEIGHTS = [720, 480] as const;
+
+/** Proxy short edges that are smaller than the web version (whose short edge is ≤ 1080). */
+export function proxyHeightsFor(width: number, height: number): number[] {
+    const shortEdge = Math.min(width, height, MAX_SHORT_EDGE);
+    if (!shortEdge || shortEdge <= 0) return [];
+    return VIDEO_PROXY_HEIGHTS.filter((proxyHeight) => proxyHeight < shortEdge);
+}
+
+/** Smaller H.264 copy with `shortEdge` px on the short side (landscape or portrait). */
+export function createVideoProxy(inputPath: string, outputPath: string, shortEdge: number, onProgress?: VideoProgressCallback, durationSec?: number): Promise<void> {
+    return run(
+        ffmpeg(inputPath)
+            .videoFilters(`scale=w='if(gte(iw,ih),-2,${shortEdge})':h='if(gte(iw,ih),${shortEdge},-2)'`)
+            .outputOptions([
+                '-map 0:v:0',
+                '-map 0:a:0?',
+                '-c:v libx264',
+                '-preset veryfast',
+                `-crf ${shortEdge >= 720 ? 24 : 26}`,
+                '-pix_fmt yuv420p',
+                '-profile:v main',
+                '-c:a aac',
+                '-b:a 96k',
+                '-movflags +faststart',
+            ]),
+        outputPath,
+        onProgress,
+        durationSec,
+    );
 }

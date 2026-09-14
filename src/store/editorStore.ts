@@ -25,7 +25,9 @@ const MAX_HISTORY_SIZE = 50;
  * Populated by VideoInstance when the GLB is first loaded so artworkMinY()
  * can use the real model height instead of the video asset pixel dimensions.
  */
-export const monitorGlbBounds = { minY: 0 };
+// minY: bottom of the upright (landscape) model; maxX: its right extent, which becomes the bottom
+// once a portrait monitor is turned by -90° (see VideoInstance).
+export const monitorGlbBounds = { minY: 0, maxX: 0 };
 
 /**
  * Minimum Y position for an artwork instance so its bottom edge stays at or above the floor (Y=0).
@@ -38,7 +40,11 @@ export const monitorGlbBounds = { minY: 0 };
 export function artworkMinY(inst: Pick<ArtworkInstanceData, 'medium' | 'artwork' | 'scale_y'>, overrideScaleY?: number): number {
   if (inst.medium === 'model3d') return 0;
   // Monitor pivot may not be at the model's bottom — use the actual GLB bbox
-  if (inst.medium === 'monitor') return Math.max(0, -monitorGlbBounds.minY);
+  if (inst.medium === 'monitor') {
+    const { width, height } = inst.artwork.asset;
+    const isPortrait = !!width && !!height && height > width;
+    return Math.max(0, isPortrait ? monitorGlbBounds.maxX : -monitorGlbBounds.minY);
+  }
   const hasPhysical = inst.artwork.height != null && inst.artwork.width != null;
   const baseHeight = hasPhysical
     ? (inst.artwork.height! / 100)                                        // cm → m
@@ -75,6 +81,8 @@ export interface ArtworkInstanceData {
       dpi: number | null;
       type?: AssetType;
       thumbnailPath?: string | null;
+      /** VID-04: proxy versions of a video, short edge (px) → path. */
+      metadata?: { videoProxies?: Record<string, string> | null } | null;
     }
   };
   position_x: number;
@@ -264,9 +272,11 @@ export const useEditorStore = create<EditorState>((set) => ({
     target: [0, 0, 0],
     zoom: 40
   },
+  // Updated when leaving the first-person preview; the player respawns here on the next entry.
+  // Default = the player's spawn point (body at y 0.8 + eye offset 0.8), looking into the room.
   firstPersonCameraState: {
-    position: [-4, 1.7, 5], // Eye level inside room
-    rotation: [-Math.PI / 2, -Math.PI / 2, -Math.PI / 2]
+    position: [-5.99, 1.6, 2.6],
+    rotation: [0, -1.1, 0]
   },
 
   dragState: {

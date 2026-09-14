@@ -4,6 +4,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import { authenticate, userCanAccessProject } from '../lib/middleware';
+import { getVideoJobProgress } from '../lib/videoJobs';
 
 export const assetsRouter = Router();
 const prisma = new PrismaClient();
@@ -110,6 +111,51 @@ assetsRouter.patch('/:id', authenticate, async (req: Request, res) => {
     }
 });
 
+// GET /assets/:id/processing — VID-03: background processing state of a video for the edit
+// dialog (phase, percent, source info). Read access like GET /assets.
+assetsRouter.get('/:id/processing', authenticate, async (req: Request, res) => {
+    try {
+        const id = parseInt(String(req.params.id), 10);
+        if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
+
+        const asset = await prisma.asset.findUnique({
+            where: { id },
+            select: {
+                id: true, projectId: true, status: true, metadata: true, path: true, size: true,
+                width: true, height: true, duration: true, thumbnailPath: true,
+            },
+        });
+        if (!asset) return res.status(404).json({ error: 'Asset not found' });
+
+        if (req.user!.role !== 'admin') {
+            const canAccess = asset.projectId !== null
+                && await userCanAccessProject(prisma, req.user!.userId, asset.projectId, false);
+            if (!canAccess) return res.status(404).json({ error: 'Asset not found' });
+        }
+
+        const meta = asset.metadata && typeof asset.metadata === 'object' && !Array.isArray(asset.metadata)
+            ? asset.metadata as Record<string, unknown>
+            : {};
+        res.json({
+            id: asset.id,
+            status: asset.status,
+            path: asset.path,
+            size: asset.size,
+            width: asset.width,
+            height: asset.height,
+            duration: asset.duration,
+            thumbnailPath: asset.thumbnailPath,
+            error: typeof meta.processingError === 'string' ? meta.processingError : null,
+            proxiesPending: meta.proxiesPending === true,
+            videoProxies: meta.videoProxies && typeof meta.videoProxies === 'object' ? meta.videoProxies : null,
+            job: asset.status === 'processing' || meta.proxiesPending === true ? getVideoJobProgress(id) : null,
+        });
+    } catch (error) {
+        console.error('Error fetching processing state:', error);
+        res.status(500).json({ error: 'Failed to fetch processing state' });
+    }
+});
+
 // Uploads directory (real, resolved path) — used to guard against path traversal on delete.
 const uploadsDir = path.resolve(__dirname, '../../uploads');
 
@@ -182,6 +228,18 @@ assetsRouter.delete('/:id', authenticate, async (req: Request, res) => {
                     fs.unlinkSync(filepath);
                 } else {
                     console.warn(`File not found on disk: ${filepath}`);
+                }
+            }
+        }
+
+        // VID-04: smaller video versions — removed together with the video file they belong to.
+        const proxyMap = deletedMeta?.videoProxies;
+        if (proxyMap && typeof proxyMap === 'object' && asset.path) {
+            const stillReferenced = await prisma.asset.count({ where: { path: asset.path } });
+            if (stillReferenced === 0) {
+                for (const proxyPath of Object.values(proxyMap as Record<string, unknown>)) {
+                    const abs = typeof proxyPath === 'string' ? resolveUploadPath(proxyPath) : null;
+                    if (abs) fs.rmSync(abs, { force: true });
                 }
             }
         }

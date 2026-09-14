@@ -1,11 +1,11 @@
-import { Suspense, useMemo, type ReactNode } from 'react';
+import { Suspense, useMemo, useState, type ReactNode } from 'react';
 import { useGLTF, KeyboardControls } from '@react-three/drei';
 import { Physics, RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
 import type { GLTF } from 'three-stdlib';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../../store/editorStore';
 import { SATELLIT_MODEL_URL } from '../../lib/modelUrls';
-import { Player, PlayerController } from '../Player';
+import { Player, PlayerController, PLAYER_EYE_OFFSET } from '../Player';
 
 /**
  * RND-08: everything that needs @react-three/rapier. Loaded lazily (Rapier is a ~2.3 MB chunk
@@ -112,6 +112,14 @@ export default function PhysicsWorld({ mode, viewerWalls, viewerInstances, child
     const isDialogOpen = useEditorStore((state) => state.isDialogOpen);
     const localWalls = useEditorStore((state) => state.localWalls);
     const localInstances = useEditorStore((state) => state.localInstances);
+    // Editor: respawn where the first-person preview was left (saved by PlannerCameraSystem on exit).
+    const [editorSpawn] = useState(() => {
+        const { position, rotation } = useEditorStore.getState().firstPersonCameraState;
+        return {
+            body: [position[0], position[1] - PLAYER_EYE_OFFSET, position[2]] as [number, number, number],
+            rotation,
+        };
+    });
 
     const walls = viewerWalls ?? localWalls;
     const instances = viewerInstances ?? localInstances;
@@ -135,7 +143,7 @@ export default function PhysicsWorld({ mode, viewerWalls, viewerInstances, child
                 <Player />
             ) : (
                 <KeyboardControls map={EDITOR_KEY_MAP}>
-                    <PlayerController paused={isDialogOpen} />
+                    <PlayerController paused={isDialogOpen} spawn={editorSpawn.body} initialRotation={editorSpawn.rotation} />
                 </KeyboardControls>
             )}
             {children}

@@ -28,6 +28,8 @@ export interface RenderQualitySettings {
     uploadBudgetMs: number;
     /** Parallel artwork texture downloads/decodes. */
     maxConcurrentLoads: number;
+    /** VID-04: largest video short edge (px) — smaller proxy versions are played. null = full version. */
+    videoMaxShortEdge: number | null;
 }
 
 const MB = 1024 * 1024;
@@ -44,6 +46,7 @@ export const RENDER_QUALITY_SETTINGS: Record<RenderQuality, RenderQualitySetting
         raycastHz: 5,
         uploadBudgetMs: 4,
         maxConcurrentLoads: 2,
+        videoMaxShortEdge: 480,
     },
     medium: {
         dpr: [1, 1.5],
@@ -56,6 +59,7 @@ export const RENDER_QUALITY_SETTINGS: Record<RenderQuality, RenderQualitySetting
         raycastHz: 10,
         uploadBudgetMs: 6,
         maxConcurrentLoads: 4,
+        videoMaxShortEdge: 720,
     },
     high: {
         dpr: [1, 2],
@@ -68,6 +72,7 @@ export const RENDER_QUALITY_SETTINGS: Record<RenderQuality, RenderQualitySetting
         raycastHz: 15,
         uploadBudgetMs: 8,
         maxConcurrentLoads: 4,
+        videoMaxShortEdge: null,
     },
 };
 

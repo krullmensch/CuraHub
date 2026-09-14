@@ -170,6 +170,8 @@ export const UploadPreviewModal = ({
 }: UploadPreviewModalProps) => {
   const token = useAuthStore((s) => s.token);
   const abortRef = useRef(false);
+  // Confirmation step before aborting running uploads.
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   // Build initial items from `files` once on mount.
   // The parent passes a changing `key` prop so this component remounts when files change.
@@ -336,6 +338,21 @@ export const UploadPreviewModal = ({
     onClose();
   };
 
+  /** Aborts running uploads after confirmation; finished files stay in the library. */
+  const cancelUploads = () => {
+    abortRef.current = true;
+    items.forEach((it) => {
+      if (it.status === 'uploading' && it.cancel) it.cancel();
+    });
+    setItems((prev) => prev.map((it) =>
+      it.status === 'pending' || it.status === 'optimizing' || it.status === 'uploading'
+        ? { ...it, status: 'error', progress: 0, errorMsg: 'Abgebrochen', cancel: undefined }
+        : it
+    ));
+    setConfirmCancel(false);
+    setPhase('done');
+  };
+
   // ── Render ──────────────────────────────────────────────────────────────
 
   const dialogTitle =
@@ -350,7 +367,16 @@ export const UploadPreviewModal = ({
         ].filter(Boolean).join(' · ') || 'Upload abgeschlossen';
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && phase !== 'uploading' && handleClose()}>
+    <>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (v) return;
+        // Closing while uploading would abort silently — ask first.
+        if (phase === 'uploading') setConfirmCancel(true);
+        else handleClose();
+      }}
+    >
       <DialogContent className="max-w-2xl gap-4">
         <DialogHeader>
           <DialogTitle className="text-zinc-100">{dialogTitle}</DialogTitle>
@@ -419,10 +445,16 @@ export const UploadPreviewModal = ({
             </>
           )}
           {phase === 'uploading' && (
-            <Button disabled className="bg-blue-600 text-white opacity-60 cursor-not-allowed">
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Lädt hoch…
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setConfirmCancel(true)}>
+                <X className="h-4 w-4 mr-2" />
+                Upload abbrechen
+              </Button>
+              <Button disabled className="bg-blue-600 text-white opacity-60 cursor-not-allowed">
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Lädt hoch…
+              </Button>
+            </>
           )}
           {phase === 'done' && duplicateCount > 0 && (
             <Button
@@ -454,6 +486,28 @@ export const UploadPreviewModal = ({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Abort confirmation */}
+    <Dialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+      <DialogContent className="max-w-md gap-4">
+        <DialogHeader>
+          <DialogTitle className="text-zinc-100">Upload abbrechen?</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-zinc-400">
+          Laufende und wartende Uploads werden abgebrochen, bereits übertragene Daten dieser Dateien
+          gehen verloren. Vollständig hochgeladene Dateien bleiben in der Bibliothek.
+        </p>
+        <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+          <Button variant="outline" onClick={() => setConfirmCancel(false)}>
+            Weiter hochladen
+          </Button>
+          <Button variant="destructive" onClick={cancelUploads}>
+            Ja, abbrechen
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 

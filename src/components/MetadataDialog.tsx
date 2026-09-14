@@ -13,6 +13,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from 'lucide-react';
+import { VideoProcessingStatus, VideoProxiesProgress } from './VideoProcessingStatus';
+import type { VideoProcessingState } from '../hooks/use-video-processing';
 
 interface AssetData {
     id: number;
@@ -25,10 +27,13 @@ interface AssetData {
     height?: number;
     dpi?: number;
     thumbnailPath?: string | null;
+    /** VID-03: 'processing' | 'ready' | 'failed' */
+    status?: string;
     metadata?: {
         widthCm?: number;
         heightCm?: number;
         projectId?: string;
+        proxiesPending?: boolean;
     };
     artwork?: {
         id: number;
@@ -72,6 +77,9 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
   const token = useAuthStore((state) => state.token);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // VID-03: fields of a video whose background processing finished while this dialog was open.
+  const [processed, setProcessed] = useState<VideoProcessingState | null>(null);
+  const videoStatus = processed?.status ?? asset.status;
 
   const existingArtwork = asset.artwork;
 
@@ -166,13 +174,18 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
 
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           <div className="flex justify-center mb-4 bg-black/20 rounded-lg p-2">
-             {(asset.type || 'image') === 'video' ? (
-                <video
-                    src={getImageUrl(asset.path)}
-                    controls
-                    className="h-48 object-contain"
-                    poster={asset.thumbnailPath || undefined}
-                />
+             {(asset.type || 'image') === 'video' && (videoStatus === 'processing' || videoStatus === 'failed') ? (
+                <VideoProcessingStatus assetId={asset.id} onFinished={setProcessed} />
+             ) : (asset.type || 'image') === 'video' ? (
+                <div className="flex w-full flex-col items-center gap-2">
+                    <video
+                        src={getImageUrl(processed?.path ?? asset.path)}
+                        controls
+                        className="h-48 object-contain"
+                        poster={(processed ? processed.thumbnailPath : asset.thumbnailPath) || undefined}
+                    />
+                    {(processed ? processed.proxiesPending : asset.metadata?.proxiesPending) && <VideoProxiesProgress assetId={asset.id} />}
+                </div>
              ) : (asset.type) === 'model3d' ? (
                 <div className="h-48 w-full">
                     <Suspense fallback={

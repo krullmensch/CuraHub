@@ -15,6 +15,15 @@ import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
+import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
+
+/** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
+const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
+  if (issue === 'unlocked-wall') return 'Die Wand ist nicht gesperrt. Wand sperren, dann Werke daran platzieren.';
+  if (assetType === 'model3d') return '3D-Modelle lassen sich nur auf dem Boden platzieren.';
+  if (issue === 'not-vertical') return 'Werke lassen sich nur an senkrechten Wandflächen platzieren.';
+  return 'Hier lässt sich nichts platzieren. Werk auf eine Wand ziehen.';
+};
 
 // Snapshot of a pending placement awaiting user choice (used for the video drop modal)
 type DraggedAssetSnapshot = NonNullable<ReturnType<typeof useEditorStore.getState>['dragState']['draggedAsset']>;
@@ -224,6 +233,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       setDragPosition({ x: ndcX, y: ndcY });
+      // Update ghost + placement right away instead of waiting for the next frame.
+      placementResolver.resolve?.({ x: ndcX, y: ndcY });
     };
 
     const handleDrop = async (e: DragEvent) => {
@@ -236,12 +247,22 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       e.preventDefault();
       e.stopPropagation();
 
-      const { isDragging, validPlacement, draggedAsset } = useEditorStore.getState().dragState;
+      // Resolve the placement at the drop point — don't rely on a frame having rendered since the
+      // last dragover (Firefox can hold back rendering during a native drag).
+      const dropNdc = {
+        x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        y: -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      };
+      const resolvedPlacement = placementResolver.resolve?.(dropNdc);
+      const { isDragging, draggedAsset } = useEditorStore.getState().dragState;
+      const validPlacement = resolvedPlacement !== undefined
+        ? resolvedPlacement
+        : useEditorStore.getState().dragState.validPlacement;
 
       if (isDragging && validPlacement && draggedAsset) {
         if (!useEditorStore.getState().activeVersionId) {
-          gooeyToast.error("No Project Selected", {
-            description: "Please select or create a project first.",
+          gooeyToast.error('Kein Projekt ausgewählt', {
+            description: 'Bitte zuerst ein Projekt auswählen oder anlegen.',
           });
         } else {
           try {
@@ -258,23 +279,21 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
             } else {
               const medium: MediumType = assetType === 'model3d' ? 'model3d' : 'frame';
               placeInstanceRef.current(medium, snapshot);
-              const label = assetType === 'model3d' ? '3D Model' : 'Artwork';
-              gooeyToast.success(`${label} Placed`, {
-                description: `Placed ${draggedAsset.url.split('/').pop()}`,
+              const label = assetType === 'model3d' ? '3D-Modell' : 'Werk';
+              gooeyToast.success(`${label} platziert`, {
+                description: draggedAsset.url.split('/').pop(),
               });
             }
           } catch (err) {
             console.error('Placement error:', err);
-            gooeyToast.error('Placement Failed', {
-              description: 'Could not place artwork.',
+            gooeyToast.error('Platzieren fehlgeschlagen', {
+              description: 'Das Werk konnte nicht platziert werden.',
             });
           }
         }
       } else if (isDragging && !validPlacement) {
-        gooeyToast.error('Invalid Placement', {
-          description: draggedAsset?.assetType === 'model3d'
-            ? 'Cannot place here. Try the floor.'
-            : 'Cannot place here. Try a wall.',
+        gooeyToast.error('Platzieren nicht möglich', {
+          description: placementIssueText(draggedAsset?.assetType, placementFeedback.issue),
         });
       }
 

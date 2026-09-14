@@ -1,9 +1,10 @@
-import { useRef, useState, useEffect, Suspense } from 'react';
+import { useRef, useState, useEffect, useCallback, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 import { useEditorStore, WALL_PLACEMENT_OFFSET } from '../store/editorStore';
 import { ModularFrame } from './ModularFrame';
+import { placementFeedback, placementResolver, type PlacementResult } from '../lib/placementFeedback';
 
 // Halbe_Classic_Alu8 frame profile depth (Z) — matches SelectableInstance.
 const FRAME_PROFILE_DEPTH = 0.027;
@@ -103,7 +104,7 @@ export const ArtworkPlacement = () => {
     const dragPosition = useEditorStore((state) => state.dragState.dragPosition);
     const setValidPlacement = useEditorStore((state) => state.setValidPlacement);
 
-    const { camera, scene } = useThree();
+    const get = useThree((state) => state.get);
     const raycaster = useRef(new THREE.Raycaster());
 
     // Local state for smooth updates (though we update store for validation)
@@ -113,19 +114,18 @@ export const ArtworkPlacement = () => {
         isValid: boolean;
     } | null>(null);
 
-    useFrame(() => {
-        if (!isDragging || !draggedAsset || !dragPosition) {
-            if (ghostState) {
-                setGhostState(null);
-                setValidPlacement(null);
-            }
-            return;
-        }
+    // Raycasts a drag position (NDC), updates the ghost and the store's valid placement, and returns
+    // the placement. Runs every frame while dragging and synchronously from EditorPage's dragover/drop
+    // handlers (placementResolver).
+    const updatePlacement = useCallback((ndc: { x: number; y: number }): PlacementResult | null => {
+        const asset = useEditorStore.getState().dragState.draggedAsset;
+        if (!asset) return null;
+        const { camera, scene } = get();
 
-        const isModel = draggedAsset.assetType === 'model3d';
+        const isModel = asset.assetType === 'model3d';
 
         // Setup Raycaster from NDC
-        raycaster.current.setFromCamera(new THREE.Vector2(dragPosition.x, dragPosition.y), camera);
+        raycaster.current.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);
 
         // Intersect — exclude ghost meshes and invisible objects.
         // Three.js does NOT skip invisible meshes in raycasting, so we must filter
@@ -156,31 +156,28 @@ export const ArtworkPlacement = () => {
                 return normal.y > 0.85;
             });
 
-            if (horizontalHit) {
-                const isValid = horizontalHit.point.y < 0.1; // floor ≈ y=0; wall tops / traverses are higher
-                const position = horizontalHit.point.clone();
-                if (isValid) {
-                    // Snap to exact floor level so model always sits at y=0
-                    position.y = 0;
-                }
-
-                setGhostState({ position, quaternion: new THREE.Quaternion(), isValid });
-
-                if (isValid) {
-                    setValidPlacement({
-                        position: [position.x, 0, position.z],
-                        rotation: [0, 0, 0],
-                        scale: 1,
-                        wallId: null,
-                    });
-                } else {
-                    setValidPlacement(null);
-                }
-            } else {
+            if (!horizontalHit) {
+                placementFeedback.issue = 'no-surface';
                 setGhostState(null);
                 setValidPlacement(null);
+                return null;
             }
-            return;
+
+            const isValid = horizontalHit.point.y < 0.1; // floor ≈ y=0; wall tops / traverses are higher
+            const position = horizontalHit.point.clone();
+            if (isValid) {
+                // Snap to exact floor level so model always sits at y=0
+                position.y = 0;
+            }
+
+            placementFeedback.issue = isValid ? null : 'not-floor';
+            setGhostState({ position, quaternion: new THREE.Quaternion(), isValid });
+
+            const placement: PlacementResult | null = isValid
+                ? { position: [position.x, 0, position.z], rotation: [0, 0, 0], scale: 1, wallId: null }
+                : null;
+            setValidPlacement(placement);
+            return placement;
         }
 
         // ── IMAGE / VIDEO: wall placement (existing logic) ──
@@ -191,77 +188,99 @@ export const ArtworkPlacement = () => {
             hit.object.name === "ModularWall"
         );
 
-        if (wallHit && wallHit.face) {
-            const point = wallHit.point;
-            const faceNormal = wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld).normalize();
-
-            const isVertical = Math.abs(faceNormal.y) < 0.1;
-
-            const quaternion = new THREE.Quaternion();
-            if (Math.abs(faceNormal.y) > 0.99) {
-                quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), faceNormal);
-            } else {
-                 const lookTarget = point.clone().add(faceNormal);
-                 const dummy = new THREE.Object3D();
-                 dummy.position.copy(point);
-                 dummy.lookAt(lookTarget);
-                 quaternion.copy(dummy.quaternion);
-            }
-
-            const position = point.clone().add(faceNormal.multiplyScalar(0.01));
-
-            let isUnlockedWall = false;
-            if (wallHit.object.name === "ModularWall") {
-                const hitWallId = wallHit.object.userData.wallId as number | undefined;
-                if (hitWallId != null) {
-                    const wall = useEditorStore.getState().localWalls.find(w => w.id === hitWallId);
-                    isUnlockedWall = !!wall && !wall.isLocked;
-                }
-            }
-
-            const isValid = isVertical && !isUnlockedWall;
-
-            setGhostState({
-                position,
-                quaternion,
-                isValid: isValid
-            });
-
-            if (isValid) {
-                const dpi = draggedAsset.dpi || 72;
-                const MAX_DIMENSION = 3;
-                const hasPhysicalSize = draggedAsset.artworkWidth != null && draggedAsset.artworkHeight != null;
-                const widthM = hasPhysicalSize ? (draggedAsset.artworkWidth! / 100) : (draggedAsset.width / dpi) * 0.0254;
-                const heightM = hasPhysicalSize ? (draggedAsset.artworkHeight! / 100) : (draggedAsset.height / dpi) * 0.0254;
-                let scale = 1;
-                if (widthM > MAX_DIMENSION || heightM > MAX_DIMENSION) {
-                    scale = MAX_DIMENSION / Math.max(widthM, heightM);
-                }
-
-                const wallMesh = wallHit.object as THREE.Mesh;
-                if (wallMesh.geometry) {
-                    if (!wallMesh.geometry.boundingBox) wallMesh.geometry.computeBoundingBox();
-                }
-
-                const euler = new THREE.Euler().setFromQuaternion(quaternion);
-                const hitWallId = wallHit.object.name === "ModularWall"
-                    ? (wallHit.object.userData.wallId as number | undefined) ?? null
-                    : null;
-                setValidPlacement({
-                    position: [position.x, position.y, position.z],
-                    rotation: [euler.x, euler.y, euler.z],
-                    scale: scale,
-                    wallId: hitWallId,
-                });
-
-            } else {
-                setValidPlacement(null);
-            }
-
-        } else {
+        if (!wallHit || !wallHit.face) {
+            placementFeedback.issue = 'no-surface';
             setGhostState(null);
             setValidPlacement(null);
+            return null;
         }
+
+        const point = wallHit.point;
+        const faceNormal = wallHit.face.normal.clone().transformDirection(wallHit.object.matrixWorld).normalize();
+
+        const isVertical = Math.abs(faceNormal.y) < 0.1;
+
+        const quaternion = new THREE.Quaternion();
+        if (Math.abs(faceNormal.y) > 0.99) {
+            quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), faceNormal);
+        } else {
+             const lookTarget = point.clone().add(faceNormal);
+             const dummy = new THREE.Object3D();
+             dummy.position.copy(point);
+             dummy.lookAt(lookTarget);
+             quaternion.copy(dummy.quaternion);
+        }
+
+        const position = point.clone().add(faceNormal.multiplyScalar(0.01));
+
+        let isUnlockedWall = false;
+        if (wallHit.object.name === "ModularWall") {
+            const hitWallId = wallHit.object.userData.wallId as number | undefined;
+            if (hitWallId != null) {
+                const wall = useEditorStore.getState().localWalls.find(w => w.id === hitWallId);
+                isUnlockedWall = !!wall && !wall.isLocked;
+            }
+        }
+
+        const isValid = isVertical && !isUnlockedWall;
+        placementFeedback.issue = isValid ? null : isUnlockedWall ? 'unlocked-wall' : 'not-vertical';
+
+        setGhostState({
+            position,
+            quaternion,
+            isValid: isValid
+        });
+
+        if (!isValid) {
+            setValidPlacement(null);
+            return null;
+        }
+
+        const dpi = asset.dpi || 72;
+        const MAX_DIMENSION = 3;
+        const hasPhysicalSize = asset.artworkWidth != null && asset.artworkHeight != null;
+        const widthM = hasPhysicalSize ? (asset.artworkWidth! / 100) : (asset.width / dpi) * 0.0254;
+        const heightM = hasPhysicalSize ? (asset.artworkHeight! / 100) : (asset.height / dpi) * 0.0254;
+        let scale = 1;
+        if (widthM > MAX_DIMENSION || heightM > MAX_DIMENSION) {
+            scale = MAX_DIMENSION / Math.max(widthM, heightM);
+        }
+
+        const wallMesh = wallHit.object as THREE.Mesh;
+        if (wallMesh.geometry) {
+            if (!wallMesh.geometry.boundingBox) wallMesh.geometry.computeBoundingBox();
+        }
+
+        const euler = new THREE.Euler().setFromQuaternion(quaternion);
+        const hitWallId = wallHit.object.name === "ModularWall"
+            ? (wallHit.object.userData.wallId as number | undefined) ?? null
+            : null;
+        const placement: PlacementResult = {
+            position: [position.x, position.y, position.z],
+            rotation: [euler.x, euler.y, euler.z],
+            scale: scale,
+            wallId: hitWallId,
+        };
+        setValidPlacement(placement);
+        return placement;
+    }, [get, setValidPlacement]);
+
+    useEffect(() => {
+        placementResolver.resolve = updatePlacement;
+        return () => {
+            if (placementResolver.resolve === updatePlacement) placementResolver.resolve = null;
+        };
+    }, [updatePlacement]);
+
+    useFrame(() => {
+        if (!isDragging || !draggedAsset || !dragPosition) {
+            if (ghostState) {
+                setGhostState(null);
+                setValidPlacement(null);
+            }
+            return;
+        }
+        updatePlacement(dragPosition);
     });
 
     // Reset on unmount
