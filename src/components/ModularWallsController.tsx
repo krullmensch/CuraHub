@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useMemo, Suspense, Fragment } from 'rea
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { TransformControls } from '@react-three/drei';
+import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import { useEditorStore, instanceRefMap, type ModularWallData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { ModularWallMesh } from './ModularWallMesh';
@@ -183,7 +184,8 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
     const setLocalWalls = useEditorStore((state) => state.setLocalWalls);
     const selectedWallId = useEditorStore((state) => state.selectedWallId);
     const updateWall = useEditorStore((state) => state.updateWall);
-    const token = useAuthStore((state) => state.token);
+    // API-01: refreshAuth() issues a new token on mount/focus — refetch on login state only.
+    const hasToken = useAuthStore((state) => !!state.token);
     const activeVersionId = useEditorStore((state) => state.activeVersionId);
     const transformMode = useEditorStore((state) => state.transformMode);
     const setIsTransforming = useEditorStore((state) => state.setIsTransforming);
@@ -257,7 +259,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
     // Load walls: use DB data if it exists, otherwise use hardcoded defaults
     useEffect(() => {
         if (!isEditor || viewerWalls) return;
-        if (!token || !activeVersionId) {
+        if (!hasToken || !activeVersionId) {
             setLocalWalls([]);
             return;
         }
@@ -267,7 +269,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
         const loadWalls = async () => {
             try {
                 const res = await fetch(`/api/walls?versionId=${activeVersionId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` }
+                    headers: { 'Authorization': `Bearer ${useAuthStore.getState().token}` }
                 });
                 if (res.status === 401) {
                     useAuthStore.getState().logout();
@@ -300,7 +302,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
 
         loadWalls();
         return () => { cancelled = true; };
-    }, [token, activeVersionId, setLocalWalls, isEditor, viewerWalls]);
+    }, [hasToken, activeVersionId, setLocalWalls, isEditor, viewerWalls]);
 
     // Get the selected wall data and its ref
     const selectedWall = localWalls.find(w => w.id === selectedWallId);
@@ -431,7 +433,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
             });
             store.commitLocalChange(updatedInstances);
         }
-    }, [selectedWallId, selectedWallRef, updateWall, setIsTransforming, token, activeVersionId, localWalls]);
+    }, [selectedWallId, selectedWallRef, updateWall, setIsTransforming, hasToken, activeVersionId, localWalls]);
 
     const walls = viewerWalls ?? localWalls;
 
@@ -446,9 +448,15 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
                             selected={isEditor ? wall.id === selectedWallId : false}
                             isEditor={isEditor}
                         />
-                        {/* Physics collider for first-person collision now lives in
-                            src/components/physics/PhysicsLayer.tsx (RND-08 / LOAD-01) —
-                            this controller no longer imports @react-three/rapier. */}
+                        {/* Physics collider for first-person collision */}
+                        <RigidBody
+                            type="fixed"
+                            colliders={false}
+                            position={[wall.position_x, wall.position_y, wall.position_z]}
+                            rotation={[wall.rotation_x, wall.rotation_y, wall.rotation_z]}
+                        >
+                            <CuboidCollider args={[wall.width / 2, wall.height / 2, wall.thickness / 2]} />
+                        </RigidBody>
                     </Fragment>
                 ))}
             </Suspense>

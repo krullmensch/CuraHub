@@ -15,6 +15,7 @@ import { dedup, draco, textureCompress, prune, quantize } from '@gltf-transform/
 import draco3d from 'draco3dgltf';
 import { authenticate, requireCurator, userCanAccessProject } from '../lib/middleware';
 import { tryGenerateImageThumbnails } from '../lib/thumbnails';
+import { makeWebVideo, probeVideo } from '../lib/video';
 
 export const uploadRouter = Router();
 const prisma = new PrismaClient();
@@ -102,40 +103,6 @@ const upload = multer({
       }
   }
 });
-
-// Helper: probe video metadata with ffprobe
-function probeVideo(filePath: string): Promise<{ width: number; height: number; duration: number }> {
-    return new Promise((resolve, reject) => {
-        ffmpeg.ffprobe(filePath, (err, metadata) => {
-            if (err) return reject(err);
-            const videoStream = metadata.streams.find(s => s.codec_type === 'video');
-            resolve({
-                width: videoStream?.width || 0,
-                height: videoStream?.height || 0,
-                duration: metadata.format.duration || 0,
-            });
-        });
-    });
-}
-
-// Helper: transcode video to H.264 MP4
-function transcodeVideo(inputPath: string, outputPath: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
-            .outputOptions([
-                '-c:v libx264',
-                '-preset fast',
-                '-crf 23',
-                '-c:a aac',
-                '-b:a 128k',
-                '-movflags +faststart',
-            ])
-            .output(outputPath)
-            .on('end', () => resolve())
-            .on('error', (err) => reject(err))
-            .run();
-    });
-}
 
 // Helper: extract poster frame from video
 function extractThumbnail(inputPath: string, outputPath: string): Promise<void> {
@@ -415,27 +382,30 @@ function streamFileHash(filePath: string): Promise<string> {
 
 // ── Video processing ──
 async function processVideo(file: Express.Multer.File, projectId: string | undefined, folderId?: number, fileHash?: string) {
-    console.log(`[Upload] Transcoding video: ${file.originalname}`);
+    // Probe the original. Width/height stay the original dimensions (the scene derives the
+    // physical size from them, same as for images — UPL-05).
+    const probe = await probeVideo(file.path).catch((err) => {
+        console.warn('[Upload] ffprobe failed, transcoding without metadata:', err);
+        return null;
+    });
 
-    // Probe original for metadata
-    const probe = await probeVideo(file.path);
-
-    // Transcode to H.264 MP4
     const baseName = file.filename.replace(/\.[^.]+$/, '');
     const mp4Filename = baseName + '.mp4';
     const mp4Path = path.join(uploadDir, mp4Filename);
+    // An uploaded .mp4 already sits at mp4Path — write the web version next to it first.
+    const outputPath = file.path === mp4Path ? path.join(uploadDir, `${baseName}.web.mp4`) : mp4Path;
 
-    // Only transcode if not already MP4
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (ext === '.mp4') {
-        // Already MP4 — just ensure it's at the right path
-        if (file.path !== mp4Path) {
-            fs.renameSync(file.path, mp4Path);
-        }
-    } else {
-        await transcodeVideo(file.path, mp4Path);
-        fs.unlinkSync(file.path);
+    // VID-02: pass through only H.264/yuv420p ≤ 1080p (+AAC), transcode everything else.
+    console.log(`[Upload] Processing video: ${file.originalname}`);
+    try {
+        const mode = await makeWebVideo(file.path, outputPath, probe);
+        console.log(`[Upload] Video ${file.originalname}: ${mode === 'remux' ? 'H.264 kept (remuxed)' : 'transcoded to H.264'}`);
+    } catch (err) {
+        fs.rmSync(outputPath, { force: true });
+        throw err;
     }
+    fs.unlinkSync(file.path);
+    if (outputPath !== mp4Path) fs.renameSync(outputPath, mp4Path);
 
     // Extract poster thumbnail
     const thumbFilename = file.filename.split('.')[0] + '-thumb.jpg';
@@ -456,9 +426,9 @@ async function processVideo(file: Express.Multer.File, projectId: string | undef
             mimetype: 'video/mp4',
             size: stats.size,
             type: 'video',
-            width: probe.width,
-            height: probe.height,
-            duration: Math.round(probe.duration * 10) / 10,
+            width: probe?.width ?? 0,
+            height: probe?.height ?? 0,
+            duration: Math.round((probe?.duration ?? 0) * 10) / 10,
             thumbnailPath: hasThumbnail ? `/uploads/${thumbFilename}` : null,
             fileHash,
             projectId: projectId ? parseInt(projectId as string, 10) : undefined,

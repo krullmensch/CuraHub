@@ -47,11 +47,10 @@ export default defineConfig({
               priority: 40,
               test: /node_modules[\\/](@xyflow|d3-[^\\/]+|classcat)[\\/]/,
             },
-            {
-              name: 'vendor-markdown',
-              priority: 40,
-              test: /node_modules[\\/](react-markdown|remark-[^\\/]+|rehype-[^\\/]+|micromark[^\\/]*|mdast-[^\\/]+|unist-[^\\/]+|unified|hast-[^\\/]+|hastscript|vfile[^\\/]*|property-information|space-separated-tokens|comma-separated-tokens|decode-named-character-reference|character-entities[^\\/]*|trim-lines|devlop|bail|trough|is-plain-obj|ccount|escape-string-regexp|markdown-table|zwitch|longest-streak|html-url-attributes|estree-util-[^\\/]+|style-to-js|style-to-object|inline-style-parser)[\\/]/,
-            },
+            // No separate markdown group: splitting react-markdown's CJS dependencies
+            // (style-to-js, inline-style-parser, …) into their own chunk broke module
+            // initialisation order ("o is not a function" on load, wiki did not open).
+            // Unmatched modules follow their only importer, the lazy WikiView chunk.
             {
               name: 'vendor-three',
               priority: 30,

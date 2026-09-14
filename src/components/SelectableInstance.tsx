@@ -1,10 +1,10 @@
-import { forwardRef, useEffect } from 'react';
-import { useTexture } from '@react-three/drei';
-import { useThree } from '@react-three/fiber';
+import { forwardRef, useRef } from 'react';
 import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useEditorStore, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
-import { ModularFrame } from './ModularFrame';
+import { InstancedFrameSlot } from './FrameInstancer';
+import { useArtworkTexture } from '../hooks/use-artwork-texture';
+import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
 // Halbe_Classic_Alu8 frame profile depth (Z) extracted via Blender MCP.
 const FRAME_PROFILE_DEPTH = 0.027;
@@ -23,35 +23,26 @@ interface SelectableInstanceProps {
 }
 
 export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProps>(
-    ({ instance, selected }, ref) => {
+    ({ instance, selected, isEditor = true }, ref) => {
         const asset = instance.artwork.asset;
-        const texture = useTexture(asset.path);
-        const gl = useThree((state) => state.gl);
         const selectInstance = useEditorStore((state) => state.selectInstance);
-
-        useEffect(() => {
-            if (texture) {
-                // eslint-disable-next-line react-hooks/immutability
-                texture.anisotropy = gl.capabilities.getMaxAnisotropy();
-                texture.colorSpace = THREE.SRGBColorSpace;
-                texture.needsUpdate = true;
-            }
-        }, [texture, gl]);
+        const { basicMaterials } = useRenderQualitySettings();
+        const imageRef = useRef<THREE.Mesh>(null);
 
         // Use physical dimensions from artwork if available (in cm -> convert to meters)
         // Otherwise, fallback to DPI-based sizing: (pixels / dpi) * 0.0254 = meters
         const hasPhysicalSize = instance.artwork.width != null && instance.artwork.height != null;
-        const baseWidth = hasPhysicalSize 
-            ? (instance.artwork.width! / 100) 
+        const baseWidth = hasPhysicalSize
+            ? (instance.artwork.width! / 100)
             : (asset.width / (asset.dpi || 72)) * 0.0254;
-        const baseHeight = hasPhysicalSize 
-            ? (instance.artwork.height! / 100) 
+        const baseHeight = hasPhysicalSize
+            ? (instance.artwork.height! / 100)
             : (asset.height / (asset.dpi || 72)) * 0.0254;
 
         // Outer group keeps `instance.scale_*` so TransformControls and the modal
         // transform system still drive resizing through the Three.js matrix. An
         // inverse-scale child group cancels that scale for geometry, and we pass the
-        // *effective* dimensions (base × scale) into ModularFrame + image plane.
+        // *effective* dimensions (base × scale) into the frame + image plane.
         // Net effect: edges stretch in length and corners reposition, but the frame
         // profile thickness stays constant — the whole picture area grows, the bevel
         // around it does not.
@@ -61,6 +52,17 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
         const sz = Math.abs(instance.scale_z) > EPS ? instance.scale_z : 1;
         const effWidth = baseWidth * sx;
         const effHeight = baseHeight * sy;
+
+        // LOAD-05: resolution follows the on-screen size; the selected artwork gets the
+        // highest resolution the render preset allows.
+        const bindMaterial = useArtworkTexture(instance.id, {
+            path: asset.path,
+            thumbnailPath: asset.thumbnailPath ?? null,
+            pixelWidth: asset.width || 0,
+            pixelHeight: asset.height || 0,
+            sizeM: Math.max(Math.abs(effWidth), Math.abs(effHeight)),
+            forceMax: isEditor && selected,
+        }, imageRef);
 
         const handleClick = (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
@@ -81,21 +83,28 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
                     wall-flush offset and image inset stay correct. */}
                 <group scale={[1 / sx, 1 / sy, 1 / sz]}>
                     {/* Modular Halbe frame around the picture — wrapped so we can offset
-                        the entire frame back so it sits flush on the wall. */}
+                        the entire frame back so it sits flush on the wall. Drawn by
+                        FrameInstancer (RND-01). */}
                     <group position={[0, 0, FRAME_Z]}>
-                        <ModularFrame width={effWidth} height={effHeight} />
+                        <InstancedFrameSlot width={effWidth} height={effHeight} />
                     </group>
 
-                    {/* Image plane, inset 4mm behind the front face of the frame */}
-                    <mesh position={[0, 0, IMAGE_Z]} castShadow={false} receiveShadow={false}>
+                    {/* Image plane, inset 4mm behind the front face of the frame.
+                        RND-04: unlit MeshBasicMaterial (true photo colours, cheap) unless the
+                        "high" preset asks for lit PBR. */}
+                    <mesh ref={imageRef} position={[0, 0, IMAGE_Z]} castShadow={false} receiveShadow={false}>
                         <planeGeometry args={[effWidth, effHeight]} />
-                        <meshStandardMaterial
-                            map={texture}
-                            side={THREE.DoubleSide}
-                            roughness={1}
-                            metalness={0}
-                            transparent={false}
-                        />
+                        {basicMaterials ? (
+                            <meshBasicMaterial ref={bindMaterial} side={THREE.DoubleSide} toneMapped={false} />
+                        ) : (
+                            <meshStandardMaterial
+                                ref={bindMaterial}
+                                side={THREE.DoubleSide}
+                                roughness={1}
+                                metalness={0}
+                                transparent={false}
+                            />
+                        )}
                     </mesh>
 
                     {/* Selection halo — backside-rendered enlarged box (same pattern as ModularWallMesh) */}

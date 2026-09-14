@@ -20,6 +20,8 @@ const MetadataDialog = lazy(() =>
   import('./MetadataDialog').then((m) => ({ default: m.MetadataDialog }))
 );
 
+const AUTH_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+
 export const EditorLayout = () => {
   const { user, logout } = useAuthStore();
   const refreshAuth = useAuthStore((state) => state.refreshAuth);
@@ -44,10 +46,17 @@ export const EditorLayout = () => {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const isProf = useAuthStore((s) => s.isProf);
 
-  // Refresh auth (role, token) on mount and whenever the tab regains focus
+  // Refresh auth (role, token) on mount and when the tab regains focus — on focus at most
+  // every 5 minutes (SEC-06: each refresh issues a new token).
+  const lastAuthRefresh = useRef(0);
   useEffect(() => {
+    lastAuthRefresh.current = Date.now();
     refreshAuth();
-    const onFocus = () => refreshAuth();
+    const onFocus = () => {
+      if (Date.now() - lastAuthRefresh.current < AUTH_REFRESH_INTERVAL_MS) return;
+      lastAuthRefresh.current = Date.now();
+      refreshAuth();
+    };
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshAuth]);

@@ -1,9 +1,9 @@
 import { forwardRef, useMemo, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
+import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
-import { modelBBoxCenterMap } from './physics/modelBBoxCenterMap';
 
 interface ModelInstanceProps {
     instance: ArtworkInstanceData;
@@ -67,17 +67,11 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             return { size, center };
         }, [clonedScene]);
 
-        // Publish natural (unscaled) bbox size + center so PropertiesPanel can show
-        // real-world dimensions, and PhysicsLayer can build a matching collider
-        // (RND-08 — physics colliders live outside this component now).
+        // Publish natural (unscaled) bbox size so PropertiesPanel can show real-world dimensions
         useEffect(() => {
             modelBBoxMap.set(instance.id, bbox.size.clone());
-            modelBBoxCenterMap.set(instance.id, bbox.center.clone());
-            return () => {
-                modelBBoxMap.delete(instance.id);
-                modelBBoxCenterMap.delete(instance.id);
-            };
-        }, [instance.id, bbox.size, bbox.center]);
+            return () => { modelBBoxMap.delete(instance.id); };
+        }, [instance.id, bbox.size]);
 
         // Selection highlight: apply emissive to all meshes
         useMemo(() => {
@@ -108,9 +102,13 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             >
                 <primitive object={clonedScene} />
 
-                {/* Physics collider for first-person collision now lives in
-                    src/components/physics/PhysicsLayer.tsx (RND-08 / LOAD-01) — this
-                    visual component no longer imports @react-three/rapier. */}
+                {/* Physics collider for first-person collision */}
+                <RigidBody type="fixed" colliders={false}>
+                    <CuboidCollider
+                        args={[bbox.size.x / 2, bbox.size.y / 2, bbox.size.z / 2]}
+                        position={[bbox.center.x, bbox.center.y, bbox.center.z]}
+                    />
+                </RigidBody>
 
                 {/* Bounding box wireframe — only when selected */}
                 {selected && (

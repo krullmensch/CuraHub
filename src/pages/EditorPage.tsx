@@ -1,20 +1,21 @@
 import { Canvas } from '@react-three/fiber';
-import { Loader, useGLTF } from '@react-three/drei';
+import { useGLTF } from '@react-three/drei';
+import { Physics } from '@react-three/rapier';
 import * as THREE from 'three';
 import { Scene } from '../components/Scene';
 // Player is now handled inside PlannerCameraSystem
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { FrameloopController } from '../components/FrameloopController';
+import { SceneLoadingIndicator } from '../components/SceneLoadingIndicator';
+import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
+import { RenderQualityControl } from '../components/RenderQualityControl';
+import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { useEditorStore, nextTempId, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
-import { useEffect, useRef, useState, lazy, Suspense } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
-
-// Only imported while in first-person mode (LOAD-01 / RND-08) — see
-// src/components/physics/PhysicsLayer.tsx, the sole importer of @react-three/rapier.
-const PhysicsLayer = lazy(() => import('../components/physics/PhysicsLayer'));
 
 // Snapshot of a pending placement awaiting user choice (used for the video drop modal)
 type DraggedAssetSnapshot = NonNullable<ReturnType<typeof useEditorStore.getState>['dragState']['draggedAsset']>;
@@ -127,6 +128,11 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
+  // RND-11: preset-dependent pixel ratio; antialiasing is a context attribute and stays as
+  // chosen when the Canvas was created.
+  const renderSettings = useRenderQualitySettings();
+  const [antialias] = useState(renderSettings.antialias);
+  const glConfig = useMemo(() => ({ ...GL_CONFIG, antialias }), [antialias]);
 
   // Captured placement awaiting the user's Monitor/Beamer choice (video drops only)
   const [pendingVideoDrop, setPendingVideoDrop] = useState<PendingVideoDrop | null>(null);
@@ -190,7 +196,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   // GLB) once the editor actually mounts — moved off module scope so the home page no longer
   // downloads them (LOAD-02).
   useEffect(() => {
-    useGLTF.preload('/models/Satellit_new-optimized.glb');
+    useGLTF.preload(SATELLIT_MODEL_URL);
     useGLTF.preload('/models/Monitor65.glb');
     useGLTF.preload('/models/Halbe_Classic_Alu8.glb');
   }, []);
@@ -440,23 +446,20 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     >
       <Canvas
         shadows
-        dpr={[1, 1.5]}
+        dpr={renderSettings.dpr}
         frameloop={frameloop}
         // Camera is managed by PlannerCameraSystem in Scene
         style={{ width: '100%', height: '100%' }}
-        gl={GL_CONFIG}
+        gl={glConfig}
         onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
       >
         <FrameloopController isVisible={isVisible} />
-        <Scene />
-        <ArtworkPlacement />
-        {viewMode === 'firstPerson' && (
-          <Suspense fallback={null}>
-            <PhysicsLayer isEditor />
-          </Suspense>
-        )}
+        <Physics gravity={[0, -9.81, 0]}>
+          <Scene />
+          <ArtworkPlacement />
+        </Physics>
       </Canvas>
-      <Loader />
+      <SceneLoadingIndicator />
       
       {/* FPV Crosshair + Artwork Info Overlay */}
       {viewMode === 'firstPerson' && <ArtworkInfoOverlay />}
@@ -510,6 +513,10 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
           {/* First-person preview */}
           <ToolButton icon={<Footprints size={16} />} tooltip="Ego-Perspektive (V)" onClick={() => setPlannerViewMode('firstPerson')} />
+
+          <ToolSeparator />
+
+          <RenderQualityControl className="px-2" />
         </div>
       )}
 

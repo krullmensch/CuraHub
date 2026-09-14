@@ -1,9 +1,10 @@
 import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { PerspectiveCamera, OrbitControls } from '@react-three/drei';
+import { PerspectiveCamera, OrbitControls, PointerLockControls, KeyboardControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { useEditorStore } from '../store/editorStore';
+import { PlayerController } from './Player';
 
 // --- CONFIGURATION ---
 const CAMERA_LIMITS = {
@@ -23,6 +24,7 @@ export const PlannerCameraSystem = () => {
     const fpState = useEditorStore(state => state.firstPersonCameraState);
     const updateOrbitState = useEditorStore(state => state.updateOrbitCameraState);
     const updateFPState = useEditorStore(state => state.updateFirstPersonCameraState);
+    const isDialogOpen = useEditorStore(state => state.isDialogOpen);
     const isTransforming = useEditorStore(state => state.isTransforming);
 
     const focusTarget = useEditorStore(state => state.focusTarget);
@@ -165,10 +167,23 @@ export const PlannerCameraSystem = () => {
                 />
             )}
 
-            {/* First-person KeyboardControls/PointerLockControls/player body now live in
-                <PhysicsLayer> (mounted by EditorPage only while firstPerson — LOAD-01 /
-                RND-08), so this component no longer needs to import @react-three/rapier
-                transitively via Player.tsx. */}
+            {viewMode === 'firstPerson' && (
+                <>
+                    <PointerLockControls selector="#root" />
+                    <KeyboardControls
+                        map={[
+                            { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
+                            { name: 'backward', keys: ['ArrowDown', 's', 'S'] },
+                            { name: 'left', keys: ['ArrowLeft', 'a', 'A'] },
+                            { name: 'right', keys: ['ArrowRight', 'd', 'D'] },
+                            { name: 'jump', keys: ['Space'] },
+                            { name: 'run', keys: ['Shift'] },
+                        ]}
+                    >
+                        <PlayerController paused={isDialogOpen} />
+                    </KeyboardControls>
+                </>
+            )}
         </>
     );
 };

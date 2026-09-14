@@ -5,6 +5,16 @@ import * as THREE from 'three';
 import { useEditorStore, artworkMinY } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 
+// RND-07: the PropertiesPanel readout re-renders on every liveTransform update — 10 Hz is
+// plenty for numbers, the 3D object itself still moves every frame.
+const LIVE_TRANSFORM_INTERVAL_MS = 100;
+
+const readTransform = (group: THREE.Group) => ({
+    position: { x: group.position.x, y: group.position.y, z: group.position.z },
+    rotation: { x: group.rotation.x, y: group.rotation.y, z: group.rotation.z },
+    scale: { x: group.scale.x, y: group.scale.y, z: group.scale.z },
+});
+
 interface InstanceTransformControlsProps {
     /** Map of instance ID -> group ref */
     instanceRefs: React.MutableRefObject<Map<number, THREE.Group>>;
@@ -18,6 +28,7 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     const invalidate = useThree((state) => state.invalidate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const controlsRef = useRef<any>(null);
+    const lastLiveUpdate = useRef(-Infinity);
 
     const selectedGroup = selectedId ? instanceRefs.current.get(selectedId) ?? null : null;
 
@@ -38,11 +49,11 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
             }
         }
 
-        store.setLiveTransform({
-            position: { x: group.position.x, y: group.position.y, z: group.position.z },
-            rotation: { x: group.rotation.x, y: group.rotation.y, z: group.rotation.z },
-            scale: { x: group.scale.x, y: group.scale.y, z: group.scale.z },
-        });
+        const now = performance.now();
+        if (now - lastLiveUpdate.current >= LIVE_TRANSFORM_INTERVAL_MS) {
+            lastLiveUpdate.current = now;
+            store.setLiveTransform(readTransform(group));
+        }
 
         // RND-02: the Y-clamp above mutates the object directly (bypassing JSX props), and
         // the PropertiesPanel's live readout depends on setLiveTransform — keep requesting
@@ -53,14 +64,17 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     // Persist transform to backend on mouse up
     const handleMouseUp = useCallback(async () => {
         setIsTransforming(false);
-        useEditorStore.getState().setLiveTransform(null);
 
         const currentSelectedId = useEditorStore.getState().selectedInstanceId;
         const currentToken = useAuthStore.getState().token;
-        if (!currentSelectedId || !currentToken) return;
+        const group = currentSelectedId ? instanceRefs.current.get(currentSelectedId) : undefined;
+        // The throttled live value can lag up to LIVE_TRANSFORM_INTERVAL_MS behind the object.
+        // PropertiesPanel keeps the last live value when it is cleared, so publish the exact
+        // final transform first and clear it in a separate render.
+        if (group) useEditorStore.getState().setLiveTransform(readTransform(group));
+        setTimeout(() => useEditorStore.getState().setLiveTransform(null), 0);
 
-        const group = instanceRefs.current.get(currentSelectedId);
-        if (!group) return;
+        if (!currentSelectedId || !currentToken || !group) return;
 
         const store = useEditorStore.getState();
         const currentMode = store.transformMode;

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import * as THREE from 'three';
 import { useAuthStore } from './authStore';
 import { gooeyToast } from 'goey-toast';
+import { readStoredRenderQualitySetting, storeRenderQualitySetting, type RenderQualitySetting } from '../lib/renderQuality';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -188,6 +189,9 @@ interface EditorState {
   // FPV Artwork Info
   fpvHoveredInfo: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null;
 
+  // RND-11: 'auto' resolves via hardware detection (see src/lib/renderQuality.ts)
+  renderQualitySetting: RenderQualitySetting;
+
   // Actions
   setDialogOpen: (isOpen: boolean) => void;
   startPlacement: (artwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string }) => void;
@@ -237,6 +241,8 @@ interface EditorState {
 
   // FPV Actions
   setFpvHoveredInfo: (info: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null) => void;
+
+  setRenderQualitySetting: (setting: RenderQualitySetting) => void;
 }
 
 // STATE-02 / FUNC-04: monotonically incremented by every store action below that marks the
@@ -308,6 +314,8 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // FPV
   fpvHoveredInfo: null,
+
+  renderQualitySetting: readStoredRenderQualitySetting(),
 
   setDialogOpen: (isOpen) => set({ isDialogOpen: isOpen }),
   startPlacement: (artwork) => set({ isPlacing: true, pendingArtwork: artwork }),
@@ -529,6 +537,11 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // FPV actions
   setFpvHoveredInfo: (info) => set({ fpvHoveredInfo: info }),
+
+  setRenderQualitySetting: (setting) => {
+    storeRenderQualitySetting(setting);
+    set({ renderQualitySetting: setting });
+  },
 }));
 
 // ─── Auto-sync: persist every local change to backend immediately ────────────

@@ -1,7 +1,16 @@
 #!/usr/bin/env node
 /**
  * Optimizes public/models/Satellit_new.glb for the web:
- *   dedup() -> prune() -> textureCompress(webp, max 2048px, quality 85)
+ *   textureCompress(webp, max 1024px, quality 85) — geometry is written untouched,
+ *   with a SEPARATE (non-interleaved) vertex layout.
+ *
+ *   IMPORTANT: gltf-transform's NodeIO writes INTERLEAVED vertex buffers by default.
+ *   three's GLTFLoader turns those into InterleavedBufferAttributes whose `.array` is the
+ *   whole mixed position/normal/uv buffer, and @react-three/rapier builds trimesh colliders
+ *   from `geometry.attributes.position.array` — so an interleaved GLB produces phantom
+ *   collision triangles (player spawned inside walls and could not move). dedup()/prune()
+ *   were removed as well: the gain is negligible (size is dominated by textures) and the
+ *   room geometry must stay identical to the Blender export.
  *
  * Uses the @gltf-transform/* packages and sharp that are already installed
  * as server-side dependencies (server/node_modules) — no new packages are
@@ -24,13 +33,15 @@ const serverPkg = path.join(repoRoot, 'server', 'package.json');
 // Load the gltf-transform + sharp packages from server/node_modules without
 // adding a dependency to the frontend package.json.
 const requireFromServer = createRequire(serverPkg);
-const { NodeIO } = requireFromServer('@gltf-transform/core');
+const { NodeIO, VertexLayout } = requireFromServer('@gltf-transform/core');
 const { ALL_EXTENSIONS } = requireFromServer('@gltf-transform/extensions');
-const { dedup, prune, textureCompress } = requireFromServer('@gltf-transform/functions');
+const { textureCompress } = requireFromServer('@gltf-transform/functions');
 const sharp = requireFromServer('sharp');
 
-const INPUT = path.join(repoRoot, 'public', 'models', 'Satellit_new.glb');
-const OUTPUT = path.join(repoRoot, 'public', 'models', 'Satellit_new-optimized.glb');
+// The unoptimized Blender export lives in _archive/ (moved out of public/, LOAD-09).
+const INPUT = path.join(repoRoot, '_archive', 'models', 'Satellit_new.glb');
+// Imported via src/lib/modelUrls.ts (?url) so Vite adds a content hash — do not move to public/.
+const OUTPUT = path.join(repoRoot, 'src', 'assets', 'models', 'Satellit_new-optimized.glb');
 
 // Node/mesh/material names referenced by src/components/Satellit.tsx.
 // gltfjsx sanitizes node property keys by stripping non-word characters
@@ -79,7 +90,8 @@ async function main() {
   console.log(`Input:  ${INPUT}`);
   console.log(`        ${fmtMB(inputSize)}`);
 
-  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS);
+  // SEPARATE vertex layout is required for correct trimesh colliders (see header).
+  const io = new NodeIO().registerExtensions(ALL_EXTENSIONS).setVertexLayout(VertexLayout.SEPARATE);
   const document = await io.read(INPUT);
 
   // Snapshot texture sizes before compression for the report.
@@ -98,8 +110,6 @@ async function main() {
   // KHR_texture_transform, so texel density stays adequate for architectural
   // surfaces viewed at room scale) resolves this and lands at ~2.2 MB.
   await document.transform(
-    dedup(),
-    prune(),
     textureCompress({
       encoder: sharp,
       targetFormat: 'webp',
@@ -178,7 +188,15 @@ async function main() {
   console.log(`  materials with KHR_texture_transform data: ${materialsWithTransform.length}`);
   if (materialsWithTransform.length === 0) ok = false;
 
-  if (outputSize > 2.5e6) {
+  // Guard against regressions of the collider bug: no position buffer may be interleaved.
+  const positionViews = new Set();
+  for (const mesh of json.meshes ?? []) for (const prim of mesh.primitives) positionViews.add(json.accessors[prim.attributes.POSITION].bufferView);
+  // A dedicated FLOAT vec3 view has byteStride 12 (or none); anything else means the view is interleaved.
+  const interleaved = [...positionViews].filter((v) => { const stride = json.bufferViews[v].byteStride; return stride != null && stride !== 12; });
+  console.log(`  position buffers interleaved: ${interleaved.length === 0 ? 'none (OK)' : interleaved.length + ' (BROKEN colliders)'}`);
+  if (interleaved.length > 0) ok = false;
+
+  if (outputSize > 2.6e6) {
     console.warn(`\nWARNING: output (${fmtMB(outputSize)}) exceeds the 2.5 MB target.`);
   }
 

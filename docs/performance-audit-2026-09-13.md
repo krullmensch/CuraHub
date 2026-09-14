@@ -3,7 +3,7 @@
 **Datum:** 13.09.2026
 **Getestet:** https://curahub.krullmann.com, Kuration **„Yol“** (Projekt-ID 5, Version 15, 136 Assets, ~72 platzierte Werke, 2 Videos)
 **Ziel:** Der komplette Workflow muss funktionieren, mit möglichst kurzen Ladezeiten, **vor allem auf schwächerer Hardware** (iGPU-Laptops, ältere Uni-Rechner, Tablets).
-**Status:** Analyse abgeschlossen. Wellen 1 + 2 sind umgesetzt, aber noch nicht committed, siehe **Abschnitt 8**. Dieses Dokument ist die Arbeitsgrundlage für nachfolgende Agents.
+**Status:** Analyse abgeschlossen. Wellen 1 + 2 committed (`f5aa344`), Welle 3 (Render-Pipeline) umgesetzt und headless gemessen, aber noch nicht committed, siehe **Abschnitt 8**. Dieses Dokument ist die Arbeitsgrundlage für nachfolgende Agents.
 
 ---
 
@@ -569,7 +569,66 @@ Erwartung: überall `200` mit `text/html`.
 
 **Neu entdeckt (→ Welle 3):** Wird ein Viewer-Link in einem Hintergrund-Tab geöffnet, zeigt das Overlay sofort „Klicken zum Betreten“, obwohl die Szene noch nicht lädt (R3F startet erst bei sichtbarem Tab). Der Bereitschaftszustand sollte an den tatsächlichen Szenen-Ladezustand gekoppelt werden.
 
-### Vorschlag Welle 3
+### Nachbesserungen nach Nutzertest (13.09.2026)
+
+Gemeldet: Viewer-Spawn in der Wand und keine Bewegung (auch Editor-FPV), Wiki öffnet nicht, Sidebar-Drag & Drop und Upload funktionieren nicht.
+
+| Befund | Ursache | Fix |
+|---|---|---|
+| Spawn in Wand, keine Bewegung | `Satellit_new-optimized.glb` wurde von gltf-transform mit **interleaved** Vertex-Buffern geschrieben (NodeIO-Standard). GLTFLoader erzeugt daraus `InterleavedBufferAttribute`s; @react-three/rapier baut Trimesh-Collider aus `position.array` = gemischter Positions/Normalen/UV-Puffer → Phantom-Dreiecke überall. Visuell unsichtbar. | GLB neu erzeugt mit `VertexLayout.SEPARATE`, nur Texturkompression, keine `dedup`/`prune`. Geometrie byte-identisch zum Blender-Export, 2,51 MB. `scripts/optimize-glb.mjs` angepasst, inkl. Guard gegen interleaved Positions-Buffer. Headless verifiziert: Spawn exakt wie Produktion. |
+| RND-08 (Rapier lazy im Editor) | Bei der Fehlersuche vorsorglich auf die bewährte `main`-Anordnung zurückgebaut. Die eigentliche Ursache war das GLB (s. o.). | `PhysicsLayer.tsx` entfernt, Collider wieder an den sichtbaren Meshes, `<Physics>` in Editor/Viewer. Rapier bleibt aus Startseite/Login heraus (lazy Routen), lädt aber im Editor auch im Orbit-Modus. Erneuter Versuch später möglich. |
+| Wiki öffnet nicht | `advancedChunks`-Gruppe `vendor-markdown` zerlegte CJS-Abhängigkeiten, Chunk warf beim Laden `o is not a function`. | Markdown-Gruppe entfernt, Markdown liegt im lazy `WikiView`-Chunk. Headless-Import aller Chunks: 0 Fehler. |
+| React-Fehler #185 („Maximum update depth exceeded“) im Viewer, möglicherweise auch im Editor | drei `useProgress` aktualisiert pro fertiger Textur. `ViewerPage` (ganzes Store-Objekt) und `<Loader />` im Editor rendern bei vielen gecachten Texturen > 50× verschachtelt → Exception im LoadingManager, Ladezustand kann hängen bleiben. | Selektoren nur auf `active` und Fortschritt in 5-%-Schritten. `<Loader />` ersetzt durch `SceneLoadingIndicator.tsx`. Headless 3× Viewer-Load: 0× #185. |
+| Movement nach dem GLB-Fix beim Nutzer weiter kaputt, headless mit emuliertem Pointer-Lock aber korrekt | Das Modell lag unter fester URL `/models/Satellit_new-optimized.glb` mit `max-age=86400` + SWR. Browser (und später CDN) behielten das kaputte GLB. | Raummodell nach `src/assets/models/` verschoben und über `src/lib/modelUrls.ts` (`?url`-Import) eingebunden: Vite vergibt einen Content-Hash (`/assets/Satellit_new-optimized-<hash>.glb`), der unter die `immutable`-Regel fällt. **Regel:** Modelle/Assets, die sich ändern können, nie unter fester `public/`-URL ausliefern. |
+| Sidebar-DnD, Upload | Ohne Login nicht reproduzierbar. Server-Logs zeigen keine fehlerhaften Requests (clientseitig). | **Offen:** Nutzer-Retest mit Browser-Konsole. |
+| „Klicken zum Betreten“ in Hintergrund-Tabs | R3F startet erst bei sichtbarem Tab, Overlay meldet vorher „bereit“. | → Welle 3. |
+
+**Lehre für Agents:** Automatisierte Browser-Tabs/Panes laufen unsichtbar (rAF/ResizeObserver gedrosselt). Laufzeitverhalten mit headless Chrome über das DevTools-Protokoll prüfen (`--headless=new`), nicht über versteckte Tabs.
+
+### Welle 3 (14.09.2026): Render-Pipeline, **nicht committed**, nicht deployed
+
+| ID | Status | Anmerkung |
+|---|---|---|
+| RND-01 | ✅ | Alle Bilderrahmen in zwei `InstancedMesh`es (`FrameInstancer.tsx`, Registry in `src/lib/frameInstancerRegistry.ts`). Rahmen-Geometrie gemeinsam mit `ModularFrame` (Drag-Ghost) aus `src/lib/modularFrameParts.ts`. Rahmen sind nicht mehr klick-/raycast-bar, die Bildfläche übernimmt das. **Yol-Viewer 579 → 79 Draw Calls.** |
+| LOAD-05 | ✅ (ohne KTX2) | `src/lib/artworkTextureManager.ts`: Stufen 512 px (Server-Thumbnail) / 1024 / 2048 / voll, gewählt nach Größe auf dem Bildschirm, mit Hysterese und GPU-Budget je Preset (300/600/800 MB). Decode per `fetch` + `createImageBitmap` außerhalb des Main Threads, Upload per `renderer.initTexture` mit Zeitbudget pro Frame, Anisotropie ≤ 4 (low 1). Material hat immer eine Map (1×1-Platzhalter) → kein Shader-Recompile beim Tausch. Ausgewähltes Werk im Editor bekommt die höchste Stufe. Thumbnails haben eigene Download-Slots (8). Nach WebGL-Context-Restore werden alle Texturen neu geladen. **Offen:** KTX2 (Schritt 4). |
+| LOAD-07 | ✅ | Bilder suspendieren nicht mehr: Raum und Rahmen erscheinen sofort, Bilder schärfen nach. Viewer-Overlay „Klicken zum Betreten“ erst nach Raum + erstem gerenderten Frame (`SceneReadySignal`), dadurch auch in Hintergrund-Tabs korrekt. |
+| RND-06 | ✅ | `PlacedArtworks`: memoisierte `InstanceSlot`s mit eigenem Selektions-Selector und stabilen Ref-Callbacks. Batch-Mounting nicht nötig, da keine Suspense-Kaskade mehr. |
+| RND-04 | ✅ | Fotos: `MeshBasicMaterial` (unbeleuchtet, farbtreu) in low/medium, `MeshStandardMaterial` in high. RectAreaLights nur im low-Preset aus, Ersatz `hemisphereLight`. **Visuell prüfen:** low wirkt etwas dunkler, Fensterglas ist schwarz (metallisches Material ohne Flächenlicht). |
+| RND-05 | ✅ | Raycast nur gegen Werke (`instanceRefMap`), Verdeckung nur gegen `Wall`/`ModularWall` bis zur Trefferdistanz, 5/10/15 Hz je Preset, nur mit Pointer-Lock. |
+| RND-11 | ✅ | `src/lib/renderQuality.ts`: low/medium/high + Automatik (GPU-String, Kerne, `deviceMemory`, `MAX_TEXTURE_SIZE`, Mobilgerät). Umschalter in der Editor-Toolbar und im Viewer-Startoverlay, gespeichert in `localStorage` (`curahub-render-quality`). Viewer: `PerformanceMonitor` senkt die DPR bei zu wenig FPS auf 1. Antialiasing greift erst nach Neuladen. |
+| RND-07 | ✅ | `liveTransform` mit 10 Hz, exakter Endwert beim Loslassen. |
+| API-01 | ✅ | Instanzen/Wände laden abhängig von „eingeloggt“ statt vom Token-String (jeder `refreshAuth` erzeugte einen neuen Token und damit Doppel-Fetches), veraltete Antworten werden verworfen. Kombinierter Scene-Endpoint nicht umgesetzt. **Nicht laufzeitgeprüft** (Login). |
+| VID-02 | ✅ | `server/src/lib/video.ts`: ffprobe-Codecprüfung. Nur H.264 / yuv420p / ≤ 1080p / AAC wird remuxt (faststart), alles andere auf ≤ 1920×1080 transkodiert. Backfill: `node dist/scripts/backfill-videos.js --dry-run` bzw. `--apply [--limit n]`, Originale bleiben liegen. Yol enthält VP9 + H.265 → Backfill nötig. |
+| VID-03 | ⏭️ | Braucht Schema-Feld `status`, Hintergrund-Queue, UI-Zustände und eine Entscheidung zu Uploads > 100 MB hinter Cloudflare (Upload-Subdomain oder tus). → Welle 4. |
+| SEC-06 | ✅ | In-Memory-Rate-Limit auf `/auth/login` (5/min je IP+Nutzer, 20/15 min je Nutzer, 100/15 min je IP, `CF-Connecting-IP`), JWT 30 statt 365 Tage, `refreshAuth` bei Fenster-Fokus höchstens alle 5 min. Bereits ausgestellte 365-Tage-Tokens bleiben bis zum Ablauf gültig, nur eine Rotation von `JWT_SECRET` beendet sie. |
+| Nebenbei | ✅ | Transform-Gizmo in der Ego-Perspektive ausgeblendet (Hinweis aus Welle 1). Viewer: Der Spieler wird erst mit dem Raum-Collider erzeugt. Vorher fiel er während des Ladens durch den Boden (headless reproduziert, je mehr Frames beim Laden, desto tiefer). |
+
+**Messung Welle 3** (Viewer Yol, headless Chrome 1800×927 auf M2 Pro/ANGLE-Metal, kalter Cache, API und Uploads über SSH-Tunnel zur Testumgebung; „vorher“ = Build der Testumgebung, Wellen 1 + 2):
+
+| Metrik | Vorher | Nachher high | medium | low |
+|---|---|---|---|---|
+| Draw Calls | nicht messbar (Spieler gefallen), Audit: 579 | **79** | 79 | 79 |
+| Texturen, geschätzter GPU-Speicher | 1.551 MB | **146 MB** | 127 MB | 127 MB |
+| Bild-Traffic | 72 Dateien, 20,2 MB | **2,2 MB** | 1,3 MB | 1,3 MB |
+| „Klicken zum Betreten“ sichtbar | 3,4 s | **1,0 s** | 1,1 s | 1,0 s |
+| Alle Werke mit Bild | ~12 s | ~6 s | – | ~6 s |
+| Längster Long Animation Frame | 238–1.182 ms, 4–6 × > 200 ms | 155–248 ms, ≤ 1 × > 200 ms | 268 ms | 140 ms (kalter Shader-Cache: 904 ms) |
+| DPR | 1,5 | 2 | 1,5 | 1 |
+
+**Verifikation Welle 3:**
+- `npx tsc -p tsconfig.app.json --noEmit` ✅, Server-`tsc` ✅, `npm run build` ✅, ESLint 85 Errors (= Baseline, keine neuen).
+- Headless (alle Presets): Spawn + Laufen ✅, Info-Overlay beim Anvisieren eines Werks ✅, WebGL-Context-Loss + Restore → Texturen neu geladen, keine Exceptions ✅, Screenshot-Vergleich high/medium/low.
+- **Nicht verifiziert:** Editor (Login nötig): Rahmen bei Drag/G/R/S/Wand-Verschieben, Hochauflösung bei Auswahl, Qualitäts-Umschalter, Doppel-Requests. Upload mit echtem ffmpeg (VID-02), Rate-Limit, echte iGPU-Hardware, Safari/Firefox (`createImageBitmap`-Optionen).
+
+**Neu entdeckt (→ Welle 4):**
+- **SEC-08 (P0, gemessen 14.09.2026):** Auf dem Produktionsserver sind App (`0.0.0.0:3001`) und MariaDB (`0.0.0.0:3307`) aus dem Internet erreichbar. Docker-Portfreigaben umgehen ufw. Folgen: Die Datenbank ist direkt angreifbar, und die App ist unter Umgehung von Cloudflare erreichbar. Dort lässt sich `CF-Connecting-IP` fälschen, die IP-Limits aus SEC-06 greifen also nicht (das Nutzer-Limit schon). Lösung: in `docker-compose.yml` den DB-Port entfernen oder an `127.0.0.1` binden und die App nur an `127.0.0.1` binden (cloudflared erreicht sie lokal). Danach von außen nachprüfen.
+- Kalter Shader-Compile blockiert den ersten Frame (~0,9 s auf M2/ANGLE-Metal) → `renderer.compileAsync(scene, camera)` vor der Freigabe.
+- Produktion: Thumbnail- und Video-Backfill nach dem Deploy ausführen.
+
+### Vorschlag Welle 4
+`VID-03`, Shader-Precompile (s. o.), `LOAD-05` Schritt 4 (KTX2), `RND-08` erneut versuchen (Rapier lazy im Editor, diesmal mit dem korrekten GLB), `CLN-03`, `CLN-04`, Cloudflare-Cache-Rules für `.glb`/`.webp`/`.mp4`, Editor-Laufzeittest mit Login.
+
+### (Archiv) Vorschlag Welle 3
 Siehe Render-Pipeline: `RND-01`, `LOAD-05`, `LOAD-07`, `RND-06`, `RND-04`, `RND-05`, `RND-11`, `RND-07`, `API-01`, `VID-02/03`, `SEC-06` + Overlay-Bereitschaft (s. o.).
 
 ### (Archiv) Vorschlag Welle 2
