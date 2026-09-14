@@ -27,22 +27,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { gooeyToast } from 'goey-toast';
-import {
-  Trash2,
-  FileIcon,
-  Loader2,
-  Edit,
-  Play,
-  Folder as FolderIcon,
-  FolderPlus,
-  Inbox,
-  Layers,
-  MoreHorizontal,
-  Palette,
-  Pencil,
-  FolderInput,
-  Upload,
-} from 'lucide-react';
+import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus, Inbox, Layers, MoreHorizontal, Palette, Pencil, FolderInput, Upload, AlertCircle } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { FolderColorPicker } from './FolderColorPicker';
 import {
@@ -77,6 +62,8 @@ interface Asset {
   dpi: number;
   duration?: number | null;
   thumbnailPath?: string | null;
+  /** VID-03: 'processing' | 'ready' | 'failed' */
+  status?: string;
   folderId?: number | null;
   createdAt: string;
   artwork?: {
@@ -96,6 +83,11 @@ interface Asset {
 }
 
 type FolderSelection = number | 'all' | 'unsorted';
+
+/** VID-03: refresh interval while a video is processed in the background. */
+const PROCESSING_POLL_MS = 5000;
+
+const isAssetReady = (asset: Asset) => asset.status !== 'processing' && asset.status !== 'failed';
 
 // LOAD-04: `Asset.thumbnailPath` stores the 512px variant; the 256px variant
 // is derived by naming convention (see server/src/lib/thumbnails.ts).
@@ -164,9 +156,9 @@ export const AssetLibrary = () => {
   );
 
   const fetchAssets = useCallback(
-    async (folderSel: FolderSelection) => {
+    async (folderSel: FolderSelection, silent = false) => {
       try {
-        setLoading(true);
+        if (!silent) setLoading(true);
         const res = await fetch(buildAssetsUrl(folderSel), {
           headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
         });
@@ -213,6 +205,14 @@ export const AssetLibrary = () => {
   useEffect(() => {
     fetchAssets(selectedFolder);
   }, [selectedFolder, fetchAssets]);
+
+  // VID-03: videos are transcoded in the background — refresh until none is processing.
+  const hasProcessingAssets = assets.some((a) => a.status === 'processing');
+  useEffect(() => {
+    if (!hasProcessingAssets) return;
+    const timer = setInterval(() => fetchAssets(selectedFolder, true), PROCESSING_POLL_MS);
+    return () => clearInterval(timer);
+  }, [hasProcessingAssets, selectedFolder, fetchAssets]);
 
   // ── Derived ──
   const totalAssetsCount =
@@ -998,7 +998,7 @@ export const AssetLibrary = () => {
                 return (
                   <Card
                     key={asset.id}
-                    draggable
+                    draggable={isAssetReady(asset)}
                     onDragStart={(e) => handleAssetDragStart(e, asset.id)}
                     onDragEnd={() => setDragging(false, null)}
                     onContextMenu={(e) => {
@@ -1051,6 +1051,17 @@ export const AssetLibrary = () => {
                         />
                       ) : (
                         <FileIcon className="h-12 w-12 text-gray-600" />
+                      )}
+
+                      {!isAssetReady(asset) && (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 px-2 text-center pointer-events-none">
+                          {asset.status === 'processing'
+                            ? <Loader2 className="h-6 w-6 text-white animate-spin" />
+                            : <AlertCircle className="h-6 w-6 text-amber-400" />}
+                          <span className="text-xs text-white">
+                            {asset.status === 'processing' ? 'Wird verarbeitet …' : 'Verarbeitung fehlgeschlagen'}
+                          </span>
+                        </div>
                       )}
 
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 pointer-events-none">

@@ -1,3 +1,4 @@
+import path from 'path';
 import ffmpeg from 'fluent-ffmpeg';
 
 /**
@@ -105,4 +106,20 @@ export async function makeWebVideo(inputPath: string, outputPath: string, probe:
     }
     await transcodeForWeb(inputPath, outputPath);
     return 'transcode';
+}
+
+/** Poster frame (640 px wide) at 0.5 s. */
+export function extractThumbnail(inputPath: string, outputPath: string): Promise<void> {
+    return new Promise((resolve, reject) => {
+        ffmpeg(inputPath)
+            .screenshots({
+                count: 1,
+                timestamps: ['00:00:00.500'],
+                filename: path.basename(outputPath),
+                folder: path.dirname(outputPath),
+                size: '640x?',
+            })
+            .on('end', () => resolve())
+            .on('error', (err) => reject(err));
+    });
 }

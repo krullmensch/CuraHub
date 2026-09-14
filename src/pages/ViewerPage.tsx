@@ -1,11 +1,9 @@
-import { Suspense, useCallback, useEffect, useState } from 'react';
+import { Suspense, useCallback, useEffect, useState, lazy } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Canvas } from '@react-three/fiber';
 import { useProgress, useGLTF, PerformanceMonitor } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
 import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
 import { Scene } from '../components/Scene';
-import { Player } from '../components/Player';
 import { SceneReadySignal } from '../components/SceneReadySignal';
 import { RenderQualityControl } from '../components/RenderQualityControl';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
@@ -42,6 +40,10 @@ interface ExhibitionData {
     walls: ModularWallData[];
 }
 
+// RND-08: physics (Rapier) + player live in a lazy chunk; the download starts on mount.
+const loadPhysicsWorld = () => import('../components/physics/PhysicsWorld');
+const PhysicsWorld = lazy(loadPhysicsWorld);
+
 export const ViewerPage = () => {
     const { slug } = useParams<{ slug: string }>();
     // Stepped progress only: subscribing to the whole store re-rendered on every texture load
@@ -51,7 +53,10 @@ export const ViewerPage = () => {
     const [apiLoading, setApiLoading] = useState(true);
     // LOAD-07: true after the room model loaded and the first frame rendered. Artwork images
     // load progressively afterwards and no longer block entering the exhibition.
-    const [sceneReady, setSceneReady] = useState(false);
+    const [roomReady, setRoomReady] = useState(false);
+    // Shader programs of the room/artworks compiled (ShaderWarmup) — entering earlier froze the first frame.
+    const [shadersReady, setShadersReady] = useState(false);
+    const sceneReady = roomReady && shadersReady;
     const [loading, setLoading] = useState(true);
     const [showLoading, setShowLoading] = useState(true);
     const [isLocked, setIsLocked] = useState(false);
@@ -67,7 +72,8 @@ export const ViewerPage = () => {
     }));
     // RND-03 / RND-11: PerformanceMonitor drops the pixel ratio to 1 while frames are too slow.
     const [lowDpr, setLowDpr] = useState(false);
-    const handleSceneReady = useCallback(() => setSceneReady(true), []);
+    const handleSceneReady = useCallback(() => setRoomReady(true), []);
+    const handleShadersReady = useCallback(() => setShadersReady(true), []);
 
     // Track pointer lock state
     useEffect(() => {
@@ -97,6 +103,7 @@ export const ViewerPage = () => {
         useGLTF.preload(SATELLIT_MODEL_URL);
         useGLTF.preload('/models/Monitor65.glb');
         useGLTF.preload('/models/Halbe_Classic_Alu8.glb');
+        loadPhysicsWorld();
     }, []);
 
     useEffect(() => {
@@ -172,7 +179,6 @@ export const ViewerPage = () => {
     return (
         <>
             <Canvas
-                shadows
                 dpr={lowDpr ? [1, 1] : renderSettings.dpr}
                 frameloop={frameloop}
                 camera={{ position: [0, 1.7, 0], fov: 60 }}
@@ -188,21 +194,26 @@ export const ViewerPage = () => {
                         onFallback={() => setLowDpr(true)}
                     />
                 )}
-                <Physics gravity={[0, -9.81, 0]}>
-                    {data && (
-                        // The room model suspends this boundary: the player spawns only once the
-                        // room collider exists, and SceneReadySignal fires after the first frame.
+                {data && (
+                    <>
                         <Suspense fallback={null}>
                             <Scene
                                 isEditor={false}
                                 viewerInstances={data.instances}
                                 viewerWalls={data.walls}
+                                onShadersReady={handleShadersReady}
                             />
-                            <Player />
-                            <SceneReadySignal onReady={handleSceneReady} />
                         </Suspense>
-                    )}
-                </Physics>
+                        {/* Separate boundary: the room renders while Rapier still loads. PhysicsWorld
+                            suspends until the room collider exists, so the player never spawns early;
+                            SceneReadySignal fires after the first frame with the player in place. */}
+                        <Suspense fallback={null}>
+                            <PhysicsWorld mode="viewer" viewerWalls={data.walls} viewerInstances={data.instances}>
+                                <SceneReadySignal onReady={handleSceneReady} />
+                            </PhysicsWorld>
+                        </Suspense>
+                    </>
+                )}
             </Canvas>
 
             {/* FPV Crosshair + Artwork Info Overlay */}

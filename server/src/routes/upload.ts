@@ -1,12 +1,14 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import sharp from 'sharp';
 import { PrismaClient } from '@prisma/client';
+import { Transform } from 'stream';
+import { pipeline } from 'stream/promises';
+import { z } from 'zod';
 import ExifParser from 'exif-parser';
-import ffmpeg from 'fluent-ffmpeg';
 import { execFile } from 'child_process';
 import { promisify } from 'util';
 import { NodeIO } from '@gltf-transform/core';
@@ -15,7 +17,8 @@ import { dedup, draco, textureCompress, prune, quantize } from '@gltf-transform/
 import draco3d from 'draco3dgltf';
 import { authenticate, requireCurator, userCanAccessProject } from '../lib/middleware';
 import { tryGenerateImageThumbnails } from '../lib/thumbnails';
-import { makeWebVideo, probeVideo } from '../lib/video';
+import { enqueueVideoJob } from '../lib/videoJobs';
+import { CHUNK_MAX_BYTES, CHUNK_SIZE_BYTES, ChunkedUploadStore } from '../lib/chunkedUploads';
 
 export const uploadRouter = Router();
 const prisma = new PrismaClient();
@@ -66,28 +69,32 @@ const SIZE_LIMITS: Record<string, number> = {
     model3d: 100 * 1024 * 1024, // 100MB (source formats are larger, output is compressed)
 };
 
-// Configure storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadDir);
-  },
-  filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    const basename = path.basename(file.originalname, ext);
+// Stored filename for an upload. Unique prefix prevents different files with the same
+// sanitized name from overwriting each other on disk (SEC-04). Derived filenames
+// (webp/mp4/thumb/glb) are built from this stored filename in processImage/processVideo/
+// processModel, so they inherit the uniqueness automatically.
+function makeStoredFilename(originalname: string): string {
+    const ext = path.extname(originalname);
+    const basename = path.basename(originalname, ext);
 
     // Sanitize filename: remove special chars, replace spaces with hyphens
     const sanitizedTitle = basename
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '') || 'file';
+    const safeExt = ext.toLowerCase().replace(/[^a-z0-9.]/g, '');
 
-    // Unique prefix prevents different files with the same sanitized name from
-    // overwriting each other on disk (SEC-04). Derived filenames (webp/mp4/thumb/glb)
-    // are built from this stored filename in processImage/processVideo/processModel,
-    // so they inherit the uniqueness automatically.
     const uniquePrefix = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+    return `${uniquePrefix}-${sanitizedTitle}${safeExt}`;
+}
 
-    cb(null, `${uniquePrefix}-${sanitizedTitle}${ext}`);
+// Configure storage
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    cb(null, makeStoredFilename(file.originalname));
   }
 });
 
@@ -104,21 +111,21 @@ const upload = multer({
   }
 });
 
-// Helper: extract poster frame from video
-function extractThumbnail(inputPath: string, outputPath: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-        ffmpeg(inputPath)
-            .screenshots({
-                count: 1,
-                timestamps: ['00:00:00.500'],
-                filename: path.basename(outputPath),
-                folder: path.dirname(outputPath),
-                size: '640x?',
-            })
-            .on('end', () => resolve())
-            .on('error', (err) => reject(err));
-    });
+type UploadFields = Record<string, unknown>;
+
+/** A file already stored in the uploads dir — from multer or an assembled chunked upload. */
+type StoredFile = Pick<Express.Multer.File, 'path' | 'filename' | 'originalname' | 'mimetype' | 'size'>;
+
+interface UploadResult {
+    status: number;
+    body: unknown;
 }
+
+const fieldString = (raw: unknown): string | undefined => {
+    if (typeof raw === 'string' && raw !== '') return raw;
+    if (typeof raw === 'number' && Number.isFinite(raw)) return String(raw);
+    return undefined;
+};
 
 uploadRouter.post('/', authenticate, requireCurator, (req, res, next) => {
     upload.single('file')(req, res, (err) => {
@@ -134,9 +141,170 @@ uploadRouter.post('/', authenticate, requireCurator, (req, res, next) => {
   if (!req.file) {
     return res.status(400).json({ error: 'No file uploaded' });
   }
+  // req.user is always set here — this handler runs after `authenticate`.
+  const result = await handleStoredUpload(req.user!, req.file, {
+      ...(req.query as UploadFields),
+      ...(req.body as UploadFields),
+  });
+  res.status(result.status).json(result.body);
+});
 
-  const projectId = req.body.projectId || req.query.projectId;
-  const folderIdRaw = req.body.folderId || req.query.folderId;
+// ── Chunked uploads (VID-03) ──
+// Cloudflare rejects request bodies > 100 MB. Large files are uploaded as
+//   POST /upload/chunks                  → { uploadId, chunkSize }
+//   PUT  /upload/chunks/:id?offset=N     (raw bytes, sequential) → { received }
+//   POST /upload/chunks/:id/complete     → same response as POST /upload
+//   DELETE /upload/chunks/:id            (abort)
+const chunkedUploads = new ChunkedUploadStore(uploadDir);
+
+const CHUNK_FIELD_KEYS = ['projectId', 'folderId', 'force', 'clientHash', 'originalWidth', 'originalHeight', 'dpi'] as const;
+
+const chunkInitSchema = z.object({
+    filename: z.string().min(1).max(255),
+    size: z.number().int().positive(),
+    mimetype: z.string().max(255).optional(),
+    fields: z.record(z.string(), z.union([z.string().max(200), z.number()])).optional(),
+});
+
+uploadRouter.post('/chunks', authenticate, requireCurator, async (req: Request, res) => {
+    const parsed = chunkInitSchema.safeParse(req.body);
+    if (!parsed.success) {
+        return res.status(400).json({ error: 'Ungültige Upload-Anfrage' });
+    }
+    const { filename, size } = parsed.data;
+    const mimetype = parsed.data.mimetype || 'application/octet-stream';
+
+    const assetType = detectAssetType(mimetype, filename);
+    if (!assetType) {
+        return res.status(400).json({ error: 'Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …)' });
+    }
+    const sizeLimit = Math.min(SIZE_LIMITS[assetType], UPLOAD_MAX_BYTES);
+    if (size > sizeLimit) {
+        return res.status(400).json({
+            error: `File too large. Max ${Math.round(sizeLimit / 1024 / 1024)}MB for ${assetType} files.`
+        });
+    }
+
+    const fields: Record<string, string> = {};
+    for (const key of CHUNK_FIELD_KEYS) {
+        const value = fieldString(parsed.data.fields?.[key]);
+        if (value !== undefined) fields[key] = value;
+    }
+
+    // Check project access before accepting gigabytes of data (checked again on complete).
+    if (fields.projectId) {
+        const projectId = parseInt(fields.projectId, 10);
+        const canAccess = !isNaN(projectId)
+            && await userCanAccessProject(prisma, req.user!.userId, projectId, req.user!.role === 'admin');
+        if (!canAccess) {
+            return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt' });
+        }
+    }
+
+    const session = chunkedUploads.create({
+        userId: req.user!.userId,
+        originalname: filename,
+        mimetype,
+        size,
+        storedFilename: makeStoredFilename(filename),
+        fields,
+    });
+    if (!session) {
+        return res.status(429).json({ error: 'Zu viele gleichzeitige Uploads' });
+    }
+    res.json({ uploadId: session.id, chunkSize: CHUNK_SIZE_BYTES });
+});
+
+uploadRouter.put('/chunks/:id', authenticate, requireCurator, async (req: Request, res) => {
+    const session = chunkedUploads.get(String(req.params.id), req.user!.userId);
+    if (!session || session.result) {
+        return res.status(404).json({ error: 'Upload-Sitzung nicht gefunden' });
+    }
+    const offset = Number(req.query.offset);
+    // offset < received: a retry of a chunk whose response got lost — rewrite from there.
+    if (session.busy || !Number.isInteger(offset) || offset < 0 || offset > session.received) {
+        return res.status(409).json({ error: 'Offset passt nicht', received: session.received });
+    }
+
+    session.busy = true;
+    const limit = Math.min(CHUNK_MAX_BYTES, session.size - offset);
+    let written = 0;
+    try {
+        await fs.promises.truncate(session.partialPath, offset);
+        const counter = new Transform({
+            transform(chunk: Buffer, _encoding, callback) {
+                written += chunk.length;
+                if (written > limit) callback(new Error('CHUNK_TOO_LARGE'));
+                else callback(null, chunk);
+            },
+        });
+        await pipeline(req, counter, fs.createWriteStream(session.partialPath, { flags: 'r+', start: offset }));
+        if (written === 0) throw new Error('EMPTY_CHUNK');
+        session.received = offset + written;
+        res.json({ received: session.received });
+    } catch (err) {
+        // Drop whatever part of this chunk made it to disk; the client retries from `received`.
+        await fs.promises.truncate(session.partialPath, offset).catch(() => undefined);
+        session.received = offset;
+        const message = (err as Error).message;
+        if (!res.headersSent) {
+            res.status(message === 'CHUNK_TOO_LARGE' ? 413 : 400).json({ error: 'Chunk konnte nicht gespeichert werden', received: session.received });
+        }
+    } finally {
+        session.busy = false;
+        session.updatedAt = Date.now();
+    }
+});
+
+uploadRouter.post('/chunks/:id/complete', authenticate, requireCurator, async (req: Request, res) => {
+    const session = chunkedUploads.get(String(req.params.id), req.user!.userId);
+    if (!session) {
+        return res.status(404).json({ error: 'Upload-Sitzung nicht gefunden' });
+    }
+    if (session.result) {
+        return res.status(session.result.status).json(session.result.body);
+    }
+    if (session.busy || session.received !== session.size) {
+        return res.status(409).json({ error: 'Upload unvollständig', received: session.received });
+    }
+
+    session.busy = true;
+    try {
+        const storedPath = path.join(uploadDir, session.storedFilename);
+        await fs.promises.rename(session.partialPath, storedPath);
+        session.result = await handleStoredUpload(req.user!, {
+            path: storedPath,
+            filename: session.storedFilename,
+            originalname: session.originalname,
+            mimetype: session.mimetype,
+            size: session.size,
+        }, session.fields);
+    } catch (err) {
+        console.error('[Upload] Completing chunked upload failed:', err);
+        session.result = { status: 500, body: { error: 'Upload konnte nicht abgeschlossen werden' } };
+    } finally {
+        session.busy = false;
+        session.updatedAt = Date.now();
+    }
+    res.status(session.result.status).json(session.result.body);
+});
+
+uploadRouter.delete('/chunks/:id', authenticate, requireCurator, (req: Request, res) => {
+    const session = chunkedUploads.get(String(req.params.id), req.user!.userId);
+    if (session && !session.busy && !session.result) chunkedUploads.remove(session.id);
+    res.status(204).end();
+});
+
+/** Validates, de-duplicates and processes a stored upload. Removes the file when rejected. */
+async function handleStoredUpload(
+    user: NonNullable<Request['user']>,
+    file: StoredFile,
+    fields: UploadFields,
+): Promise<UploadResult> {
+  const discard = () => fs.rmSync(file.path, { force: true });
+
+  const projectId = fieldString(fields.projectId);
+  const folderIdRaw = fieldString(fields.folderId);
   if (projectId) {
       console.log(`[Upload] Processing upload for Project ID: ${projectId}${folderIdRaw ? `, Folder ID: ${folderIdRaw}` : ''}`);
   }
@@ -145,55 +313,63 @@ uploadRouter.post('/', authenticate, requireCurator, (req, res, next) => {
   // validation and duplicate detection below.
   let parsedProjectId: number | undefined = undefined;
   if (projectId) {
-      parsedProjectId = parseInt(String(projectId), 10);
+      parsedProjectId = parseInt(projectId, 10);
       if (isNaN(parsedProjectId)) {
-          fs.unlinkSync(req.file.path);
-          return res.status(400).json({ error: 'Invalid projectId' });
+          discard();
+          return { status: 400, body: { error: 'Invalid projectId' } };
       }
 
       // SEC-01: only owners, exhibition collaborators, or admins may upload into a project
-      // (req.user is always set here — this handler runs after `authenticate`)
-      const isAdmin = req.user!.role === 'admin';
-      const canAccess = await userCanAccessProject(prisma, req.user!.userId, parsedProjectId, isAdmin);
+      const canAccess = await userCanAccessProject(prisma, user.userId, parsedProjectId, user.role === 'admin');
       if (!canAccess) {
-          fs.unlinkSync(req.file.path);
-          return res.status(403).json({ error: 'Kein Zugriff auf dieses Projekt' });
+          discard();
+          return { status: 403, body: { error: 'Kein Zugriff auf dieses Projekt' } };
       }
   }
 
   // Validate folder belongs to project (if both provided)
   let folderId: number | undefined = undefined;
   if (folderIdRaw) {
-      const parsed = parseInt(String(folderIdRaw), 10);
+      const parsed = parseInt(folderIdRaw, 10);
       if (isNaN(parsed)) {
-          fs.unlinkSync(req.file.path);
-          return res.status(400).json({ error: 'Invalid folderId' });
+          discard();
+          return { status: 400, body: { error: 'Invalid folderId' } };
       }
       const folder = await prisma.folder.findUnique({
           where: { id: parsed },
           select: { id: true, projectId: true },
       });
       if (!folder) {
-          fs.unlinkSync(req.file.path);
-          return res.status(404).json({ error: 'Folder not found' });
+          discard();
+          return { status: 404, body: { error: 'Folder not found' } };
       }
       if (parsedProjectId !== undefined && folder.projectId !== parsedProjectId) {
-          fs.unlinkSync(req.file.path);
-          return res.status(400).json({ error: 'Folder does not belong to this project' });
+          discard();
+          return { status: 400, body: { error: 'Folder does not belong to this project' } };
       }
       folderId = parsed;
   }
 
-  const assetType = detectAssetType(req.file.mimetype, req.file.originalname) || 'image';
+  const assetType = detectAssetType(file.mimetype, file.originalname) || 'image';
+
+  // Validate per-type size limit (before hashing — no point hashing a rejected file)
+  const sizeLimit = SIZE_LIMITS[assetType];
+  if (file.size > sizeLimit) {
+      discard();
+      return {
+          status: 400,
+          body: { error: `File too large. Max ${Math.round(sizeLimit / 1024 / 1024)}MB for ${assetType} files.` },
+      };
+  }
 
   // ── Duplicate detection (unless force=true) ──
-  const force = req.body.force === 'true' || req.query.force === 'true';
+  const force = fields.force === 'true' || fields.force === true;
 
   // UPL-01: optional client-computed hash/dimensions/dpi for images — validated
   // and used in place of server-side computation when present. The client now
   // uploads a resized copy, so the server can no longer derive these from the
   // uploaded file alone.
-  const clientHashRaw = req.body.clientHash;
+  const clientHashRaw = fields.clientHash;
   const clientHash = typeof clientHashRaw === 'string' && /^[a-f0-9]{64}$/.test(clientHashRaw)
       ? clientHashRaw
       : undefined;
@@ -209,14 +385,15 @@ uploadRouter.post('/', authenticate, requireCurator, (req, res, next) => {
       return Number.isFinite(n) && n >= min && n <= max ? n : undefined;
   };
 
-  const clientOriginalWidth = parsePositiveIntField(req.body.originalWidth, 100000);
-  const clientOriginalHeight = parsePositiveIntField(req.body.originalHeight, 100000);
-  const clientDpi = parsePositiveNumberField(req.body.dpi, 1, 2400);
+  const clientOriginalWidth = parsePositiveIntField(fields.originalWidth, 100000);
+  const clientOriginalHeight = parsePositiveIntField(fields.originalHeight, 100000);
+  const clientDpi = parsePositiveNumberField(fields.dpi, 1, 2400);
 
+  let fileHash: string | undefined;
   if (!force) {
       // UPL-02: stream the hash instead of reading the whole file into memory,
       // so large uploads don't block the event loop for other requests.
-      const fileHash = clientHash ?? await streamFileHash(req.file.path);
+      fileHash = clientHash ?? await streamFileHash(file.path);
 
       const existing = await prisma.asset.findFirst({
           where: {
@@ -227,58 +404,41 @@ uploadRouter.post('/', authenticate, requireCurator, (req, res, next) => {
       });
 
       if (existing) {
-          fs.unlinkSync(req.file.path);
-          return res.status(409).json({
-              duplicate: true,
-              filename: req.file.originalname,
-              existing,
-          });
+          discard();
+          return {
+              status: 409,
+              body: { duplicate: true, filename: file.originalname, existing },
+          };
       }
-
-      // Store hash on req for use in processX helpers via a side-channel
-      (req as any)._fileHash = fileHash;
   } else if (clientHash) {
       // force=true skips duplicate detection but a validated client hash
       // should still be recorded as Asset.fileHash.
-      (req as any)._fileHash = clientHash;
+      fileHash = clientHash;
   }
-
-  // Validate per-type size limit
-  const sizeLimit = SIZE_LIMITS[assetType];
-  if (req.file.size > sizeLimit) {
-      fs.unlinkSync(req.file.path);
-      return res.status(400).json({
-          error: `File too large. Max ${Math.round(sizeLimit / 1024 / 1024)}MB for ${assetType} files.`
-      });
-  }
-
-  const fileHash: string | undefined = (req as any)._fileHash;
 
   try {
       if (assetType === 'image') {
-          const asset = await processImage(req.file, projectId, folderId, fileHash, {
+          const asset = await processImage(file, projectId, folderId, fileHash, {
               width: clientOriginalWidth,
               height: clientOriginalHeight,
               dpi: clientDpi,
           });
-          return res.json(asset);
+          return { status: 200, body: asset };
       }
 
       if (assetType === 'video') {
-          const asset = await processVideo(req.file, projectId, folderId, fileHash);
-          return res.json(asset);
+          const asset = await processVideo(file, projectId, folderId, fileHash);
+          return { status: 200, body: asset };
       }
 
-      if (assetType === 'model3d') {
-          const asset = await processModel(req.file, projectId, folderId, fileHash);
-          return res.json(asset);
-      }
-
+      const asset = await processModel(file, projectId, folderId, fileHash);
+      return { status: 200, body: asset };
   } catch (err) {
       console.error(`Error processing ${assetType}:`, err);
-      res.status(500).json({ error: `Failed to process ${assetType} upload` });
+      discard();
+      return { status: 500, body: { error: `Failed to process ${assetType} upload` } };
   }
-});
+}
 
 // ── Image processing (original pipeline) ──
 interface ClientImageMeta {
@@ -288,7 +448,7 @@ interface ClientImageMeta {
 }
 
 async function processImage(
-    file: Express.Multer.File,
+    file: StoredFile,
     projectId: string | undefined,
     folderId?: number,
     fileHash?: string,
@@ -381,61 +541,35 @@ function streamFileHash(filePath: string): Promise<string> {
 }
 
 // ── Video processing ──
-async function processVideo(file: Express.Multer.File, projectId: string | undefined, folderId?: number, fileHash?: string) {
-    // Probe the original. Width/height stay the original dimensions (the scene derives the
-    // physical size from them, same as for images — UPL-05).
-    const probe = await probeVideo(file.path).catch((err) => {
-        console.warn('[Upload] ffprobe failed, transcoding without metadata:', err);
-        return null;
-    });
-
+// VID-03: transcoding happens in a background job (lib/videoJobs.ts). The asset is created
+// right away with status "processing" and the target path; the original stays in the uploads
+// dir (metadata.sourceFile) until the job replaced it with the web MP4.
+async function processVideo(file: StoredFile, projectId: string | undefined, folderId?: number, fileHash?: string) {
     const baseName = file.filename.replace(/\.[^.]+$/, '');
     const mp4Filename = baseName + '.mp4';
-    const mp4Path = path.join(uploadDir, mp4Filename);
-    // An uploaded .mp4 already sits at mp4Path — write the web version next to it first.
-    const outputPath = file.path === mp4Path ? path.join(uploadDir, `${baseName}.web.mp4`) : mp4Path;
 
-    // VID-02: pass through only H.264/yuv420p ≤ 1080p (+AAC), transcode everything else.
-    console.log(`[Upload] Processing video: ${file.originalname}`);
-    try {
-        const mode = await makeWebVideo(file.path, outputPath, probe);
-        console.log(`[Upload] Video ${file.originalname}: ${mode === 'remux' ? 'H.264 kept (remuxed)' : 'transcoded to H.264'}`);
-    } catch (err) {
-        fs.rmSync(outputPath, { force: true });
-        throw err;
-    }
-    fs.unlinkSync(file.path);
-    if (outputPath !== mp4Path) fs.renameSync(outputPath, mp4Path);
-
-    // Extract poster thumbnail
-    const thumbFilename = file.filename.split('.')[0] + '-thumb.jpg';
-    const thumbPath = path.join(uploadDir, thumbFilename);
-    try {
-        await extractThumbnail(mp4Path, thumbPath);
-    } catch (err) {
-        console.warn('[Upload] Thumbnail extraction failed, continuing without:', err);
-    }
-
-    const stats = fs.statSync(mp4Path);
-    const hasThumbnail = fs.existsSync(thumbPath);
-
-    return prisma.asset.create({
+    const asset = await prisma.asset.create({
         data: {
             filename: path.basename(file.originalname, path.extname(file.originalname)) + '.mp4',
             path: `/uploads/${mp4Filename}`,
             mimetype: 'video/mp4',
-            size: stats.size,
+            size: file.size,
             type: 'video',
-            width: probe?.width ?? 0,
-            height: probe?.height ?? 0,
-            duration: Math.round((probe?.duration ?? 0) * 10) / 10,
-            thumbnailPath: hasThumbnail ? `/uploads/${thumbFilename}` : null,
+            width: 0,
+            height: 0,
+            duration: 0,
+            thumbnailPath: null,
+            status: 'processing',
             fileHash,
             projectId: projectId ? parseInt(projectId as string, 10) : undefined,
             folderId,
-            metadata: { projectId: projectId ? String(projectId) : undefined },
+            metadata: { projectId: projectId ? String(projectId) : undefined, sourceFile: file.filename },
         }
     });
+
+    console.log(`[Upload] Video ${file.originalname} queued for processing (asset ${asset.id})`);
+    enqueueVideoJob(asset.id);
+    return asset;
 }
 
 // ── 3D Model processing ──
@@ -536,7 +670,7 @@ async function optimizeGLB(inputPath: string, outputPath: string): Promise<{ bef
 }
 
 /** Full pipeline: convert (if needed) → optimize → save */
-async function processModel(file: Express.Multer.File, projectId: string | undefined, folderId?: number, fileHash?: string) {
+async function processModel(file: StoredFile, projectId: string | undefined, folderId?: number, fileHash?: string) {
     const ext = path.extname(file.originalname).toLowerCase();
     const baseName = path.parse(file.filename).name;
     const isGLTF = GLTF_FAMILY.has(ext);

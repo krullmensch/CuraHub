@@ -1,7 +1,6 @@
 import { forwardRef, useMemo, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
 
@@ -27,8 +26,6 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             clone.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
                     const mesh = child as THREE.Mesh;
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
                     if (Array.isArray(mesh.material)) {
                         mesh.material = mesh.material.map((m) => m.clone());
                     } else if (mesh.material) {
@@ -102,13 +99,7 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             >
                 <primitive object={clonedScene} />
 
-                {/* Physics collider for first-person collision */}
-                <RigidBody type="fixed" colliders={false}>
-                    <CuboidCollider
-                        args={[bbox.size.x / 2, bbox.size.y / 2, bbox.size.z / 2]}
-                        position={[bbox.center.x, bbox.center.y, bbox.center.z]}
-                    />
-                </RigidBody>
+                {/* First-person collider: physics/PhysicsWorld.tsx (RND-08) */}
 
                 {/* Bounding box wireframe — only when selected */}
                 {selected && (

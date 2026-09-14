@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play, AlertCircle } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
@@ -24,6 +24,8 @@ interface Asset {
   height: number;
   dpi?: number;
   thumbnailPath?: string | null;
+  /** VID-03: 'processing' | 'ready' | 'failed' */
+  status?: string;
   artwork?: {
     id: number;
     title: string;
@@ -33,6 +35,11 @@ interface Asset {
 }
 
 type FolderFilter = 'all' | number;
+
+/** VID-03: refresh interval while a video is processed in the background. */
+const PROCESSING_POLL_MS = 5000;
+
+const isAssetReady = (asset: Asset) => asset.status !== 'processing' && asset.status !== 'failed';
 
 // LOAD-04: `Asset.thumbnailPath` stores the 512px variant; the 256px variant
 // is derived by naming convention (see server/src/lib/thumbnails.ts).
@@ -53,14 +60,14 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const activeProjectId = useEditorStore((state) => state.activeProjectId);
     const token = useAuthStore((state) => state.token);
 
-    const fetchAssets = useCallback(async (filter: FolderFilter) => {
+    const fetchAssets = useCallback(async (filter: FolderFilter, silent = false) => {
         if (!activeProjectId) {
             setAssets([]);
             setLoading(false);
             return;
         }
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             const params = new URLSearchParams();
             params.set('projectId', String(activeProjectId));
             if (typeof filter === 'number') params.set('folderId', String(filter));
@@ -98,6 +105,14 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     useEffect(() => {
         fetchAssets(activeFilter);
     }, [activeFilter, fetchAssets]);
+
+    // VID-03: videos are transcoded in the background — refresh until none is processing.
+    const hasProcessingAssets = assets.some((a) => a.status === 'processing');
+    useEffect(() => {
+        if (!hasProcessingAssets) return;
+        const timer = setInterval(() => fetchAssets(activeFilter, true), PROCESSING_POLL_MS);
+        return () => clearInterval(timer);
+    }, [hasProcessingAssets, activeFilter, fetchAssets]);
 
     const handleAssetClick = (e: React.MouseEvent, assetId: number) => {
         if (e.ctrlKey || e.metaKey) {
@@ -267,7 +282,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                             {assets.map((asset) => (
                                 <div
                                     key={asset.id}
-                                    draggable
+                                    draggable={isAssetReady(asset)}
                                     onClick={(e) => handleAssetClick(e, asset.id)}
                                     onDragStart={(e) => handleDragStart(e, asset)}
                                     onDragEnd={handleDragEnd}
@@ -309,6 +324,16 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                     ) : (
                                         <div className="flex items-center justify-center h-full">
                                             <FileIcon className="h-6 w-6 text-zinc-600" />
+                                        </div>
+                                    )}
+                                    {(asset.status === 'processing' || asset.status === 'failed') && (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/60 px-1 text-center pointer-events-none">
+                                            {asset.status === 'processing'
+                                                ? <Loader2 className="h-4 w-4 text-white animate-spin" />
+                                                : <AlertCircle className="h-4 w-4 text-amber-400" />}
+                                            <span className="text-[10px] leading-tight text-white">
+                                                {asset.status === 'processing' ? 'Wird verarbeitet …' : 'Verarbeitung fehlgeschlagen'}
+                                            </span>
                                         </div>
                                     )}
                                     <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 translate-y-full group-hover:translate-y-0 transition-transform">

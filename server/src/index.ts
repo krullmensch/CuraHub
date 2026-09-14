@@ -15,6 +15,7 @@ import { wallsRouter } from './routes/walls';
 import { exhibitionsRouter } from './routes/exhibitions';
 import { publicRouter } from './routes/public';
 import { adminRouter } from './routes/admin';
+import { resumeVideoJobs } from './lib/videoJobs';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -205,6 +206,8 @@ app.use((req, res) => {
 if (process.env.NODE_ENV !== 'test') {
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
+        // VID-03: continue video jobs interrupted by a restart.
+        resumeVideoJobs().catch((err) => console.error('[VideoJobs] Resume failed:', err));
     });
 }
 

@@ -1,9 +1,8 @@
 import { Canvas } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
 import * as THREE from 'three';
 import { Scene } from '../components/Scene';
-// Player is now handled inside PlannerCameraSystem
+// Player + colliders: components/physics/PhysicsWorld (lazy, first person only — RND-08)
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { FrameloopController } from '../components/FrameloopController';
 import { SceneLoadingIndicator } from '../components/SceneLoadingIndicator';
@@ -12,7 +11,7 @@ import { RenderQualityControl } from '../components/RenderQualityControl';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { useEditorStore, nextTempId, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
@@ -93,6 +92,9 @@ const ToolButton = ({ icon, tooltip, active, activeColor, onClick, disabled }: T
 const ToolSeparator = () => (
   <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
 );
+
+// RND-08: Rapier (~2.3 MB chunk + WASM) is only needed for the first-person preview.
+const PhysicsWorld = lazy(() => import('../components/physics/PhysicsWorld'));
 
 const GL_CONFIG = {
     toneMapping: THREE.ACESFilmicToneMapping,
@@ -445,7 +447,6 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         style={{ width: '100%', height: '100%', position: 'relative' }}
     >
       <Canvas
-        shadows
         dpr={renderSettings.dpr}
         frameloop={frameloop}
         // Camera is managed by PlannerCameraSystem in Scene
@@ -454,10 +455,13 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
       >
         <FrameloopController isVisible={isVisible} />
-        <Physics gravity={[0, -9.81, 0]}>
-          <Scene />
-          <ArtworkPlacement />
-        </Physics>
+        <Scene />
+        <ArtworkPlacement />
+        {viewMode === 'firstPerson' && (
+          <Suspense fallback={null}>
+            <PhysicsWorld mode="editor" />
+          </Suspense>
+        )}
       </Canvas>
       <SceneLoadingIndicator />
       

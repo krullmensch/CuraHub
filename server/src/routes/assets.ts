@@ -161,6 +161,15 @@ assetsRouter.delete('/:id', authenticate, async (req: Request, res) => {
             where: { id: assetId }
         });
 
+        // VID-03: a video still processing keeps its original upload next to the target path.
+        const deletedMeta = asset.metadata as Record<string, unknown> | null;
+        if (asset.status === 'processing' && deletedMeta && typeof deletedMeta.sourceFile === 'string') {
+            const sourcePath = resolveUploadPath(deletedMeta.sourceFile);
+            if (sourcePath && sourcePath !== resolveUploadPath(asset.path)) {
+                fs.rmSync(sourcePath, { force: true });
+            }
+        }
+
         // Delete the stored file — only if no other Asset row still points at it
         // (duplicate-detection can make several Asset rows share one physical file).
         if (asset.path) {

@@ -169,8 +169,6 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             cloned.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
                     const mesh = child as THREE.Mesh;
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
                     if (mesh.name === 'Display') {
                         const mat = new THREE.MeshBasicMaterial({
                             map: texture,

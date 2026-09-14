@@ -21,6 +21,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { cn } from '@/lib/utils';
 import { preprocessImageForUpload, type PreprocessResult } from '@/lib/imageUtils';
+import { CHUNKED_UPLOAD_THRESHOLD, uploadFileInChunks } from '@/lib/chunkedUpload';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -40,7 +41,10 @@ interface UploadFileItem {
   existingAsset?: Record<string, unknown>; // for duplicates
   /** Result of client-side preprocessing (images only) — computed once, reused on force-retry. */
   preprocessed?: PreprocessResult;
-  xhr?: XMLHttpRequest;
+  /** Aborts the running upload (multipart XHR or chunked upload). */
+  cancel?: () => void;
+  /** VID-03: the server accepted the file and processes it in the background. */
+  backgroundProcessing?: boolean;
 }
 
 interface UploadPreviewModalProps {
@@ -118,6 +122,19 @@ function uploadXHR(
     xhr.setRequestHeader('Authorization', `Bearer ${opts.token}`);
     xhr.send(form);
   });
+}
+
+/** Form fields of a multipart upload, reused by the chunked upload. */
+function uploadFields(opts: UploadXHROpts): Record<string, string> {
+  const fields: Record<string, string> = {};
+  if (opts.projectId) fields.projectId = opts.projectId.toString();
+  if (opts.folderId) fields.folderId = opts.folderId.toString();
+  if (opts.force) fields.force = 'true';
+  if (opts.clientHash) fields.clientHash = opts.clientHash;
+  if (opts.originalWidth) fields.originalWidth = opts.originalWidth.toString();
+  if (opts.originalHeight) fields.originalHeight = opts.originalHeight.toString();
+  if (opts.dpi) fields.dpi = opts.dpi.toString();
+  return fields;
 }
 
 const UPLOAD_CONCURRENCY = 3;
@@ -225,21 +242,30 @@ export const UploadPreviewModal = ({
     patchItem(item.id, { status: 'uploading', progress: 0, errorMsg: undefined });
 
     try {
-      const { status, body } = await uploadXHR(
-        uploadFile,
-        {
-          projectId,
-          folderId,
-          token,
-          force,
-          clientHash: preprocessed?.clientHash,
-          originalWidth: preprocessed?.originalWidth,
-          originalHeight: preprocessed?.originalHeight,
-          dpi: preprocessed?.dpi,
-        },
-        (pct) => patchItem(item.id, { progress: pct }),
-        (xhr) => patchItem(item.id, { xhr }),
-      );
+      const uploadOpts: UploadXHROpts = {
+        projectId,
+        folderId,
+        token,
+        force,
+        clientHash: preprocessed?.clientHash,
+        originalWidth: preprocessed?.originalWidth,
+        originalHeight: preprocessed?.originalHeight,
+        dpi: preprocessed?.dpi,
+      };
+      // VID-03: Cloudflare rejects bodies > 100 MB — large files go up in chunks.
+      const { status, body } = uploadFile.size > CHUNKED_UPLOAD_THRESHOLD
+        ? await uploadFileInChunks(uploadFile, {
+            token,
+            fields: uploadFields(uploadOpts),
+            onProgress: (fraction) => patchItem(item.id, { progress: Math.round(fraction * 90) }),
+            onCancelReady: (cancel) => patchItem(item.id, { cancel }),
+          })
+        : await uploadXHR(
+            uploadFile,
+            uploadOpts,
+            (pct) => patchItem(item.id, { progress: pct }),
+            (xhr) => patchItem(item.id, { cancel: () => xhr.abort() }),
+          );
 
       if (status === 409 && body.duplicate) {
         patchItem(item.id, {
@@ -259,10 +285,12 @@ export const UploadPreviewModal = ({
         return;
       }
 
+      const backgroundProcessing = body.status === 'processing';
       patchItem(item.id, {
         status: 'done',
         progress: 100,
-        compressedSize: body.size as number,
+        compressedSize: backgroundProcessing ? undefined : (body.size as number),
+        backgroundProcessing,
       });
       onAssetUploaded(body);
     } catch (err) {
@@ -301,8 +329,8 @@ export const UploadPreviewModal = ({
     abortRef.current = true;
     // Abort any in-flight uploads so the browser stops sending bytes.
     items.forEach((it) => {
-      if (it.status === 'uploading' && it.xhr) {
-        it.xhr.abort();
+      if (it.status === 'uploading' && it.cancel) {
+        it.cancel();
       }
     });
     onClose();
@@ -529,7 +557,9 @@ function FileCard({
 
       {/* Size / status line */}
       <div className="text-[10px] text-zinc-500 px-0.5 leading-tight min-h-[14px]">
-        {item.status === 'done' && item.compressedSize !== undefined ? (
+        {item.status === 'done' && item.backgroundProcessing ? (
+          <span className="text-blue-400">Wird im Hintergrund verarbeitet …</span>
+        ) : item.status === 'done' && item.compressedSize !== undefined ? (
           <span className="flex items-center gap-1">
             <span className="line-through text-zinc-600">{formatBytes(item.originalSize)}</span>
             <span className="text-green-400">{formatBytes(item.compressedSize)}</span>

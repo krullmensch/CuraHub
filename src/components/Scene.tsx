@@ -1,6 +1,5 @@
 import { Suspense } from 'react';
 import { Grid } from '@react-three/drei';
-import { RigidBody } from '@react-three/rapier';
 import { Satellit } from './Satellit';
 import { PlacedArtworks } from './PlacedArtworks';
 import { ModularWallsController } from './ModularWallsController';
@@ -8,6 +7,7 @@ import { PlannerCameraSystem } from './PlannerCameraSystem';
 import { FPVArtworkRaycaster } from './FPVArtworkRaycaster';
 import { ArtworkTextureProvider } from './ArtworkTextureProvider';
 import { FrameInstancerProvider } from './FrameInstancer';
+import { ShaderWarmup } from './ShaderWarmup';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
@@ -15,9 +15,11 @@ interface SceneProps {
     isEditor?: boolean;
     viewerInstances?: ArtworkInstanceData[];
     viewerWalls?: ModularWallData[];
+    /** Called once the shaders of the loaded room/artworks are compiled (ShaderWarmup). */
+    onShadersReady?: () => void;
 }
 
-export const Scene = ({ isEditor = true, viewerInstances, viewerWalls }: SceneProps) => {
+export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShadersReady }: SceneProps) => {
     const plannerViewMode = useEditorStore(state => state.plannerViewMode);
     const { rectAreaLights } = useRenderQualitySettings();
 
@@ -66,9 +68,8 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls }: ScenePr
                     <Grid args={[20, 20]} cellColor="white" sectionColor="gray" infiniteGrid fadeDistance={50} position={[0, -0.01, 0]} />
                 )}
 
-                <RigidBody type="fixed" colliders="trimesh">
-                    <Satellit viewMode={viewMode} rectAreaLights={rectAreaLights} />
-                </RigidBody>
+                {/* Room collider lives in physics/PhysicsWorld.tsx (RND-08: Rapier loads only for first person). */}
+                <Satellit viewMode={viewMode} rectAreaLights={rectAreaLights} />
 
                 <Suspense fallback={null}>
                     <PlacedArtworks viewerInstances={viewerInstances} isEditor={isEditor} />
@@ -76,6 +77,9 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls }: ScenePr
                 </Suspense>
 
                 <FPVArtworkRaycaster isEditor={isEditor} />
+
+                {/* Mounts together with the room (same Suspense boundary). */}
+                <ShaderWarmup onDone={onShadersReady} />
             </FrameInstancerProvider>
         </ArtworkTextureProvider>
     );

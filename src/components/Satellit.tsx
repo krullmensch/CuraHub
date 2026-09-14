@@ -87,14 +87,14 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, ...p
           />
         </>
       )}
-      <mesh castShadow receiveShadow geometry={nodes.Decke001.geometry} material={materials['Material.005']} visible={viewMode === 'firstPerson'} />
-      <mesh name="Wall" castShadow receiveShadow geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} />
-      <mesh castShadow receiveShadow geometry={nodes.Boden001.geometry} material={materials['Material.005']} />
-      <mesh castShadow receiveShadow geometry={nodes.Fenster001.geometry} material={materials.Glass} />
-      <mesh castShadow receiveShadow geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />
-      <mesh castShadow receiveShadow geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={[6.33, 1, 0.12]} />
-      <mesh castShadow receiveShadow geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={[-6.33, 1, 2.372]} />
-      <mesh castShadow receiveShadow geometry={nodes.Fensterbank.geometry} material={materials['Black marble.001']} />
+      <mesh geometry={nodes.Decke001.geometry} material={materials['Material.005']} visible={viewMode === 'firstPerson'} />
+      <mesh name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} />
+      <mesh geometry={nodes.Boden001.geometry} material={materials['Material.005']} />
+      <mesh geometry={nodes.Fenster001.geometry} material={materials.Glass} />
+      <mesh geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />
+      <mesh geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={[6.33, 1, 0.12]} />
+      <mesh geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={[-6.33, 1, 2.372]} />
+      <mesh geometry={nodes.Fensterbank.geometry} material={materials['Black marble.001']} />
     </group>
   )
 }

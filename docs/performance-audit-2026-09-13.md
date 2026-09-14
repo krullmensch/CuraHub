@@ -3,7 +3,7 @@
 **Datum:** 13.09.2026
 **Getestet:** https://curahub.krullmann.com, Kuration **„Yol“** (Projekt-ID 5, Version 15, 136 Assets, ~72 platzierte Werke, 2 Videos)
 **Ziel:** Der komplette Workflow muss funktionieren, mit möglichst kurzen Ladezeiten, **vor allem auf schwächerer Hardware** (iGPU-Laptops, ältere Uni-Rechner, Tablets).
-**Status:** Analyse abgeschlossen. Wellen 1 + 2 committed (`f5aa344`), Welle 3 (Render-Pipeline) umgesetzt und headless gemessen, aber noch nicht committed, siehe **Abschnitt 8**. Dieses Dokument ist die Arbeitsgrundlage für nachfolgende Agents.
+**Status:** Analyse abgeschlossen. Wellen 1–3 committed (`f5aa344`, `945f37a`), Welle 4 (Robustheit, Upload/Video, Physik lazy) umgesetzt und auf der Testumgebung, noch nicht committed, siehe **Abschnitt 8**. Dieses Dokument ist die Arbeitsgrundlage für nachfolgende Agents.
 
 ---
 
@@ -585,7 +585,7 @@ Gemeldet: Viewer-Spawn in der Wand und keine Bewegung (auch Editor-FPV), Wiki ö
 
 **Lehre für Agents:** Automatisierte Browser-Tabs/Panes laufen unsichtbar (rAF/ResizeObserver gedrosselt). Laufzeitverhalten mit headless Chrome über das DevTools-Protokoll prüfen (`--headless=new`), nicht über versteckte Tabs.
 
-### Welle 3 (14.09.2026): Render-Pipeline, **nicht committed**, nicht deployed
+### Welle 3 (14.09.2026): Render-Pipeline, committed (`945f37a`), nicht deployed
 
 | ID | Status | Anmerkung |
 |---|---|---|
@@ -625,7 +625,51 @@ Gemeldet: Viewer-Spawn in der Wand und keine Bewegung (auch Editor-FPV), Wiki ö
 - Kalter Shader-Compile blockiert den ersten Frame (~0,9 s auf M2/ANGLE-Metal) → `renderer.compileAsync(scene, camera)` vor der Freigabe.
 - Produktion: Thumbnail- und Video-Backfill nach dem Deploy ausführen.
 
-### Vorschlag Welle 4
+### Welle 4 (14.09.2026): Robustheit, Upload/Video, Physik lazy, **nicht committed**, auf Testumgebung
+
+Entscheidungen des Nutzers: Uploads > 100 MB per Chunked Upload in der App (keine Upload-Subdomain), KTX2 zurückgestellt, Produktion nur per Code vorbereitet (kein Prod-Eingriff in dieser Welle).
+
+| ID | Status | Anmerkung |
+|---|---|---|
+| SEC-08 | ✅ Code, ⏳ Prod | `docker-compose.yml`: App- und DB-Port an `127.0.0.1` gebunden (`APP_BIND_ADDRESS`/`DB_BIND_ADDRESS` überschreibbar). Geprüft (read-only): cloudflared läuft auf dem Prod-Host als Prozess, nicht als Container, erreicht die App also weiter über `127.0.0.1:3001`. **Offen (Prod):** Compose auf dem Server übernehmen, Stack neu starten, von außen prüfen (`nc -vz <Server-IP> 3001` und `3307` müssen scheitern). |
+| VID-03 | ✅ | **Chunked Upload:** Dateien > 64 MB gehen in 16-MB-Stücken hoch (`src/lib/chunkedUpload.ts` ↔ `server/src/lib/chunkedUploads.ts`, Routen `POST /upload/chunks`, `PUT /upload/chunks/:id?offset=`, `POST …/complete`, `DELETE …`). Sequentiell, Retry mit Backoff, Offset-Abgleich nach verlorener Antwort, `complete` liefert bei Wiederholung dieselbe Antwort. Projektzugriff und Größenlimit werden schon beim Start geprüft, max. 6 offene Uploads je Nutzer, Teil-Dateien in `uploads/.partial/` (nicht ausgeliefert). **Hintergrund-Video:** Asset entsteht sofort mit `status: 'processing'`, Transkodierung in einer In-Process-Queue (`server/src/lib/videoJobs.ts`, 1 Job parallel, `VIDEO_JOB_CONCURRENCY`), Wiederaufnahme nach Neustart. Sidebar/Asset-Library: „Wird verarbeitet …“ bzw. „Verarbeitung fehlgeschlagen“, nicht ziehbar, Polling alle 5 s. Upload-Dialog: „Wird im Hintergrund verarbeitet …“. Löschen während der Verarbeitung räumt Original und Ausgabe auf. **Grenzen:** Upload-Sitzungen nur im Speicher (Server-Neustart → Upload neu starten). 3D-Modell-Konvertierung (Assimp/Blender, bis 180 s) läuft weiter synchron im Request und kann bei großen Modellen noch in den 524 laufen. |
+| CLN-03 | ✅ | Prisma-Migrationen eingeführt: `0_init` (aktuelles Schema) + `20260914000000_asset_status`. Container-Start: `node dist/scripts/prepare-db.js` markiert `0_init` bei bestehenden db-push-Datenbanken einmalig als angewendet und führt dann `prisma migrate deploy` aus. `0_init` gegen die Test-DB (Kopie von Prod) geprüft: keine Differenz. **Regel ab jetzt:** Schemaänderungen nur per `npx prisma migrate dev --name …`, nie `db push`. |
+| CLN-04 | ✅ | `shadows` an beiden Canvases und alle `castShadow`/`receiveShadow` entfernt: Kein Licht wirft Schatten, die Shader enthielten trotzdem den Shadow-Code. |
+| Shader-Precompile | ✅ | `src/components/ShaderWarmup.tsx`: `renderer.compileAsync(scene, camera)` direkt nach dem Laden des Raums (KHR_parallel_shader_compile). Währenddessen rendert die Kamera keine Layer, dadurch kein synchroner Compile im ersten Frame. Timeout 10 s. Viewer: „Klicken zum Betreten“ erst nach Raum, Physik und Shadern. |
+| RND-08 | ✅ (2. Versuch) | Rapier nur noch in `src/components/physics/PhysicsWorld.tsx` (lazy): Raum-Trimesh aus denselben GLB-Knoten wie `Satellit.tsx` (`includeInvisible`), Wand- und Modell-Collider, Spieler. Editor mountet ihn nur in der Ego-Perspektive, der Viewer startet den Download beim Mount parallel zur API-Anfrage. `Scene`, `ModularWallsController`, `ModelInstance`, `PlannerCameraSystem` importieren kein Rapier mehr. **Editor im Orbit-Modus lädt `vendor-rapier` (2,26 MB / 849 KB gzip) nicht mehr.** Erster Wechsel in die Ego-Perspektive lädt ihn nach. |
+| LOAD-05 Schritt 4 (KTX2) | ⏭️ | Zurückgestellt: GPU-Texturen ~140 MB, Budget low 300 MB. |
+| Cloudflare-Cache-Rules | 📋 Nutzer | Gemessen 14.09.2026 auf Prod (noch alter Build): `/uploads/*.webp` → `max-age=14400` (Cloudflare-Browser-TTL überschreibt den Origin-Header), `cf-cache-status: MISS/REVALIDATED`. `/models/*.glb` → `DYNAMIC` (nicht gecacht). Empfehlung (Dashboard → Caching → Cache Rules): Pfade `/assets/*`, `/models/*`, `/uploads/*`, `/draco/*` → „Eligible for cache“, Edge TTL und Browser TTL „Use cache-control header if present“. Nach dem Prod-Deploy Header erneut prüfen. |
+| Editor-Laufzeittest mit Login | 📋 Nutzer | Checkliste unten. |
+
+**Messung Welle 4** (Viewer Yol, headless Chrome wie in Welle 3, lokaler Build gegen die Testumgebung):
+
+| Metrik | Welle 3 high | Welle 4 high | Welle 3 low | Welle 4 low |
+|---|---|---|---|---|
+| „Klicken zum Betreten“ sichtbar | 964 ms | 1.078 ms | 957 ms | 1.119 ms |
+| Längster Long Animation Frame | 155 ms | **96 ms** | 140 ms (kalter Shader-Cache 904 ms) | **keiner ≥ 50 ms** |
+| Draw Calls | 79 | 79 | 79 | 79 |
+| Spawn → nach 1,5 s „W“ | [-5.99, 1.6, 2.57] → [-3.1, 1.6, 1.1] | identisch | identisch | identisch |
+
+Das Overlay erscheint ~120 ms später, weil es auf die Shader wartet. Dafür friert der erste Frame nicht mehr ein. Info-Overlay beim Anvisieren ✅, WebGL-Context-Loss + Restore ✅ (79 Draw Calls, 0 Platzhalter).
+
+**Verifikation Welle 4:**
+- `npx tsc -p tsconfig.app.json --noEmit` ✅, Server `tsc` ✅, `npm run build` ✅, ESLint 85 Errors (= Baseline).
+- `vendor-rapier` wird nur noch dynamisch importiert (nur in der Preload-Liste von `PhysicsWorld`).
+- Testumgebung (Deploy per rsync, Test-DB = Prod-Kopie): erster Start `Migration 0_init marked as applied` + `asset_status` angewendet, zweiter Start `No pending migrations`. `/uploads/.partial/*` → 404, Frontend-Route → 200.
+- Chunk-API gegen die Testumgebung (39 MB HEVC-Video, 3 Chunks, Projekt „test“, kurzlebiger Token im Container erzeugt): ohne Token 401, `complete` vor Daten 409, wiederholter Chunk überschreibt statt anzuhängen, Offset voraus → 409 mit `received`, wiederholtes `complete` → dasselbe Asset. Server-Hash der zusammengesetzten Datei = lokaler SHA-256. Hintergrund-Job: HEVC → H.264/yuv420p/AAC in 7 s, Poster erzeugt. Container-Neustart während der Verarbeitung → `Resuming 1 video job(s)`, Asset danach `ready`. Test-Assets wieder gelöscht.
+- **Nicht verifiziert:** Editor-UI (Login), Upload-Dialog im Browser inkl. Abbruch, Datei > 100 MB durch Cloudflare (Testumgebung läuft ohne Cloudflare), Safari/Firefox.
+
+**Nutzertest-Checkliste (Editor, Login nötig):**
+1. Editor öffnen (Orbit): Netzwerk-Tab zeigt **kein** `vendor-rapier`. Kein Einfrieren beim ersten Bild.
+2. `V` → Ego-Perspektive: Rapier lädt nach, Spieler steht auf dem Boden, Wände und 3D-Modelle blockieren. `Esc`/`V` zurück, erneut hinein.
+3. Werke ziehen, G/R/S, Wand verschieben (Rahmen folgen), Auswahl → hochaufgelöste Textur, Qualitäts-Umschalter.
+4. Video > 100 MB in Projekt „test“ hochladen: Fortschritt läuft durch, Kachel zeigt „Wird verarbeitet …“, wird nach der Transkodierung automatisch ziehbar und spielt ab.
+5. Upload während des Hochladens schließen → Abbruch, keine Leiche in der Bibliothek.
+
+### Vorschlag Welle 5
+Produktion: Deploy mit SEC-08 (Portbindung), erster Start mit `prepare-db` (Baseline), danach Thumbnail- und Video-Backfill, Cloudflare-Cache-Rules. Code: 3D-Modell-Konvertierung in dieselbe Hintergrund-Queue wie Videos, `server/.env` aus Git entfernen + Secrets rotieren (Hinweis aus Welle 1), bei Bedarf KTX2. Danach WebGPU-Prototyp.
+
+### (Archiv) Vorschlag Welle 4
 `VID-03`, Shader-Precompile (s. o.), `LOAD-05` Schritt 4 (KTX2), `RND-08` erneut versuchen (Rapier lazy im Editor, diesmal mit dem korrekten GLB), `CLN-03`, `CLN-04`, Cloudflare-Cache-Rules für `.glb`/`.webp`/`.mp4`, Editor-Laufzeittest mit Login.
 
 ### (Archiv) Vorschlag Welle 3

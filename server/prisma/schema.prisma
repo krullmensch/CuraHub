@@ -129,6 +129,7 @@ model Asset {
   dpi           Int?     // Original DPI
   duration      Float?   // Video duration in seconds
   thumbnailPath String?  // Poster frame (video) or placeholder path
+  status        String   @default("ready") // "processing" | "ready" | "failed" (VID-03: videos are transcoded in the background)
   metadata      Json?    // Any extra extracted metadata
 
   fileHash  String?
