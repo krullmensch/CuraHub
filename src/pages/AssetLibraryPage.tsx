@@ -1,5 +1,4 @@
 import { AssetLibrary } from '../components/AssetLibrary';
-// import { ViewModeControls } from '../components/ViewModeControls';
 
 export const AssetLibraryPage = () => {
     return (

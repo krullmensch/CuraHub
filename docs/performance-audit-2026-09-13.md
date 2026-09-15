@@ -1,0 +1,712 @@
+# CuraHub: Performance- & Workflow-Audit (Produktion)
+
+**Datum:** 13.09.2026
+**Getestet:** https://curahub.krullmann.com, Kuration **„Yol“** (Projekt-ID 5, Version 15, 136 Assets, ~72 platzierte Werke, 2 Videos)
+**Ziel:** Der komplette Workflow muss funktionieren, mit möglichst kurzen Ladezeiten, **vor allem auf schwächerer Hardware** (iGPU-Laptops, ältere Uni-Rechner, Tablets).
+**Status:** Analyse abgeschlossen. Wellen 1–3 committed (`f5aa344`, `945f37a`), Welle 4 (Robustheit, Upload/Video, Physik lazy) umgesetzt und auf der Testumgebung, noch nicht committed, siehe **Abschnitt 8**. Dieses Dokument ist die Arbeitsgrundlage für nachfolgende Agents.
+
+---
+
+## 0. Anleitung für Agents
+
+1. Arbeite die Punkte **nach Phase** ab (Abschnitt 5). Innerhalb einer Phase nach Priorität: P0 > P1 > P2 > P3.
+2. Jeder Punkt hat eine **ID** (z. B. `SEC-01`, `LOAD-03`). Referenziere die ID in Commits und PRs.
+3. Die Zeilennummern gelten für Commit `bc6d538` plus die uncommitteten Änderungen vom 13.09.2026. Vor dem Editieren prüfen, ob sie noch stimmen.
+4. Nach jedem Punkt das **Akzeptanzkriterium** prüfen und mit dem Messprotokoll (Abschnitt 6) nachmessen. Verbesserungen immer mit Vorher- und Nachher-Zahl belegen.
+5. Regeln aus `CLAUDE.md` gelten weiter: minimale, gezielte Änderungen, UI-Texte auf Deutsch, `npm run lint` vor Abschluss, nach Licht- oder Video-Änderungen im First-Person-Modus testen.
+6. **Achtung:** `CLAUDE.md` weicht an mehreren Stellen vom echten Code ab (siehe Abschnitt 7). Im Zweifel gilt der Code.
+
+---
+
+## 1. Testumgebung & Grenzen der Messung
+
+| Parameter | Wert |
+|---|---|
+| Browser | Chrome (Claude-in-Chrome-Extension), Fenster 1800×927 CSS-px, DPR 2 |
+| Hardware | Apple M2 Pro, 10 Kerne, 16 GB (**High-End**, alle Zeiten auf schwacher Hardware deutlich schlechter) |
+| Netzwerk | Cloudflare, HTTP/3, Brotli |
+| Cache | Überwiegend **warm** (Assets schon im Browser-Cache). Kaltstart-Werte sind schlechter. |
+
+**Nicht messbar bzw. nicht getestet:**
+- CPU-/GPU-Throttling war über die Extension nicht möglich. Aussagen zu schwacher Hardware sind **Hochrechnungen**, keine Messungen.
+- Pointer-Lock (First-Person-Laufen) ließ sich nicht automatisieren (`WrongDocumentError`). Die Viewer-Szene wurde hinter dem „Klicken zum Betreten“-Overlay gemessen, sie rendert dort bereits.
+- HTML5 Drag & Drop (Asset auf Wand ziehen) ist mit synthetischen Maus-Events nicht auslösbar. Platzierung, Transform und Versionsspeichern wurden **nur per Code-Review** geprüft.
+- Login wurde nicht durchgespielt (bestehende Session).
+- Test-Upload: `curahub-upload-test.jpg` (6000×4000) wurde in das Projekt **„test“** hochgeladen. Dieses Asset kann gelöscht werden.
+
+---
+
+## 2. Kennzahlen (gemessen)
+
+### 2.1 Netzwerk & Bundle
+
+| Messpunkt | Wert | Bewertung |
+|---|---|---|
+| JS-Bundle (ein einziger Chunk) | **1,56 MB** Brotli / **4,75 MB** entpackt | Kein Code-Splitting, Home und Login laden Three/Drei/Rapier/React-Flow mit |
+| davon Base64-Blob (Rapier-WASM) | **2,04 MB** (43 % des entpackten Bundles) | Wird auch auf Startseite und Login geparst |
+| Startseite lädt 3D-Modelle | `Satellit_new.glb` **16 MB** + `Monitor65.glb` + `Halbe_Classic_Alu8.glb` | Ursache: `useGLTF.preload` auf Modul-Ebene, dazu eager Imports |
+| Startseite Hintergrundvideo | `BG_Video_CuraHub.webm` **6,3 MB**, Autoplay | Auf Mobil/schwachem Netz teuer |
+| Cache-Header gehashte Assets (`/assets/*.js`) | `max-age=14400`, `cf-cache-status: REVALIDATED` | Sollte `immutable, max-age=31536000` sein |
+| Cache-Header `/models/*.glb` | `max-age=0`, `cf-cache-status: DYNAMIC` | Wird bei jedem Besuch revalidiert, kein Edge-Cache |
+| Editor-Load Yol: API-Duplikate | `/api/projects` ×2, `/api/exhibitions/5/versions` ×3, `/api/instances` ×2, `/api/walls` ×2 | Unnötige Roundtrips |
+| Editor Yol: Bild-Requests | **134 WebP, 42 MB**. Einzelne Dateien wurden doppelt geladen (`<img>` ohne CORS + Texture-Loader mit CORS) | Sidebar zeigt Originale als 105-px-Thumbnails |
+| Viewer Yol: Gesamt-Payload | JS 1,56 MB + GLB 16 MB + 72 WebP ≈ 20 MB + Video-Ranges ≈ **38 MB** | Kaltstart bei 20 Mbit/s ≈ 15 s nur Download (Schätzung) |
+
+### 2.2 Laufzeit / Rendering
+
+| Messpunkt | Editor (Yol) | Viewer (Yol) |
+|---|---|---|
+| Zeit bis „fertig“ (warmer Cache, M2 Pro) | **9,3 s** nach Projektwechsel | **8,1 s** bis zum ersten Draw |
+| Längster eingefrorener Frame (Long Animation Frame) | **8,4 s** am Stück | **7,5 s** am Stück (4,0 s React-Commit via `MessagePort` + 3,5 s erster R3F-Frame) |
+| Draw Calls pro Frame | **661** | **579** |
+| Meshes in Szene | 661 | 660 (davon 586 mit `castShadow`) |
+| Texturen / geschätzter GPU-Speicher (RGBA8 + Mipmaps) | 76 / **≈ 1,6 GB** | 82 / **≈ 1,76 GB** |
+| Materialien | – | 81× `MeshStandardMaterial` + 2× `RectAreaLight` |
+| Canvas-Auflösung | 3600×1854 (DPR 2, **6,7 MP**) | 3600×1972 |
+| Render-Schleife im Leerlauf | Dauerhaft 120 fps, auch ohne Interaktion | 93 fps (Raycaster kostet mit) |
+| Raycasts (FPV-Info-Overlay) | – | **20.446 Mesh-Raycasts/s**, ≈ 7 ms CPU/s |
+| Rendert Editor hinter Asset-Library-Overlay? | **Ja**, 240 Frames/2 s mit 661 Draw Calls | – |
+| Sidebar-Thumbnails dekodiert | 136 Bilder à Ø 2027×2032 px, angezeigt 105×105 px, ≈ **2,2 GB** Bitmap (Obergrenze) | – |
+| JS-Heap | 199–206 MB | 154–199 MB |
+| VersionPanel öffnen | 406 ms Long Frame | – |
+
+### 2.3 Upload (Bild)
+
+| Messpunkt | Wert |
+|---|---|
+| 6000×4000 JPEG (489 KB) → Server-WebP | 2500×1667, 13,7 KB, **706 ms** Roundtrip. Funktioniert. |
+| Client-seitiges Resize (`src/lib/imageUtils.ts`) | **Wird nirgends verwendet.** Originale gehen ungekürzt über die Leitung. |
+
+### 2.4 Hochrechnung schwache Hardware (nicht gemessen)
+
+Ein Intel-iGPU-Laptop (z. B. i5 8. Gen, 8 GB, UHD 620) ist grob 3–6× langsamer auf dem Main Thread und hat 1,5–3 GB geteilten GPU-Speicher. Daraus folgt:
+- Eingefrorener Tab beim Laden: **20–45 s**. Chrome zeigt dann eventuell „Seite reagiert nicht“.
+- ≈ 1,6–1,8 GB Texturen plus 6,7-MP-Canvas mit Standard-PBR und RectAreaLights führen mit hoher Wahrscheinlichkeit zu **WebGL Context Lost** oder einstelligen FPS.
+- Tablets/Handys (`MAX_TEXTURE_SIZE` oft 4096, wenig RAM): Absturz des Tabs ist wahrscheinlich.
+
+---
+
+## 3. Workflow-Durchlauf (Schritt für Schritt)
+
+| # | Schritt | Ergebnis | Befunde (IDs) |
+|---|---|---|---|
+| 1 | Startseite `/` aufrufen | Lädt (DCL 194 ms warm), lädt aber 16 MB GLB + 6 MB Video + 4,75 MB JS | LOAD-01, LOAD-02, LOAD-03, LOAD-08 |
+| 2 | Link „Ausstellungen“ | `/exhibition` funktioniert. **Direktaufruf/Reload von `/exhibitions` → „Cannot GET /exhibitions“** | FUNC-02 |
+| 3 | Deep-Link `/exhibition/yol/edit` | **Landet im falschen Projekt „test“** (URL wird umgeschrieben) | FUNC-01 |
+| 4 | Projekt „Yol“ über Selector wählen | Funktioniert, aber 9,3 s bis fertig, 8,4 s eingefroren, 42 MB Bilder | LOAD-04, LOAD-05, RND-01…RND-06, API-01 |
+| 5 | Asset-Sidebar | Zeigt Originalbilder, kein Lazy Loading | LOAD-04 |
+| 6 | Versionshistorie öffnen | Funktioniert (React Flow), 406 ms Long Frame | LOAD-03 |
+| 7 | „Viewer testen“ | Popover funktioniert, Link korrekt | – |
+| 8 | Tab „Assets“ | Funktioniert. Editor-Canvas rendert unsichtbar weiter (120 fps, 661 Draws) | RND-02, LOAD-04 |
+| 9 | Bild-Upload im Projekt „test“ | **Funktioniert** (Preview-Modal → Upload → WebP 2500 px) | SEC-01, UPL-01…UPL-06 |
+| 10 | Asset auf Wand ziehen, G/R/S, Undo | Nicht automatisierbar, Code-Review siehe RND-07, STATE-01…STATE-04 | STATE-* |
+| 11 | First-Person-Vorschau im Editor | **Nicht erreichbar**: `ViewModeControls` ist auskommentiert, keine Taste V | FUNC-03 |
+| 12 | Öffentlicher Viewer `/exhibition/yol` | Funktioniert. 8,1 s bis erster Draw, 7,5 s Freeze, 579 Draws | LOAD-*, RND-*, VID-* |
+| 13 | Viewer-Button „Ausstellungen“ | Öffnet `/exhibitions` in neuem Tab → **404** | FUNC-02 |
+
+---
+
+## 4. Befunde & Lösungen
+
+Legende: **P0** = kritisch (Sicherheit/Datenverlust/Workflow kaputt), **P1** = hoher Nutzen für Ladezeit/schwache Hardware, **P2** = mittel, **P3** = Aufräumen.
+„Gemessen“ heißt live verifiziert. „Code“ heißt aus dem Quelltext abgeleitet.
+
+---
+
+### 4.1 Sicherheit & Datenintegrität
+
+#### SEC-01: Upload-Endpoint ohne Authentifizierung und ohne Größenlimit (P0, Code)
+- **Beleg:** `server/src/routes/upload.ts:142` `uploadRouter.post('/', …)` hat kein `authenticate`. `upload.ts:81` `fileSize: Infinity`, `upload.ts:56` `video: Infinity`.
+- **Folge:** Jeder im Internet kann beliebig große Dateien hochladen. Das füllt die Platte (DoS) und startet ffmpeg/Blender/Assimp auf dem Server.
+- **Lösung:** `authenticate, requireCurator` vor Multer einhängen, damit vor dem Speichern geprüft wird. Projektzugriff prüfen (`projectId` gehört dem User oder er ist Collaborator). Multer-`fileSize` hart begrenzen (z. B. 2 GB) und Typ-Limits **vor** dem Schreiben prüfen.
+- **Akzeptanz:** `curl -F file=@x.jpg https://…/upload` ohne Token → 401. Mit Token eines fremden Projekts → 403/404.
+
+#### SEC-02: `DELETE /assets/:id`, `POST/PUT/GET /artworks` ohne Auth (P0, Code)
+- **Beleg:** `server/src/routes/assets.ts:101`, `server/src/routes/artworks.ts:30`, `:79`, `:89`.
+- **Folge:** Unauthentifiziertes Löschen beliebiger Assets per ID-Enumeration. Metadaten fremder Werke lassen sich ändern.
+- **Lösung:** `authenticate` + Ownership-Check wie in `assets.ts` PATCH (`:51`). **Client anpassen:** `AssetLibrary.tsx:211` sendet beim DELETE keinen `Authorization`-Header.
+- **Akzeptanz:** Alle mutierenden Routen liefern ohne Token 401. Löschen in der Asset-Library funktioniert weiter.
+
+#### SEC-03: `GET /api/assets` ohne Auth (P1, gemessen)
+- **Beleg:** `assets.ts:12`. Ein `fetch('/api/assets?projectId=5')` ohne Header lieferte alle 136 Assets inkl. Metadaten und `fileHash`.
+- **Lösung:** `authenticate` + Projektzugriffsfilter. Client `AssetSidebar.tsx:58` und `AssetLibrary.tsx:153` müssen dann den Token mitsenden. Für den öffentlichen Viewer reicht `/public/exhibition/:slug`.
+
+#### SEC-04: Dateinamen-Kollision überschreibt fremde Uploads (P0, Code)
+- **Beleg:** `upload.ts:75` speichert als `${sanitizedTitle}${ext}` ohne eindeutigen Suffix. `upload.ts:277` schreibt `…​.webp` mit demselben Basisnamen. Die Duplikaterkennung per Hash greift nur bei **identischem Inhalt im selben Projekt**.
+- **Folge:** Zwei verschiedene Dateien mit gleichem Namen (z. B. `DSC01426.jpg` von zwei Studierenden oder in zwei Projekten) → die zweite überschreibt die erste auf der Platte. Die bestehende Ausstellung zeigt dann das falsche Bild.
+- **Lösung:** Dateiname = `${uuid}-${sanitizedTitle}${ext}` (oder Hash-basiert). Originalnamen nur in der DB (`filename`) halten.
+- **Akzeptanz:** Zwei unterschiedliche Dateien gleichen Namens hochladen → zwei unterschiedliche `path`-Werte, beide korrekt sichtbar.
+
+#### SEC-05: Asset-Löschen löscht nie die Datei (verwaiste Dateien) (P1, Code)
+- **Beleg:** `assets.ts:126` nutzt `asset.filename` (Originalname, z. B. `Abla_Luca Grommel-9.webp`; laut uncommitteter Änderung künftig ohne Endung) statt `path.basename(asset.path)` (`abla-luca-grommel-9.webp`).
+- **Folge:** Die Uploads-Platte wächst unbegrenzt. Nach SEC-04 könnte die falsche Datei gelöscht werden.
+- **Lösung:** `path.basename(asset.path)` verwenden. Prüfen, ob noch andere Assets dieselbe Datei referenzieren. Einmaliges Aufräum-Skript für verwaiste Dateien.
+
+#### SEC-06: Login-Proxy ohne Rate-Limit, JWT 365 Tage (P1, Code)
+- **Beleg:** `server/src/routes/auth.ts:30` leitet Zugangsdaten an `hsbi.de/cms-ajax-login` weiter, ohne Rate-Limit. `auth.ts:76` `expiresIn: '365d'`. `EditorLayout.tsx:51` holt bei jedem Fenster-Fokus einen neuen Token.
+- **Folge:** CuraHub kann als Brute-Force-Proxy gegen HSBI-Accounts dienen. Gestohlene Tokens gelten ein Jahr.
+- **Lösung:** `express-rate-limit` auf `/auth/login` (z. B. 5/min pro IP+User). Token-Laufzeit 7–30 Tage. `refreshAuth` höchstens alle 5 min.
+
+#### SEC-07: Globale Body-Limits 50 MB, CORS `*` (P2, Code)
+- **Beleg:** `server/src/index.ts:22-23`.
+- **Lösung:** `express.json({ limit: '1mb' })` global, größeres Limit nur auf der Versions-Route. CORS auf eigene Origin beschränken.
+
+---
+
+### 4.2 Funktionale Workflow-Bugs
+
+#### FUNC-01: Deep-Link `/exhibition/:slug/edit` öffnet falsches Projekt (P0, gemessen)
+- **Beleg:** Aufruf `/exhibition/yol/edit` → Umleitung auf `/exhibition/test/edit`. Ursache: `ProjectSelector.tsx:50`, die Regex `^\/([^/]+)\/(edit|assets)` erwartet `/<slug>/edit`, die Route ist aber `/exhibition/<slug>/edit`. Deshalb greift der Fallback `data[0]` (`:53`).
+- **Folge:** Geteilte Links, Reloads und Lesezeichen landen im falschen Projekt. Wer dort weiterarbeitet, ändert per Auto-Sync das falsche Projekt.
+- **Lösung:** Slug über `useParams()`/`matchPath('/exhibition/:projectSlug/:mode')` lesen statt Regex auf `window.location`. Unbekannter Slug → Hinweis-Toast statt stillem Fallback.
+- **Akzeptanz:** Reload auf `/exhibition/yol/edit` und `/exhibition/yol/assets` bleibt in Yol.
+
+#### FUNC-02: Direktaufruf `/exhibitions` → Express 404 (P0, gemessen)
+- **Beleg:** `curl /exhibitions` → 404 „Cannot GET /exhibitions“. `server/src/index.ts:78`, die SPA-Fallback-Skip-Liste enthält `/exhibitions` (API-Prefix), und `req.path.startsWith` trifft auch die Frontend-Route. Betroffen: `ViewerPage.tsx:175` (`window.open('/exhibitions')`), Header-Link im Editor bei Reload.
+- **Lösung (empfohlen):** API ausschließlich unter `/api/*` mounten (die Doppel-Mounts ohne Prefix in `index.ts` entfernen). Alle Client-Fetches nutzen dann `/api/...`. Aktuell benutzen z. B. `/public/featured`, `/upload` und `/auth/me` noch keinen Prefix. Kurzfristig reicht: Skip-Check exakt auf Segmentgrenzen und `/exhibitions` nicht mehr skippen, wenn `Accept: text/html`.
+- **Akzeptanz:** Alle Frontend-Routen aus `src/App.tsx` liefern bei Direktaufruf `index.html` (Status 200).
+
+#### FUNC-03: First-Person-Vorschau im Editor nicht erreichbar (P1, Code)
+- **Beleg:** `EditorLayout.tsx:17`, der Import von `ViewModeControls` ist auskommentiert („white screen crash“). Kein anderer Code setzt `plannerViewMode = 'firstPerson'`. Außerdem kennt `PlannerCameraSystem` keinen orthografischen Modus, obwohl `ViewModeControls` `'orthographic'` setzen würde.
+- **Folge:** Kuratierende können nur über den öffentlichen Viewer testen, und der braucht eine veröffentlichte Version.
+- **Lösung:** Crash-Ursache finden (vermutlich zirkulärer Import oder die fehlende Ortho-Kamera). Toggle in die Toolbar von `EditorPage` integrieren. `'orthographic'` entfernen oder implementieren. Escape → `'perspective'`.
+
+#### FUNC-04: `hasUnsavedChanges` wird nach Auto-Sync nie zurückgesetzt (P2, Code, verifizieren)
+- **Beleg:** `editorStore.ts:426` setzt `true`. `syncToBackend` (`:519` ff.) setzt es nie zurück. `EditorPage.tsx` `beforeunload` fragt dann nach jeder Änderung.
+- **Lösung:** Nach erfolgreichem Sync aller Requests auf `false` setzen. Bei Fehlern `true` lassen und einen Toast zeigen (siehe STATE-02).
+
+---
+
+### 4.3 Ladezeit & Netzwerk
+
+#### LOAD-01: Kein Code-Splitting (P1, gemessen)
+- **Beleg:** Ein Chunk mit 1,56 MB br / 4,75 MB. `src/App.tsx` importiert alle Seiten eager. Rapier-WASM (2 MB Base64), React Flow (`VersionPanel.tsx:14`), `react-markdown` + Wiki-`?raw` (`WikiView.tsx:7`) landen auf jeder Seite.
+- **Lösung:**
+  1. `React.lazy` pro Route: `HomePage`, `LoginPage`, `ExhibitionsPage` ohne Three.js. `ViewerPage` und `EditorLayout` jeweils lazy.
+  2. `VersionPanel`, `WikiModal`, `MetadataDialog`, `ProjectSettingsDialog`, `UploadPreviewModal` erst beim Öffnen laden.
+  3. `@react-three/rapier` nur im Viewer bzw. im FPV-Modus laden (dynamischer Import). Der Editor im Orbit-Modus braucht keine Physik (siehe RND-08).
+  4. `build.rollupOptions.output.manualChunks`: `three`, `drei`, `rapier`, `xyflow`, `markdown` getrennt.
+- **Akzeptanz:** Startseite lädt < 250 KB br JS, keine `.glb`-Requests, kein Rapier. Lighthouse Mobile TBT < 300 ms.
+
+#### LOAD-02: Modul-Level-Preloads laden 16 MB GLB auf jeder Seite (P1, gemessen)
+- **Beleg:** `Satellit.tsx:95`, `VideoInstance.tsx:9`, `ModularFrame.tsx` (`useGLTF.preload(FRAME_MODEL)` am Dateiende). Das triggert beim Import, also auch auf der Startseite.
+- **Lösung:** Preloads in einen `useEffect` des Editors/Viewers verschieben oder erst nach LOAD-01 wirken lassen. Alternativ auf der Startseite per `<link rel="prefetch">` erst nach Idle.
+
+#### LOAD-03: Raum-Modell `Satellit_new.glb` 16 MB (P1, gemessen)
+- **Beleg:** 29.352 Dreiecke, aber 7 unkomprimierte Texturen (3× PNG à ~3,8 MB, 1× JPEG 2,4 MB). `Satellit_new-transformed.glb` (1,6 MB) stammt vom **alten** Modell (391.784 Dreiecke) und ist **nicht** austauschbar.
+- **Lösung:** Mit `gltf-transform` (liegt serverseitig schon als Dependency vor) `resize --width 2048`, `webp` oder `ktx2 --uastc/etc1s`, `draco`/`meshopt`, `dedup`, `prune`. Ziel < 2 MB. Drei: `useGLTF(url, true /*draco*/, true /*meshopt*/)` bzw. KTX2Loader konfigurieren. Draco-Decoder lokal hosten, nicht vom gstatic-CDN.
+- **Akzeptanz:** GLB < 2 MB, visuell gleichwertig (Screenshot-Vergleich Editor + Viewer).
+
+#### LOAD-04: Originalbilder als Thumbnails (Sidebar & Asset-Library) (P1, gemessen)
+- **Beleg:** `AssetSidebar.tsx:272` und `AssetLibrary.tsx:1017` nutzen `src={asset.path}` (bis 2500 px, ~0,3–1,2 MB je Bild) für 105-px- bzw. ~220-px-Kacheln. 136 Bilder, 42 MB, kein `loading="lazy"`, keine Virtualisierung. Zusätzlich doppelte Downloads, weil `<img>` (no-cors) und `TextureLoader` (cors) verschiedene Cache-Einträge nutzen.
+- **Lösung:**
+  1. Server generiert beim Upload `thumbnailPath` auch für Bilder (Feld existiert im Schema): 256 px und 512 px WebP/AVIF (`sharp`). Backfill-Skript für bestehende Assets.
+  2. `<img loading="lazy" decoding="async" srcset=… sizes=…>` und `crossOrigin="anonymous"` einheitlich, damit Cache-Einträge geteilt werden.
+  3. Grids mit > 100 Einträgen virtualisieren (`@tanstack/react-virtual`).
+- **Akzeptanz:** Projektwechsel zu Yol lädt < 3 MB Thumbnails. Sidebar-Bitmap-Speicher < 100 MB.
+
+#### LOAD-05: Szenen-Texturen in voller Auflösung, synchroner Upload (P1, gemessen)
+- **Beleg:** 76–82 Texturen bis 2500×2000 px (≈ 1,6–1,76 GB GPU geschätzt). Erster R3F-Frame 3,5 s (Texture-Uploads + Shader-Compile). `SelectableInstance.tsx:28` `useTexture(asset.path)`, `:35` max. Anisotropie.
+- **Lösung (Stufenplan):**
+  1. **LOD:** Server erzeugt pro Bild zusätzlich `-1024.webp` (und `-512.webp`). Die Szene lädt zuerst 512/1024, High-Res (2048) nur bei Nähe < ~3 m (FPV) oder bei Auswahl.
+  2. **Off-Thread-Decode:** `THREE.ImageBitmapLoader` (`createImageBitmap`, `imageOrientation: 'flipY'`) statt `<img>`-Decode auf dem Main Thread.
+  3. **Upload verteilen:** `renderer.initTexture(tex)` in einer Queue mit max. 2–4 Texturen pro Frame, dazu `renderer.compileAsync(scene, camera)` vor dem Einblenden.
+  4. **Optional GPU-Kompression:** KTX2/Basis (UASTC/ETC1S) serverseitig per `gltf-transform`/`toktx` → 4–8× weniger GPU-Speicher.
+  5. Anisotropie auf 4 begrenzen, im Low-Preset 1.
+- **Akzeptanz:** Längster Long Animation Frame beim Laden < 200 ms (M2) bzw. < 1 s (Low-End). GPU-Texturbudget Low-Preset < 300 MB.
+
+#### LOAD-06: Cache-Header (P1, gemessen)
+- **Beleg:** Gehashte JS/CSS nur `max-age=14400`, GLB `max-age=0`, `cf-cache-status: DYNAMIC`. `server/src/index.ts:27` `express.static` ohne Optionen.
+- **Lösung:** `express.static(dist, { setHeaders })`: `/assets/*` → `public, max-age=31536000, immutable`. `index.html` → `no-cache`. `/models/*` mit Content-Hash im Namen oder `max-age=86400, stale-while-revalidate`. `/uploads/*` (Dateinamen nach SEC-04 eindeutig) → `immutable`. Cloudflare Cache Rule für `.glb`/`.webp`/`.mp4`.
+
+#### LOAD-07: Suspense-Struktur blockiert die ganze Szene (P1, gemessen + Code)
+- **Beleg:** Viewer: erster Draw erst nach 8,1 s, zeitgleich mit „alle Assets geladen“. `Scene.tsx:57`: `Satellit` samt Trimesh-Collider liegt **ohne eigene Suspense-Grenze** im Canvas-Root. Der Loader-Overlay (`ViewerPage.tsx:98`) wartet auf `useProgress` = 100 %.
+- **Lösung:** Raum (Satellit) zuerst zeigen, Werke progressiv einblenden (eigene Suspense pro Wand bzw. Batch mit Platzhalter-Fläche in Bildfarbe/Blurhash). Viewer-Overlay nach „Raum + sichtbare Werke im Frustum“ freigeben, nicht nach 100 % aller Assets.
+- **Akzeptanz:** Viewer ist < 3 s nach API-Antwort begehbar (M2), Rest lädt im Hintergrund.
+
+#### LOAD-08: Startseite: Video, Google Fonts, Sprache (P2, gemessen)
+- **Beleg:** `HomePage.tsx:69` 6,3 MB WebM Autoplay. `fonts.googleapis.com` wird geladen. `index.html:2` `lang="en"`.
+- **Lösung:** Video als 720p AV1/H.264 ≤ 1,5 MB mit `poster`, `preload="metadata"`, bei `prefers-reduced-motion` oder `navigator.connection.saveData` nicht abspielen. Google Fonts **selbst hosten** (DSGVO: dynamische Einbindung von Google Fonts ist in DE abmahnrelevant). Das gilt auch für Drei-`Environment preset="warehouse"`, das HDRs von `raw.githack.com` lädt (`ModelPreviewCard.tsx:102`, `MetadataDialog.tsx:190`). HDR lokal ablegen und per `files=` einbinden. `lang="de"`.
+
+#### LOAD-09: Ungenutzte Riesen-Modelle werden ausgeliefert (P3, gemessen)
+- **Beleg:** `public/models/Satellit.glb` 68 MB (nur von ungenutztem `Satellit_old.tsx` referenziert), `Halbe_Classic_Maple20.glb` 39 MB (nirgends referenziert). Beide sind öffentlich abrufbar und im Docker-Image enthalten.
+- **Lösung:** Aus `public/` entfernen (Archiv/LFS außerhalb des Build-Kontexts), `.dockerignore` prüfen, `Satellit_old.tsx` löschen.
+
+---
+
+### 4.4 Rendering & Laufzeit (schwache Hardware)
+
+#### RND-01: 579–661 Draw Calls, weil jeder Rahmen aus 8 Meshes besteht (P1, gemessen)
+- **Beleg:** `ModularFrame.tsx:65` ff.: 4 Ecken + 4 Kanten als eigene `<mesh>` pro Werk, dazu die Bildfläche = 9 Draws je Werk.
+- **Lösung:** Alle Rahmenteile aller Werke über **zwei `THREE.InstancedMesh`** (Ecke, Kante) mit einer Instanz-Matrix pro Teil. Drei `<Instances>/<Merged>` oder ein eigener `FrameInstancer`, der aus `localInstances` Matrizen berechnet. Selektion/Transform: Matrix des betroffenen Werks live aktualisieren. Alternative: Rahmen pro Werk per `BufferGeometryUtils.mergeGeometries` zu einem Mesh zusammenführen (1 Draw statt 8).
+- **Akzeptanz:** Draw Calls Yol < 120 (Editor und Viewer).
+
+#### RND-02: Dauer-Rendering im Leerlauf und hinter Overlays (P1, gemessen)
+- **Beleg:** Editor rendert konstant 120 fps mit 661 Draws, auch auf der Asset-Library-Route (`EditorLayout.tsx:271`, `<EditorPage />` bleibt gemountet).
+- **Lösung:** Editor-Canvas `frameloop="demand"` und `invalidate()` bei Kamera-/Store-Änderungen (OrbitControls von Drei invalidiert selbst, Damping berücksichtigen). Auf `/assets` `frameloop="never"` oder Canvas per `display:none` + `setFrameloop('never')`. Viewer: bei `document.hidden` bzw. wenn Pointer-Lock verloren geht und nichts animiert → `demand`.
+- **Akzeptanz:** Editor im Leerlauf 0 Frames/s. Asset-Library: 0 GPU-Frames im Hintergrund.
+
+#### RND-03: DPR 2 ungebremst (6,7 MP) (P1, gemessen)
+- **Beleg:** `EditorPage.tsx:402`, `ViewerPage.tsx:135` ohne `dpr`, daher R3F-Default `[1, 2]`.
+- **Lösung:** `dpr={[1, 1.5]}` als Default. Drei `<PerformanceMonitor onDecline={() => setDpr(1)} />` + `<AdaptiveDpr pixelated />` für automatische Absenkung. Low-Preset: DPR 1, `antialias: false`, dafür ggf. FXAA.
+
+#### RND-04: Teure Materialien: 81× Standard-PBR + 2 RectAreaLights (P1, gemessen)
+- **Beleg:** `SelectableInstance.tsx:92` `meshStandardMaterial` pro Werk (roughness 1, metalness 0). `Satellit.tsx:66` zwei `rectAreaLight` (LTC-Shading, teuer pro Fragment auf 6,7 MP).
+- **Lösung:** Fotografien als `MeshBasicMaterial` rendern (farbtreu, kein Licht nötig, Galerie-Look). Alternativ ein geteiltes Material-Setup mit `onBeforeCompile`-Tönung. RectAreaLights durch gebakte Lightmap im Raum-GLB ersetzen (Blender-Bake) oder im Low-Preset durch `hemisphereLight` + `ambientLight`. `shadows` am Canvas deaktivieren, solange kein Licht `castShadow` hat (aktuell alle Schattenlichter auskommentiert, trotzdem 586 Meshes mit `castShadow`).
+- **Akzeptanz:** GPU-Frame-Zeit Viewer im Low-Preset ≤ 16 ms auf iGPU-Referenzgerät.
+
+#### RND-05: FPV-Raycaster über die komplette Szene (P1, gemessen)
+- **Beleg:** `FPVArtworkRaycaster.tsx:55` `intersectObjects(scene.children, true)` jeden 3. Frame → 20.446 Mesh-Raycasts/s, auch im Viewer vor dem Betreten. Kein BVH (`three-mesh-bvh` ist **nicht** installiert, entgegen `CLAUDE.md`).
+- **Lösung:** Nur gegen eine kleine Liste (Bildflächen + Wände + Raum-Wandmesh) casten, per `THREE.Layers` oder explizitem Array. `three-mesh-bvh` (`computeBoundsTree`) auf dem Raum-Mesh. Frequenz 10 Hz statt jeden 3. Frame. Im Viewer erst nach Pointer-Lock aktiv.
+- **Akzeptanz:** Raycast-CPU < 0,5 ms/s im Leerlauf.
+
+#### RND-06: Riesiger React-Commit beim Laden (4 s) (P1, gemessen + Code)
+- **Beleg:** Long Animation Frame mit 4.011 ms `MessagePort.onmessage` (React Scheduler). `PlacedArtworks.tsx:95-102`: `ref={setInstanceRef(instance.id, instance)}` erzeugt **bei jedem Render neue Ref-Callbacks** → React ruft für alle ~72 Instanzen `ref(null)` + `ref(el)` (Map-Churn). `PlacedArtworks` abonniert `selectedInstanceId` und `localInstances`, daher rendert die ganze Liste bei jeder Auswahl neu. Instanz-Komponenten sind nicht memoisiert.
+- **Lösung:** Ref-Callbacks pro ID cachen (`useMemo`/Map) oder Registrierung im Kind per `useEffect`. `SelectableInstance`/`VideoInstance`/`ModelInstance` mit `React.memo`. `selected` per eigenem Selector im Kind (`s => s.selectedInstanceId === id`), nicht als Prop von oben. Mounting in Batches (z. B. 10 Instanzen pro Frame per `startTransition`).
+
+#### RND-07: `liveTransform` rendert PropertiesPanel mit Framerate neu (P2, Code)
+- **Beleg:** `InstanceTransformControls.tsx:40` ruft `setLiveTransform({...})` in `useFrame` (jeder Frame, neues Objekt). `PropertiesPanel.tsx:93` abonniert `liveTransform` → Re-Render des 670-Zeilen-Panels mit 60–120 Hz während G/R/S.
+- **Lösung:** Live-Werte per Ref/`subscribe` direkt in die DOM-Inputs schreiben oder auf 10 Hz drosseln. Store nur bei MouseUp committen.
+
+#### RND-08: Physik läuft im Editor permanent, Trimesh-Collider für ganzen Raum (P2, Code)
+- **Beleg:** `EditorPage.tsx:409` `<Physics>` immer aktiv. `Scene.tsx:57` `colliders="trimesh"` um die komplette Satellit-Gruppe (inkl. Decke, Fenster, Traversen).
+- **Lösung:** Im Orbit-Modus `<Physics paused>` bzw. gar nicht mounten (siehe LOAD-01). Collider aus wenigen `CuboidCollider`n (Boden, 4 Außenwände, Innenwände) statt Trimesh.
+
+#### RND-09: Eine WebGL-Context pro 3D-Asset-Kachel (P1, Code, Risiko)
+- **Beleg:** `ModelPreviewCard.tsx:94` erzeugt ein eigenes `<Canvas>` pro Karte, das nach dem ersten Sichtbarwerden **nie wieder abgebaut** wird (`:81` `setHasLoaded(true)`). Genutzt in Sidebar und Asset-Library.
+- **Folge:** Chrome erlaubt ca. 16 aktive WebGL-Contexts. Ab ~15 Modellen verliert der **Editor-Canvas** seinen Context (schwarze Szene). Yol hat keine Modelle, daher nicht reproduziert.
+- **Lösung:** Einen einzigen Renderer verwenden: Thumbnails serverseitig oder einmalig clientseitig als PNG rendern und cachen (`thumbnailPath` für `model3d`). Live-Vorschau nur bei Hover über drei `<View>` in einem gemeinsamen Canvas. Canvas unmounten, wenn nicht sichtbar.
+
+#### RND-10: Geteilte Materialien bei `ModelInstance` (P2, Code)
+- **Beleg:** `ModelInstance.tsx:23` `scene.clone(true)` klont keine Materialien. `:56` setzt `emissive` beim Selektieren → alle Instanzen desselben Modells und der `useGLTF`-Cache leuchten mit.
+- **Lösung:** Beim Klonen Materialien klonen (`mesh.material = mesh.material.clone()`) oder die Selektion über ein Overlay-Mesh/Outline anzeigen, ohne Materialmutation.
+
+#### RND-11: Qualitäts-Presets / Hardware-Erkennung fehlen (P1, Konzept)
+- **Lösung:** Store-Slice `renderQuality: 'low' | 'medium' | 'high'`, automatisch gewählt aus `renderer.capabilities.maxTextureSize`, `navigator.hardwareConcurrency`, `navigator.deviceMemory`, `WEBGL_debug_renderer_info` (iGPU-Heuristik) und Drei `PerformanceMonitor`. Manuell umschaltbar (Viewer-Info-Menü).
+
+| Einstellung | Low | Medium | High |
+|---|---|---|---|
+| DPR | 1 | 1–1,5 | 1–2 |
+| Max. Texturgröße Werke | 1024 | 2048 | 2500 |
+| Material Werke | Basic | Basic | Standard |
+| RectAreaLights | aus | aus/gebakt | an |
+| Antialias | aus | an | an |
+| Video | Poster, Play bei Nähe | 720p | 1080p |
+| Raycast-Frequenz | 5 Hz | 10 Hz | 15 Hz |
+
+---
+
+### 4.5 Video
+
+#### VID-01: Alle Videos laden mit `preload='auto'` (P1, gemessen + Code)
+- **Beleg:** `VideoInstance.tsx:41`. Yol enthält ein **96 MB**-Video (1440×1080, 439 s) und 20 MB (1920×1080, 1401 s). Editor: MP4-Requests bis 19 s Dauer, obwohl Videos im Editor pausiert sind.
+- **Lösung:** `preload='metadata'` + Poster-Textur (`thumbnailPath`). Laden/Abspielen erst bei Nähe/Sichtbarkeit im FPV. Im Editor nur auf Klick abspielen.
+
+#### VID-02: `.mp4` wird ohne Codec-Prüfung durchgereicht (P1, Code)
+- **Beleg:** `upload.ts:322`, bei Endung `.mp4` wird **nicht** transkodiert. In Yol liegen `Marmara_Satellit_H.265_CQ22.mp4` und `…_VP9.mp4`. Laut Dateinamen HEVC bzw. VP9, per `ffprobe` verifizieren.
+- **Folge:** HEVC spielt in Firefox und in Chrome ohne Hardware-Decoder nicht (schwarze Fläche). Hohe Bitraten ruckeln auf schwacher Hardware.
+- **Lösung:** Codec per `ffprobe` prüfen und nur `h264 + yuv420p + ≤1080p + faststart` durchreichen. Sonst transkodieren mit `-vf "scale='min(1920,iw)':-2" -pix_fmt yuv420p -profile:v high -level 4.1 -movflags +faststart` (`upload.ts:114` ff.). Zusätzlich eine 720p-Variante für das Low-Preset. Backfill-Job für bestehende Videos.
+
+#### VID-03: Transkodierung synchron im Request (P1, Code)
+- **Beleg:** `processVideo` wartet im Request auf ffmpeg. Cloudflare bricht Origin-Requests nach **100 s** ab (HTTP 524), und der Request-Body ist je nach Plan auf **100 MB** begrenzt (Free/Pro).
+- **Lösung:** Upload annehmen → Asset mit `status: 'processing'` sofort zurückgeben → Transkodierung als Hintergrund-Job (Queue, z. B. `p-queue` im Prozess oder BullMQ) → Client pollt bzw. zeigt „wird verarbeitet“. Große Dateien per Chunked/Resumable Upload (tus) oder am Cloudflare-Proxy vorbei über eine Upload-Subdomain.
+
+---
+
+### 4.6 Upload-Pipeline
+
+#### UPL-01: Client-Resize ungenutzt (P1, Code)
+- **Beleg:** `src/lib/imageUtils.ts:1` `processImage` wird nirgends importiert. `UploadPreviewModal` sendet das Original.
+- **Lösung:** Vor dem Upload im Web Worker per `createImageBitmap` + `OffscreenCanvas` auf max. 2500 px (bzw. 4096 für Druck-Metadaten) → WebP 0,85. EXIF/DPI vorher auslesen und als Feld mitsenden, da der Server aktuell DPI aus dem Original liest. Alternative laut Projektplan: Mediabunny-Pipeline. Spart bei DSLR-JPEGs (20–40 MB) massiv Upload-Zeit.
+
+#### UPL-02: Blockierendes Hashing (P1, Code)
+- **Beleg:** `upload.ts:194` `fs.readFileSync` für SHA-256, dazu erneut in `processImage`. Bei großen Videos blockiert das den Event-Loop, und **alle** anderen Nutzer warten.
+- **Lösung:** Stream-Hash (`fs.createReadStream().pipe(crypto.createHash('sha256'))`). Bild-Metadaten per `sharp(file).metadata()` statt Buffer.
+
+#### UPL-03: Sequentielle Uploads (P2, Code)
+- **Beleg:** `UploadPreviewModal.tsx:206` `for … await uploadOne`.
+- **Lösung:** Parallelität 3 (Promise-Pool), Abbruch per `xhr.abort()`.
+
+#### UPL-04: Keine Bild-Thumbnails/LOD-Varianten beim Upload (P1): siehe LOAD-04/LOAD-05.
+
+#### UPL-05: DB speichert Original-Pixelmaße (P3, Info)
+- **Beleg:** `imgMaxDim` in der DB = 10.630 px, ausgeliefert werden max. 2500 px. `width/height` stammen aus dem Original-Buffer vor dem Resize.
+- **Hinweis:** Für die physische Größe (DPI-Fallback) korrekt. Für Textur-/Speicherbudgets **nicht** die DB-Maße verwenden. Optional Felder `storedWidth/storedHeight` ergänzen.
+
+#### UPL-06: Doppelte API-Aufrufe beim Projektwechsel (P2, gemessen) → siehe API-01.
+
+---
+
+### 4.7 State, Sync & API
+
+#### API-01: Doppelte/dreifache Requests (P2, gemessen)
+- **Beleg:** Projektwechsel: `projects` ×2, `versions` ×3, `instances` ×2, `walls` ×2. Ursachen: `ProjectSelector` fetcht beim Mount und beim Öffnen des Dropdowns. `selectProject` + `triggerRefresh()` + `activeVersionId`-Wechsel triggern `PlacedArtworks.tsx:57` bzw. den Walls-Effekt jeweils separat. `EditorLayout` holt Versions beim Popover erneut.
+- **Lösung:** Datenschicht mit Dedupe/Cache (TanStack Query, `staleTime` 30 s) oder zumindest `AbortController` + gemeinsamer Loader. Ein Endpoint `GET /api/versions/:id/scene` für Instanzen + Wände in einem Request.
+
+#### STATE-01: Undo-Historie unbegrenzt (P2, Code)
+- **Beleg:** `editorStore.ts:426` hängt bei jeder Änderung einen vollständigen Snapshot an `pastInstances`.
+- **Lösung:** Auf 50 Einträge begrenzen (`slice(-50)`), bei Projektwechsel leeren (passiert teilweise in `setLocalInstances`).
+
+#### STATE-02: Auto-Sync ohne Fehlerbehandlung/Retry (P1, Code)
+- **Beleg:** `editorStore.ts:515` ff.: `fetch(...).catch(console.error)`. HTTP-Fehler (401/500) werden bei PATCH/DELETE nicht ausgewertet. Kein Retry, kein Nutzerhinweis.
+- **Folge:** Stiller Datenverlust bei Netzabbruch oder abgelaufenem Token.
+- **Lösung:** `res.ok` prüfen, fehlgeschlagene Operationen in eine Retry-Queue (exponentielles Backoff), Status-Badge „Gespeichert / Speichert … / Offline“, Toast bei dauerhaftem Fehler. `prevInstances` erst nach Erfolg fortschreiben.
+
+#### STATE-03: Temporäre IDs `-Date.now()` (P3, Code)
+- **Beleg:** `EditorPage.tsx:133`. Kollision bei zwei Platzierungen in derselben Millisekunde (z. B. Multi-Drop), laut `CLAUDE.md` bekannte Duplikat-Ursache.
+- **Lösung:** Negativer Zähler (`--tempIdCounter`) oder `crypto.randomUUID()` als clientId-Feld.
+
+#### STATE-04: Versionsspeichern mit N+1-Queries (P2, Code)
+- **Beleg:** `server/src/routes/versions.ts:179`, pro Instanz `findUnique` + `findFirst` + ggf. `create` sequentiell.
+- **Lösung:** Alle `assetId`s sammeln → ein `findMany` → fehlende Artworks per `createMany` → `createMany` für Instanzen, alles in einer Transaktion.
+
+---
+
+### 4.8 Aufräumen (P3)
+
+| ID | Was | Wo |
+|---|---|---|
+| CLN-01 | Toter Code: `Satellit_old.tsx`, `ArtworkInstances.tsx` + `ArtworkInstanceMesh.tsx` (hardcodiert `http://localhost:3000`, `ArtworkInstanceMesh.tsx:31`), `imageUtils.ts` (falls UPL-01 anders gelöst wird) | `src/components/`, `src/lib/` |
+| CLN-02 | `console.log("DEBUG: Main.tsx executing...")` | `src/main.tsx:8` |
+| CLN-03 | `Dockerfile:62` `prisma db push` beim Start → auf `prisma migrate deploy` umstellen (Datensicherheit in Produktion) | `Dockerfile` |
+| CLN-04 | `castShadow`/`receiveShadow` überall gesetzt, ohne Schattenlicht | `Satellit.tsx`, `ModularFrame.tsx`, `ModelInstance.tsx` |
+| CLN-05 | Große Modelle aus `public/models` entfernen (LOAD-09) | `public/models/` |
+
+---
+
+## 5. Umsetzungsreihenfolge (Roadmap)
+
+### Phase 0: Sicherheit & kaputte Workflows (sofort, klein)
+`SEC-01`, `SEC-02`, `SEC-04`, `FUNC-01`, `FUNC-02`, danach `SEC-03`, `SEC-05`.
+*Erwartung:* Kein unauthentifizierter Schreibzugriff mehr, Deep-Links und Reloads funktionieren.
+
+### Phase 1: Quick Wins Ladezeit (je < 1 Tag)
+`LOAD-06` (Cache-Header), `LOAD-02` (Preloads), `RND-03` (DPR-Cap), `RND-02` (frameloop demand + kein Rendern hinter Overlay), `VID-01` (preload metadata), `LOAD-03` (Satellit-GLB komprimieren), `LOAD-08` (Fonts/HDR lokal, Video), `LOAD-09`.
+*Erwartung:* Startseite −22 MB, Editor-Leerlauf-GPU ≈ 0, Viewer-GLB −14 MB.
+
+### Phase 2: Asset-Varianten & Code-Splitting
+`LOAD-04` (Thumbnails + Backfill), `LOAD-01` (Route-Splitting, Rapier lazy), `UPL-01`, `UPL-02`, `API-01`.
+*Erwartung:* Projektwechsel < 3 MB statt 42 MB. Start-JS < 250 KB br.
+
+### Phase 3: Render-Pipeline für schwache Hardware
+`RND-01` (Instancing), `LOAD-05` (Textur-LOD, ImageBitmap, verteilter Upload), `LOAD-07` (progressives Laden), `RND-06` (React-Commit), `RND-04` (Materialien/Licht), `RND-05` (Raycaster), `RND-08`, `RND-11` (Presets).
+*Erwartung:* Draw Calls < 120, kein Long Frame > 200 ms (M2), GPU-Texturen Low < 300 MB, Viewer begehbar < 3 s.
+
+### Phase 4: Upload/Video-Backend & Robustheit
+`VID-02`, `VID-03`, `UPL-03`, `STATE-02`, `STATE-04`, `FUNC-03`, `FUNC-04`, `RND-07`, `RND-09`, `RND-10`, `SEC-06`, `SEC-07`, `STATE-01`, `STATE-03`, `CLN-*`.
+
+### Performance-Budgets (Zielwerte für CI/Review)
+
+| Metrik | Budget |
+|---|---|
+| JS initial (Home/Login) | ≤ 250 KB br |
+| JS Viewer gesamt | ≤ 900 KB br (ohne Rapier-WASM, das separat lazy) |
+| Viewer Time-to-Walkable (Mid-Laptop, Fast 4G, kalt) | ≤ 6 s |
+| Längster Long Animation Frame beim Laden | ≤ 200 ms (M2) / ≤ 1 s (Low-End) |
+| Draw Calls (Yol) | ≤ 120 |
+| GPU-Texturspeicher | Low ≤ 300 MB, High ≤ 800 MB |
+| Editor Leerlauf | 0 Renders/s |
+| Netzwerk Projektwechsel (Yol) | ≤ 5 MB |
+
+---
+
+## 6. Messprotokoll (zum Nachmessen)
+
+**Referenzbedingungen:** Chrome DevTools → Performance: CPU 4× Slowdown, Network „Fast 4G“, Cache deaktiviert für Kaltstart. Zusätzlich einmal auf echter iGPU-Hardware. Immer dieselbe Kuration **Yol**.
+
+### 6.1 three.js-Renderer & Szene abgreifen (ohne Code-Änderung)
+Auf `/` laden (SPA), dann in der Konsole ausführen. Das Snippet navigiert clientseitig, damit der Hook vor dem Renderer existiert:
+```js
+window.__cap = { scenes: [], renderers: [] };
+const et = new EventTarget();
+et.addEventListener('observe', (e) => {
+  const o = e.detail;
+  if (o?.isScene) __cap.scenes.push(o);
+  else if (o?.info && o?.domElement) __cap.renderers.push(o);
+});
+window.__THREE_DEVTOOLS__ = et;
+history.pushState({}, '', '/exhibition/yol');
+dispatchEvent(new PopStateEvent('popstate'));
+// später:
+const r = __cap.renderers.at(-1);
+({ calls: r.info.render.calls, textures: r.info.memory.textures, geometries: r.info.memory.geometries, programs: r.info.programs.length, dpr: r.getPixelRatio() });
+```
+
+### 6.2 Main-Thread-Blockaden
+```js
+performance.getEntriesByType('long-animation-frame')
+  .map(e => ({ dur: Math.round(e.duration), block: Math.round(e.blockingDuration),
+               scripts: e.scripts.map(s => `${s.invoker} ${Math.round(s.duration)}ms`) }));
+```
+
+### 6.3 Netzwerk-Summe nach Typ
+```js
+const g = {};
+for (const e of performance.getEntriesByType('resource')) {
+  const ext = (e.name.split('?')[0].match(/\.([a-z0-9]+)$/i) || [, 'api'])[1];
+  (g[ext] ??= { n: 0, mb: 0 }).n++; g[ext].mb += e.encodedBodySize / 1e6;
+}
+g;
+```
+
+### 6.4 Leerlauf-Rendering prüfen
+```js
+const r = __cap.renderers.at(-1); const f0 = r.info.render.frame;
+await new Promise(res => setTimeout(res, 2000));
+r.info.render.frame - f0; // Ziel im Editor-Leerlauf: 0
+```
+
+### 6.5 Routen-Smoke-Test (Direktaufruf)
+```bash
+for p in / /login /exhibitions /exhibition /exhibition/yol /exhibition/yol/edit /exhibition/yol/assets /project /users; do printf "%-26s " "$p"; curl -s -o /dev/null -w "%{http_code}\n" "https://curahub.krullmann.com$p"; done
+```
+Erwartung: überall `200` mit `text/html`.
+
+### 6.6 Baseline (13.09.2026, M2 Pro, warm)
+
+| Metrik | Editor Yol | Viewer Yol |
+|---|---|---|
+| Fertig | 9,3 s | 8,1 s |
+| Längster LoAF | 8,4 s | 7,5 s |
+| Draw Calls | 661 | 579 |
+| Texturen (GPU geschätzt) | 76 (1,6 GB) | 82 (1,76 GB) |
+| Bild-Traffic | 42 MB | 20 MB |
+| JS | 1,56 MB br | 1,56 MB br |
+
+---
+
+## 7. Abweichungen `CLAUDE.md` ↔ Code (für Agents wichtig)
+
+| `CLAUDE.md` sagt | Realität |
+|---|---|
+| Client-seitiges Resize auf 2500 px WebP 80 % | `imageUtils.processImage` ungenutzt, Server resized (`upload.ts:282`, WebP 75) |
+| Limits: Bild 10 MB, Video 200 MB, Modell 50 MB | Bild 200 MB, Video **unbegrenzt**, Modell 100 MB (`upload.ts:53-57`), Multer `Infinity` |
+| `three-mesh-bvh`, BVH für Raycasts | Nicht in `package.json`, keine BVH im Einsatz |
+| Kamera-Modi ortho/perspective/firstPerson im Editor | Ortho nicht implementiert, FPV-Toggle deaktiviert |
+| Jede Route hat eigenes `authenticate` | Upload, Assets GET/DELETE und Artworks ohne Auth |
+| Bug 1 (Auto-Save-Duplikate) offen | Mit `subscribe` + Temp-ID-Guard weitgehend adressiert, nicht reproduziert |
+| Bug 2 (BoundingBox sichtbar) offen | Selektions-Halo ist konditional gerendert, nicht reproduziert |
+| Bug 3 (Video-Lag) offen | `requestVideoFrameCallback` implementiert. Offen: `preload='auto'`, fehlender 1080p-Cap, Codec (VID-01/02) |
+| Bug 4 (Light Leak) offen | Aktuell kein Schatten werfendes Licht aktiv, daher gegenstandslos. Relevant erst, wenn Schatten zurückkommen |
+| Feature: 3D-Preview im Asset-Browser | Implementiert, aber ein WebGL-Context pro Karte (RND-09) |
+
+---
+
+## 8. Umsetzungsstand
+
+### Welle 1 (13.09.2026): Phase 0 + Phase 1, **nicht committed**, nicht deployed
+
+| ID | Status | Anmerkung |
+|---|---|---|
+| SEC-01 | ✅ | `authenticate` + `requireCurator` vor Multer, Projektzugriff via `userCanAccessProject`, Upload-Cap `UPLOAD_MAX_BYTES` (Default 2 GB). **Verhaltensänderung:** Collaborators mit Rolle `user` können nicht mehr hochladen. |
+| SEC-02 | ✅ | Asset-DELETE nur Owner/Admin. Artworks POST/PUT/GET mit Auth + Projektprüfung. Legacy-Inline-Asset-Anlage nur Admin. |
+| SEC-03 | ✅ | `GET /assets` nur mit Token, Nicht-Admins brauchen eine zugängliche `projectId`. |
+| SEC-04 | ✅ | Dateiname `${ts36}-${uuid8}-${name}${ext}`. Bestehende Dateien bleiben unverändert. |
+| SEC-05 | ✅ | Löscht `basename(asset.path)` + Thumbnail nur ohne weitere Referenz, mit Path-Traversal-Guard. |
+| SEC-07 | ✅ | JSON 2 MB global, 10 MB auf Versions-Routen. CORS eingeschränkt, sobald `CORS_ORIGINS` gesetzt ist. |
+| FUNC-01 | ✅ | Slug via `matchPath`, unbekannter Slug → Toast + Fallback, Back/Forward wechselt das Projekt. |
+| FUNC-02 | ✅ | SPA-Fallback per `req.accepts(['json','html']) === 'html'`, sonst JSON-404. |
+| FUNC-03 | ✅ | Ursache: `'orthographic'` hatte keine Kamera. Jetzt Toolbar-Button + `V`/`Escape`, `ViewModeControls.tsx` gelöscht. |
+| FUNC-04 | ✅ | `hasUnsavedChanges` wird nach erfolgreichem Batch zurückgesetzt (`localEditSeq`). |
+| STATE-01 | ✅ | Undo/Redo auf 50 begrenzt. |
+| STATE-02 | ✅ | `res.ok`-Prüfung, Retry mit Backoff, `syncStatus`, ein Toast pro Fehlerphase, Auto-Retry (15 s → 2 min, `online`-Event). **Zusätzlich:** `Idempotency-Key` pro logischem Create (`server/src/lib/idempotency.ts`, In-Memory-Cache, 15 min TTL, nur Single-Process). Verhindert Duplikate, wenn eine Antwort verloren geht. |
+| STATE-03 | ✅ | `nextTempId()` statt `-Date.now()` (sonst Kollision + Key-Replay). |
+| API-01 | 🟡 | Nur `ProjectSelector` (Projekt-Cache 30 s, gemeinsamer Version-Resolver, AbortController). `PlacedArtworks`/Walls-Doppel-Fetches sind noch offen. |
+| RND-02 | ✅ | Editor `frameloop`: FPV `always` / sonst `demand` / Assets-Route `never`. `FrameloopController` invalidiert bei Store-Änderungen. Viewer `always` nur mit Pointer-Lock + sichtbarem Tab. |
+| RND-03 | ✅ | `dpr={[1, 1.5]}` in Editor + Viewer. |
+| LOAD-02 | ✅ | Keine Modul-Preloads mehr, Preload im `useEffect` von Editor/Viewer (inkl. Satellit). |
+| LOAD-03 | ✅ ⚠️ | `Satellit_new-optimized.glb` **2,22 MB** (vorher 16 MB) via `scripts/optimize-glb.mjs`. **Abweichung:** Texturen 1024 px statt 2048 px, weil die Roughness-PNG (Daten im Alpha-Kanal) sonst 5,8 MB ergab. **Visuell prüfen**, ggf. Farb-/Normal-Maps bei 2048 lassen. |
+| LOAD-06 | ✅ | `immutable` für `/assets/*`, `no-cache` für `index.html`, 1 Tag + SWR für übrige `dist`-Dateien, 7 Tage `/uploads`. Cloudflare-Cache-Rules für `.glb` separat prüfen. |
+| LOAD-08 | 🟡 | Albert Sans selbst gehostet (OFL beigelegt), Startseiten-Video 720p **1,38 MB** + Poster, verzögerter Start, `prefers-reduced-motion`/`saveData`. **Offen:** Drei-`Environment preset="warehouse"` lädt HDR von `raw.githack.com` (→ Welle 2 mit RND-09). |
+| LOAD-09 | ✅ | 125 MB nach `_archive/` verschoben (`.gitignore` + `.dockerignore`). |
+| VID-01 | ✅ | `preload='metadata'`, `invalidate()` im `requestVideoFrameCallback`. |
+| CLN-01 | 🟡 | `Satellit_old.tsx`, `ArtworkInstances.tsx`, `ArtworkInstanceMesh.tsx` gelöscht. **Offen:** unbenutzte Root-Dateien `Satellit_new.jsx` / `Satellit_new.tsx`. |
+| CLN-02 | ✅ | Debug-Log entfernt, `lang="de"`. |
+
+**Verifikation Welle 1:**
+- `npx tsc -p tsconfig.app.json --noEmit` ✅
+- `cd server && npx tsc --noEmit` ✅
+- `npm run build` ✅ (JS weiterhin **ein** Chunk, 4,76 MB / 1,61 MB gzip → LOAD-01)
+- ESLint: **83 Errors** (HEAD-Baseline 87), keine neuen.
+- **Nicht verifiziert:** Laufzeit im Browser (keine lokale DB/Docker aktiv), Messungen gemäß Abschnitt 6 nach Deploy wiederholen.
+
+**Neue Hinweise aus Welle 1:**
+- Root-`.env` enthält `NODE_ENV=production` → Vite-Warnung beim Build.
+- `server/.env` ist in Git getrackt. Secrets prüfen, aus dem Repo entfernen und rotieren.
+- `PlacedArtworks.tsx` rendert `InstanceTransformControls` auch im FPV-Modus (Gizmo eventuell sichtbar).
+- Uploads > 100 MB scheitern hinter Cloudflare weiterhin (VID-03).
+- Idempotency-Cache nur In-Memory: bei mehreren Server-Instanzen Redis/DB nötig.
+
+### Welle 2 (13.09.2026): **nicht committed**, auf Testumgebung deployed
+
+| ID | Status | Anmerkung |
+|---|---|---|
+| LOAD-01 | ✅ | Routen lazy. VersionPanel-Graph, Wiki und Dialoge laden erst beim Öffnen. Chunking per `advancedChunks` (`includeDependenciesRecursively: false`). **Startseite lädt ~148 KB gzip JS statt ~1.610 KB**, three/r3f/Rapier/xyflow/markdown lazy. |
+| RND-08 | ✅ | `PhysicsLayer.tsx` ist der einzige Rapier-Import, im Editor nur in der Ego-Perspektive gemountet. Raum-Trimesh braucht `includeInvisible` (sonst kein Boden → Spieler fällt durch, bei der Integration gefunden und behoben). |
+| RND-10 | ✅ | Materialien pro `ModelInstance` geklont + disposed. |
+| LOAD-04 | ✅ | Server erzeugt `-thumb-256/512.webp`, Grids mit `srcSet`, `loading="lazy"`, `content-visibility`. Backfill `node dist/scripts/backfill-thumbnails.js --dry-run|--apply`: **Testumgebung 140/140 erzeugt (256er gesamt ≈ 1 MB statt 42 MB Originale)**. Produktion: nach Deploy ausführen. |
+| UPL-01 | ✅ | Web-Worker verkleinert auf ≤ 2500 px (JPEG 0,92). `clientHash`, `originalWidth/Height`, `dpi` vom Original, Server nutzt sie für Duplikate + physische Größe. |
+| UPL-02 | ✅ | Stream-Hash, `sharp().metadata()`. |
+| UPL-03 | ✅ | 3 parallele Uploads, echtes `xhr.abort()`. |
+| RND-09 | ✅ | Ein gemeinsamer Offscreen-Renderer + LRU-Cache für 3D-Vorschaubilder. |
+| LOAD-08 | ✅ | Rest: kein externes HDR mehr, Draco-Decoder same-origin unter `public/draco/gltf/` (Thumbnail-Renderer, MetadataDialog, ModelInstance). |
+| STATE-04 | ✅ | Versionsspeichern: Asset/Artwork-Abfragen gebündelt. |
+| FUNC-02 (Nachtrag) | ✅ | SPA-Fallback pfadbasiert: Frontend-Routen liefern HTML für jeden `Accept`-Header (Link-Previews), API-Namespaces JSON-404. `X-Robots-Tag: noindex` für Editor/Assets/Projekt/Nutzer. |
+| CLN-01 | ✅ | Root-Dateien `Satellit_new.jsx/.tsx` gelöscht, `.dockerignore` erweitert. |
+| API-01 | ⏭️ | Rest verschoben auf Welle 3 (Konflikt mit Physik-Umbau in denselben Dateien). |
+
+**Bei der Integration gefunden und behoben:**
+- `manualChunks` ordnete React in `vendor-markdown` und den Scheduler in `vendor-r3f` ein, dadurch waren beide eager geladen → Umstellung auf `advancedChunks`.
+- Raum-Collider leer (`traverseVisible`) → `includeInvisible`.
+- Draco-Decoder kam noch von gstatic → lokal.
+- Asset-Löschen hinterließ die 256er-Thumbnails → behoben.
+
+**Verifikation Welle 2:**
+- `npm run build` ✅, Server-`tsc` ✅.
+- ESLint 85 Errors (Baseline 87). Neu: 2× `react-hooks/set-state-in-effect` in `VersionPanel.tsx`.
+- Testumgebung: Routen-Matrix, 401, JSON-404, Draco-WASM, Thumbnails ✅.
+- **Nicht verifiziert:** visuelles Laufen/Kollisionen und Editor-Flows. Automatisierte Browser-Tabs liefen unsichtbar (rAF/ResizeObserver gedrosselt), manueller Test nötig.
+
+**Neu entdeckt (→ Welle 3):** Wird ein Viewer-Link in einem Hintergrund-Tab geöffnet, zeigt das Overlay sofort „Klicken zum Betreten“, obwohl die Szene noch nicht lädt (R3F startet erst bei sichtbarem Tab). Der Bereitschaftszustand sollte an den tatsächlichen Szenen-Ladezustand gekoppelt werden.
+
+### Nachbesserungen nach Nutzertest (13.09.2026)
+
+Gemeldet: Viewer-Spawn in der Wand und keine Bewegung (auch Editor-FPV), Wiki öffnet nicht, Sidebar-Drag & Drop und Upload funktionieren nicht.
+
+| Befund | Ursache | Fix |
+|---|---|---|
+| Spawn in Wand, keine Bewegung | `Satellit_new-optimized.glb` wurde von gltf-transform mit **interleaved** Vertex-Buffern geschrieben (NodeIO-Standard). GLTFLoader erzeugt daraus `InterleavedBufferAttribute`s; @react-three/rapier baut Trimesh-Collider aus `position.array` = gemischter Positions/Normalen/UV-Puffer → Phantom-Dreiecke überall. Visuell unsichtbar. | GLB neu erzeugt mit `VertexLayout.SEPARATE`, nur Texturkompression, keine `dedup`/`prune`. Geometrie byte-identisch zum Blender-Export, 2,51 MB. `scripts/optimize-glb.mjs` angepasst, inkl. Guard gegen interleaved Positions-Buffer. Headless verifiziert: Spawn exakt wie Produktion. |
+| RND-08 (Rapier lazy im Editor) | Bei der Fehlersuche vorsorglich auf die bewährte `main`-Anordnung zurückgebaut. Die eigentliche Ursache war das GLB (s. o.). | `PhysicsLayer.tsx` entfernt, Collider wieder an den sichtbaren Meshes, `<Physics>` in Editor/Viewer. Rapier bleibt aus Startseite/Login heraus (lazy Routen), lädt aber im Editor auch im Orbit-Modus. Erneuter Versuch später möglich. |
+| Wiki öffnet nicht | `advancedChunks`-Gruppe `vendor-markdown` zerlegte CJS-Abhängigkeiten, Chunk warf beim Laden `o is not a function`. | Markdown-Gruppe entfernt, Markdown liegt im lazy `WikiView`-Chunk. Headless-Import aller Chunks: 0 Fehler. |
+| React-Fehler #185 („Maximum update depth exceeded“) im Viewer, möglicherweise auch im Editor | drei `useProgress` aktualisiert pro fertiger Textur. `ViewerPage` (ganzes Store-Objekt) und `<Loader />` im Editor rendern bei vielen gecachten Texturen > 50× verschachtelt → Exception im LoadingManager, Ladezustand kann hängen bleiben. | Selektoren nur auf `active` und Fortschritt in 5-%-Schritten. `<Loader />` ersetzt durch `SceneLoadingIndicator.tsx`. Headless 3× Viewer-Load: 0× #185. |
+| Movement nach dem GLB-Fix beim Nutzer weiter kaputt, headless mit emuliertem Pointer-Lock aber korrekt | Das Modell lag unter fester URL `/models/Satellit_new-optimized.glb` mit `max-age=86400` + SWR. Browser (und später CDN) behielten das kaputte GLB. | Raummodell nach `src/assets/models/` verschoben und über `src/lib/modelUrls.ts` (`?url`-Import) eingebunden: Vite vergibt einen Content-Hash (`/assets/Satellit_new-optimized-<hash>.glb`), der unter die `immutable`-Regel fällt. **Regel:** Modelle/Assets, die sich ändern können, nie unter fester `public/`-URL ausliefern. |
+| Sidebar-DnD, Upload | Ohne Login nicht reproduzierbar. Server-Logs zeigen keine fehlerhaften Requests (clientseitig). | **Offen:** Nutzer-Retest mit Browser-Konsole. |
+| „Klicken zum Betreten“ in Hintergrund-Tabs | R3F startet erst bei sichtbarem Tab, Overlay meldet vorher „bereit“. | → Welle 3. |
+
+**Lehre für Agents:** Automatisierte Browser-Tabs/Panes laufen unsichtbar (rAF/ResizeObserver gedrosselt). Laufzeitverhalten mit headless Chrome über das DevTools-Protokoll prüfen (`--headless=new`), nicht über versteckte Tabs.
+
+### Welle 3 (14.09.2026): Render-Pipeline, committed (`945f37a`), nicht deployed
+
+| ID | Status | Anmerkung |
+|---|---|---|
+| RND-01 | ✅ | Alle Bilderrahmen in zwei `InstancedMesh`es (`FrameInstancer.tsx`, Registry in `src/lib/frameInstancerRegistry.ts`). Rahmen-Geometrie gemeinsam mit `ModularFrame` (Drag-Ghost) aus `src/lib/modularFrameParts.ts`. Rahmen sind nicht mehr klick-/raycast-bar, die Bildfläche übernimmt das. **Yol-Viewer 579 → 79 Draw Calls.** |
+| LOAD-05 | ✅ (ohne KTX2) | `src/lib/artworkTextureManager.ts`: Stufen 512 px (Server-Thumbnail) / 1024 / 2048 / voll, gewählt nach Größe auf dem Bildschirm, mit Hysterese und GPU-Budget je Preset (300/600/800 MB). Decode per `fetch` + `createImageBitmap` außerhalb des Main Threads, Upload per `renderer.initTexture` mit Zeitbudget pro Frame, Anisotropie ≤ 4 (low 1). Material hat immer eine Map (1×1-Platzhalter) → kein Shader-Recompile beim Tausch. Ausgewähltes Werk im Editor bekommt die höchste Stufe. Thumbnails haben eigene Download-Slots (8). Nach WebGL-Context-Restore werden alle Texturen neu geladen. **Offen:** KTX2 (Schritt 4). |
+| LOAD-07 | ✅ | Bilder suspendieren nicht mehr: Raum und Rahmen erscheinen sofort, Bilder schärfen nach. Viewer-Overlay „Klicken zum Betreten“ erst nach Raum + erstem gerenderten Frame (`SceneReadySignal`), dadurch auch in Hintergrund-Tabs korrekt. |
+| RND-06 | ✅ | `PlacedArtworks`: memoisierte `InstanceSlot`s mit eigenem Selektions-Selector und stabilen Ref-Callbacks. Batch-Mounting nicht nötig, da keine Suspense-Kaskade mehr. |
+| RND-04 | ✅ | Fotos: `MeshBasicMaterial` (unbeleuchtet, farbtreu) in low/medium, `MeshStandardMaterial` in high. RectAreaLights nur im low-Preset aus, Ersatz `hemisphereLight`. **Visuell prüfen:** low wirkt etwas dunkler, Fensterglas ist schwarz (metallisches Material ohne Flächenlicht). |
+| RND-05 | ✅ | Raycast nur gegen Werke (`instanceRefMap`), Verdeckung nur gegen `Wall`/`ModularWall` bis zur Trefferdistanz, 5/10/15 Hz je Preset, nur mit Pointer-Lock. |
+| RND-11 | ✅ | `src/lib/renderQuality.ts`: low/medium/high + Automatik (GPU-String, Kerne, `deviceMemory`, `MAX_TEXTURE_SIZE`, Mobilgerät). Umschalter in der Editor-Toolbar und im Viewer-Startoverlay, gespeichert in `localStorage` (`curahub-render-quality`). Viewer: `PerformanceMonitor` senkt die DPR bei zu wenig FPS auf 1. Antialiasing greift erst nach Neuladen. |
+| RND-07 | ✅ | `liveTransform` mit 10 Hz, exakter Endwert beim Loslassen. |
+| API-01 | ✅ | Instanzen/Wände laden abhängig von „eingeloggt“ statt vom Token-String (jeder `refreshAuth` erzeugte einen neuen Token und damit Doppel-Fetches), veraltete Antworten werden verworfen. Kombinierter Scene-Endpoint nicht umgesetzt. **Nicht laufzeitgeprüft** (Login). |
+| VID-02 | ✅ | `server/src/lib/video.ts`: ffprobe-Codecprüfung. Nur H.264 / yuv420p / ≤ 1080p / AAC wird remuxt (faststart), alles andere auf ≤ 1920×1080 transkodiert. Backfill: `node dist/scripts/backfill-videos.js --dry-run` bzw. `--apply [--limit n]`, Originale bleiben liegen. Yol enthält VP9 + H.265 → Backfill nötig. |
+| VID-03 | ⏭️ | Braucht Schema-Feld `status`, Hintergrund-Queue, UI-Zustände und eine Entscheidung zu Uploads > 100 MB hinter Cloudflare (Upload-Subdomain oder tus). → Welle 4. |
+| SEC-06 | ✅ | In-Memory-Rate-Limit auf `/auth/login` (5/min je IP+Nutzer, 20/15 min je Nutzer, 100/15 min je IP, `CF-Connecting-IP`), JWT 30 statt 365 Tage, `refreshAuth` bei Fenster-Fokus höchstens alle 5 min. Bereits ausgestellte 365-Tage-Tokens bleiben bis zum Ablauf gültig, nur eine Rotation von `JWT_SECRET` beendet sie. |
+| Nebenbei | ✅ | Transform-Gizmo in der Ego-Perspektive ausgeblendet (Hinweis aus Welle 1). Viewer: Der Spieler wird erst mit dem Raum-Collider erzeugt. Vorher fiel er während des Ladens durch den Boden (headless reproduziert, je mehr Frames beim Laden, desto tiefer). |
+
+**Messung Welle 3** (Viewer Yol, headless Chrome 1800×927 auf M2 Pro/ANGLE-Metal, kalter Cache, API und Uploads über SSH-Tunnel zur Testumgebung; „vorher“ = Build der Testumgebung, Wellen 1 + 2):
+
+| Metrik | Vorher | Nachher high | medium | low |
+|---|---|---|---|---|
+| Draw Calls | nicht messbar (Spieler gefallen), Audit: 579 | **79** | 79 | 79 |
+| Texturen, geschätzter GPU-Speicher | 1.551 MB | **146 MB** | 127 MB | 127 MB |
+| Bild-Traffic | 72 Dateien, 20,2 MB | **2,2 MB** | 1,3 MB | 1,3 MB |
+| „Klicken zum Betreten“ sichtbar | 3,4 s | **1,0 s** | 1,1 s | 1,0 s |
+| Alle Werke mit Bild | ~12 s | ~6 s | – | ~6 s |
+| Längster Long Animation Frame | 238–1.182 ms, 4–6 × > 200 ms | 155–248 ms, ≤ 1 × > 200 ms | 268 ms | 140 ms (kalter Shader-Cache: 904 ms) |
+| DPR | 1,5 | 2 | 1,5 | 1 |
+
+**Verifikation Welle 3:**
+- `npx tsc -p tsconfig.app.json --noEmit` ✅, Server-`tsc` ✅, `npm run build` ✅, ESLint 85 Errors (= Baseline, keine neuen).
+- Headless (alle Presets): Spawn + Laufen ✅, Info-Overlay beim Anvisieren eines Werks ✅, WebGL-Context-Loss + Restore → Texturen neu geladen, keine Exceptions ✅, Screenshot-Vergleich high/medium/low.
+- **Nicht verifiziert:** Editor (Login nötig): Rahmen bei Drag/G/R/S/Wand-Verschieben, Hochauflösung bei Auswahl, Qualitäts-Umschalter, Doppel-Requests. Upload mit echtem ffmpeg (VID-02), Rate-Limit, echte iGPU-Hardware, Safari/Firefox (`createImageBitmap`-Optionen).
+
+**Neu entdeckt (→ Welle 4):**
+- **SEC-08 (P0, gemessen 14.09.2026):** Auf dem Produktionsserver sind App (`0.0.0.0:3001`) und MariaDB (`0.0.0.0:3307`) aus dem Internet erreichbar. Docker-Portfreigaben umgehen ufw. Folgen: Die Datenbank ist direkt angreifbar, und die App ist unter Umgehung von Cloudflare erreichbar. Dort lässt sich `CF-Connecting-IP` fälschen, die IP-Limits aus SEC-06 greifen also nicht (das Nutzer-Limit schon). Lösung: in `docker-compose.yml` den DB-Port entfernen oder an `127.0.0.1` binden und die App nur an `127.0.0.1` binden (cloudflared erreicht sie lokal). Danach von außen nachprüfen.
+- Kalter Shader-Compile blockiert den ersten Frame (~0,9 s auf M2/ANGLE-Metal) → `renderer.compileAsync(scene, camera)` vor der Freigabe.
+- Produktion: Thumbnail- und Video-Backfill nach dem Deploy ausführen.
+
+### Welle 4 (14.09.2026): Robustheit, Upload/Video, Physik lazy, **nicht committed**, auf Testumgebung
+
+Entscheidungen des Nutzers: Uploads > 100 MB per Chunked Upload in der App (keine Upload-Subdomain), KTX2 zurückgestellt, Produktion nur per Code vorbereitet (kein Prod-Eingriff in dieser Welle).
+
+| ID | Status | Anmerkung |
+|---|---|---|
+| SEC-08 | ✅ Code, ⏳ Prod | `docker-compose.yml`: App- und DB-Port an `127.0.0.1` gebunden (`APP_BIND_ADDRESS`/`DB_BIND_ADDRESS` überschreibbar). Geprüft (read-only): cloudflared läuft auf dem Prod-Host als Prozess, nicht als Container, erreicht die App also weiter über `127.0.0.1:3001`. **Offen (Prod):** Compose auf dem Server übernehmen, Stack neu starten, von außen prüfen (`nc -vz <Server-IP> 3001` und `3307` müssen scheitern). |
+| VID-03 | ✅ | **Chunked Upload:** Dateien > 64 MB gehen in 16-MB-Stücken hoch (`src/lib/chunkedUpload.ts` ↔ `server/src/lib/chunkedUploads.ts`, Routen `POST /upload/chunks`, `PUT /upload/chunks/:id?offset=`, `POST …/complete`, `DELETE …`). Sequentiell, Retry mit Backoff, Offset-Abgleich nach verlorener Antwort, `complete` liefert bei Wiederholung dieselbe Antwort. Projektzugriff und Größenlimit werden schon beim Start geprüft, max. 6 offene Uploads je Nutzer, Teil-Dateien in `uploads/.partial/` (nicht ausgeliefert). **Hintergrund-Video:** Asset entsteht sofort mit `status: 'processing'`, Transkodierung in einer In-Process-Queue (`server/src/lib/videoJobs.ts`, 1 Job parallel, `VIDEO_JOB_CONCURRENCY`), Wiederaufnahme nach Neustart. Sidebar/Asset-Library: „Wird verarbeitet …“ bzw. „Verarbeitung fehlgeschlagen“, nicht ziehbar, Polling alle 5 s. Upload-Dialog: „Wird im Hintergrund verarbeitet …“. Löschen während der Verarbeitung räumt Original und Ausgabe auf. **Grenzen:** Upload-Sitzungen nur im Speicher (Server-Neustart → Upload neu starten). 3D-Modell-Konvertierung (Assimp/Blender, bis 180 s) läuft weiter synchron im Request und kann bei großen Modellen noch in den 524 laufen. |
+| CLN-03 | ✅ | Prisma-Migrationen eingeführt: `0_init` (aktuelles Schema) + `20260914000000_asset_status`. Container-Start: `node dist/scripts/prepare-db.js` markiert `0_init` bei bestehenden db-push-Datenbanken einmalig als angewendet und führt dann `prisma migrate deploy` aus. `0_init` gegen die Test-DB (Kopie von Prod) geprüft: keine Differenz. **Regel ab jetzt:** Schemaänderungen nur per `npx prisma migrate dev --name …`, nie `db push`. |
+| CLN-04 | ✅ | `shadows` an beiden Canvases und alle `castShadow`/`receiveShadow` entfernt: Kein Licht wirft Schatten, die Shader enthielten trotzdem den Shadow-Code. |
+| Shader-Precompile | ✅ | `src/components/ShaderWarmup.tsx`: `renderer.compileAsync(scene, camera)` direkt nach dem Laden des Raums (KHR_parallel_shader_compile). Währenddessen rendert die Kamera keine Layer, dadurch kein synchroner Compile im ersten Frame. Timeout 10 s. Viewer: „Klicken zum Betreten“ erst nach Raum, Physik und Shadern. |
+| RND-08 | ✅ (2. Versuch) | Rapier nur noch in `src/components/physics/PhysicsWorld.tsx` (lazy): Raum-Trimesh aus denselben GLB-Knoten wie `Satellit.tsx` (`includeInvisible`), Wand- und Modell-Collider, Spieler. Editor mountet ihn nur in der Ego-Perspektive, der Viewer startet den Download beim Mount parallel zur API-Anfrage. `Scene`, `ModularWallsController`, `ModelInstance`, `PlannerCameraSystem` importieren kein Rapier mehr. **Editor im Orbit-Modus lädt `vendor-rapier` (2,26 MB / 849 KB gzip) nicht mehr.** Erster Wechsel in die Ego-Perspektive lädt ihn nach. |
+| LOAD-05 Schritt 4 (KTX2) | ⏭️ | Zurückgestellt: GPU-Texturen ~140 MB, Budget low 300 MB. |
+| Cloudflare-Cache-Rules | 📋 Nutzer | Gemessen 14.09.2026 auf Prod (noch alter Build): `/uploads/*.webp` → `max-age=14400` (Cloudflare-Browser-TTL überschreibt den Origin-Header), `cf-cache-status: MISS/REVALIDATED`. `/models/*.glb` → `DYNAMIC` (nicht gecacht). Empfehlung (Dashboard → Caching → Cache Rules): Pfade `/assets/*`, `/models/*`, `/uploads/*`, `/draco/*` → „Eligible for cache“, Edge TTL und Browser TTL „Use cache-control header if present“. Nach dem Prod-Deploy Header erneut prüfen. |
+| Editor-Laufzeittest mit Login | 📋 Nutzer | Checkliste unten. |
+
+**Messung Welle 4** (Viewer Yol, headless Chrome wie in Welle 3, lokaler Build gegen die Testumgebung):
+
+| Metrik | Welle 3 high | Welle 4 high | Welle 3 low | Welle 4 low |
+|---|---|---|---|---|
+| „Klicken zum Betreten“ sichtbar | 964 ms | 1.078 ms | 957 ms | 1.119 ms |
+| Längster Long Animation Frame | 155 ms | **96 ms** | 140 ms (kalter Shader-Cache 904 ms) | **keiner ≥ 50 ms** |
+| Draw Calls | 79 | 79 | 79 | 79 |
+| Spawn → nach 1,5 s „W“ | [-5.99, 1.6, 2.57] → [-3.1, 1.6, 1.1] | identisch | identisch | identisch |
+
+Das Overlay erscheint ~120 ms später, weil es auf die Shader wartet. Dafür friert der erste Frame nicht mehr ein. Info-Overlay beim Anvisieren ✅, WebGL-Context-Loss + Restore ✅ (79 Draw Calls, 0 Platzhalter).
+
+**Verifikation Welle 4:**
+- `npx tsc -p tsconfig.app.json --noEmit` ✅, Server `tsc` ✅, `npm run build` ✅, ESLint 85 Errors (= Baseline).
+- `vendor-rapier` wird nur noch dynamisch importiert (nur in der Preload-Liste von `PhysicsWorld`).
+- Testumgebung (Deploy per rsync, Test-DB = Prod-Kopie): erster Start `Migration 0_init marked as applied` + `asset_status` angewendet, zweiter Start `No pending migrations`. `/uploads/.partial/*` → 404, Frontend-Route → 200.
+- Chunk-API gegen die Testumgebung (39 MB HEVC-Video, 3 Chunks, Projekt „test“, kurzlebiger Token im Container erzeugt): ohne Token 401, `complete` vor Daten 409, wiederholter Chunk überschreibt statt anzuhängen, Offset voraus → 409 mit `received`, wiederholtes `complete` → dasselbe Asset. Server-Hash der zusammengesetzten Datei = lokaler SHA-256. Hintergrund-Job: HEVC → H.264/yuv420p/AAC in 7 s, Poster erzeugt. Container-Neustart während der Verarbeitung → `Resuming 1 video job(s)`, Asset danach `ready`. Test-Assets wieder gelöscht.
+- **Nicht verifiziert:** Editor-UI (Login), Upload-Dialog im Browser inkl. Abbruch, Datei > 100 MB durch Cloudflare (Testumgebung läuft ohne Cloudflare), Safari/Firefox.
+
+**Nutzertest-Checkliste (Editor, Login nötig):**
+1. Editor öffnen (Orbit): Netzwerk-Tab zeigt **kein** `vendor-rapier`. Kein Einfrieren beim ersten Bild.
+2. `V` → Ego-Perspektive: Rapier lädt nach, Spieler steht auf dem Boden, Wände und 3D-Modelle blockieren. `Esc`/`V` zurück, erneut hinein.
+3. Werke ziehen, G/R/S, Wand verschieben (Rahmen folgen), Auswahl → hochaufgelöste Textur, Qualitäts-Umschalter.
+4. Video > 100 MB in Projekt „test“ hochladen: Fortschritt läuft durch, Kachel zeigt „Wird verarbeitet …“, wird nach der Transkodierung automatisch ziehbar und spielt ab.
+5. Upload während des Hochladens schließen → Abbruch, keine Leiche in der Bibliothek.
+
+### Nachbesserungen nach Nutzertest Welle 4 (14.09.2026)
+
+| Rückmeldung | Befund | Änderung |
+|---|---|---|
+| Objekte im Ego-Modus anklickbar, nicht gewollt | – | `PlannerCameraSystem`: R3F-Pointer-Events in der Ego-Perspektive aus (`setEvents({ enabled })`). Das Info-Overlay nutzt einen eigenen Raycaster und bleibt aktiv. |
+| Zurück in den Orbit braucht zweimal Esc | Browser verbrauchen das Esc, das den Pointer-Lock löst; es kommt kein `keydown` an. Erst das zweite Esc erreichte den Handler. | Das Lösen des Pointer-Locks (`onUnlock`) beendet die Ego-Perspektive, außer ein Dialog ist offen. Kamerafahrt 900 ms (ease-in-out) vom Standpunkt und der Blickrichtung zurück zur gespeicherten Orbit-Ansicht, FOV 75 → 60, OrbitControls währenddessen gesperrt. |
+| Wände lassen sich mit Bildern nicht entsperren | Gewollt. | – |
+| Drag & Drop in Asset-Library und Sidebar kaputt, Video nicht platzierbar | Headless (echtes HTML5-DnD per CDP) auf der Testumgebung **nicht reproduzierbar**: Sidebar → Wand platziert das Werk. Gefunden: (1) Asset-Library definierte `FolderRow` als Komponente im Render, dadurch wurden alle Ordnerzeilen bei jeder State-Änderung neu gemountet (Drop-Ziele mitten im Ziehen ersetzt, offene Ordnermenüs geschlossen). (2) Library lud Assets ohne Projekt → 403 „projectId erforderlich“ (SEC-03) → Fehler-Toast. (3) Ungültige Drops meldeten nur englisch „Cannot place here. Try a wall.“, auch wenn die Modulwand nicht gesperrt ist (Platzieren nur an gesperrten Wänden). | (1) Render-Funktion `renderFolderRow`. (2) Kein Fetch ohne aktives Projekt (außer Admin). (3) `src/lib/placementFeedback.ts`: `ArtworkPlacement` merkt sich den Grund, Toast nennt ihn auf Deutsch („Die Wand ist nicht gesperrt …“, „nur auf dem Boden“, „nur an senkrechten Wandflächen“). Alle Platzier-Toasts auf Deutsch. **Offen:** Ursache beim Nutzer, Rückfragen gestellt. |
+| Verarbeitungsstand in der Edit-Seite | – | Server: `videoJobs.ts` hält Phase (Warteschlange/Analyse/Übernahme/Umwandlung/Vorschaubild), Prozent aus ffmpeg-`progress`, Quelldaten (Codec, Auflösung, Dauer, Größe) und Warteschlangenposition. `GET /api/assets/:id/processing` (Lesezugriff wie `GET /assets`). Client: `VideoProcessingStatus.tsx` im `MetadataDialog` zeigt die Schritte mit Fortschrittsbalken und Restzeit, pollt alle 2 s und zeigt danach das fertige Video. Fehler mit Klartext. |
+| Upload lässt sich nicht abbrechen | Nur Schließen des Dialogs brach ab, war während des Uploads aber gesperrt. | Button „Upload abbrechen“ mit Bestätigungsdialog („Weiter hochladen“ / „Ja, abbrechen“). Schließen per X/Esc während des Uploads fragt ebenfalls nach. Laufende XHR- und Chunk-Uploads werden abgebrochen (Chunk-Sitzung serverseitig gelöscht), wartende als „Abgebrochen“ markiert, fertige bleiben. |
+
+**Verifikation:** App- und Server-`tsc` ✅, `npm run build` ✅, ESLint 85 (= Baseline). Headless gegen die Testumgebung (lokaler Build): V → Ego, Laufen ✅; Klick in der Ego-Perspektive ändert nichts ✅; Pointer-Lock lösen → Orbit, Kamerafahrt 58 Frames / 1,1 s von [-2.51, 1.6, 1.11] (FOV 75) nach [20, 20, 20] (FOV 60) ✅; Sidebar → Wand, Toast „Werk platziert“ ✅ (Test-Instanz wieder gelöscht). Testumgebung nach Deploy: `GET /api/assets/:id/processing` ohne Token 401, unbekannte ID 404; 39-MB-HEVC-Test: Quelle `hevc 1920×1080 12 s` erkannt, Verlauf transcoding 0 → 80 % in 6,6 s → thumbnail → ready (7,5 s), Test-Asset gelöscht. **Nicht verifiziert:** Upload-Abbruch-Dialog und Verarbeitungsanzeige im Browser (visuell), echter Pointer-Lock.
+
+### Nachbesserungen nach Nutzertest 2 (14.09.2026)
+
+| Rückmeldung | Befund | Änderung |
+|---|---|---|
+| Ego-Position soll erhalten bleiben, V führt zurück an dieselbe Stelle | `PlayerController` startete immer am festen Spawn mit fester Blickrichtung. Die beim Verlassen gespeicherte Kamera wurde überschrieben. | Spieler startet an der beim Verlassen gespeicherten Position und Blickrichtung (`firstPersonCameraState`; Default = bisheriger Spawn). Gilt für die Sitzung, nicht über Neuladen hinweg. **Dabei gefunden:** `OrbitControls` ohne explizite Kamera band sich beim Verlassen kurz an die noch aktive Ego-Kamera; dessen Konstruktor-`update()` drehte sie per `lookAt` zum Orbit-Ziel, bevor die Pose gespeichert wurde (falsche Blickrichtung beim nächsten V, falsche Startrichtung der Kamerafahrt). Jetzt `camera={perspCamera}`. **Nachtrag:** V fliegt ebenfalls animiert (900 ms) von der Orbit-Ansicht zur gespeicherten Ego-Pose (Position lerp, Rotation slerp, FOV 60 → 75); der Spieler übernimmt erst nach der Landung (`src/lib/cameraTransition.ts`). Headless: Flug [20, 20, 20] → [-5.99, 1.6, 2.57] in 935 ms, danach Laufen und Pose-Erhalt ✅. |
+| Drag & Drop in Zen nach Fix weiterhin kaputt | Chrome platziert, Gecko headless bis 3D-Vorschau korrekt; Drop lässt sich in Gecko nicht synthetisieren (auch nicht mit `remote.drag.synthesized_for_html5`). | Temporäre Diagnose `src/lib/dndDebug.ts`: mit `localStorage.setItem('curahub-debug-dnd','1')` loggt die Konsole alle Drag-Events (Ziel, Typen, effectAllowed/dropEffect, defaultPrevented) und jeden Ausstieg in den Editor-Handlern. Nach der Klärung wieder entfernen. **Auflösung:** Zens Konsole zeigte nur noch `dragstart`, auch für schlichte Test-Divs ohne App-Code → Zen hing in einer festgefahrenen Drag-Session. Nach einem Browser-Neustart funktioniert Drag & Drop. Diagnose wieder ausgebaut. Beibehalten (robuster): synchroner Platzier-Raycast, zusätzlich `text/plain` in den Drag-Daten, Drag-Bild erst nach den Daten. |
+| Hochformat-Video als Monitor gedreht und gestreckt (Beamer korrekt) | Schon vor den Wellen vorhanden: Für Hochformat wird das Monitor-Modell um −90° gekippt, die Display-UVs sind aber Querformat. Das 9:16-Video wurde ins 16:9-UV-Feld gequetscht und mitgedreht. | `VideoInstance`: Textur bei Monitor + Hochformat um −π/2 um die Mitte gegengedreht (`texture.center` 0,5/0,5), bei anderen Medien 0. **Visuell prüfen** (Nutzer). Nachtrag: Auswahl-Box des Monitors war fest 1,5 × 0,9 (Querformat) → jetzt aus den echten Modellmaßen, bei Hochformat gedreht. Boden-Begrenzung (`artworkMinY`) nutzt bei Hochformat die gedrehte Modellausdehnung (`monitorGlbBounds.maxX`), vorher ließ sich ein hochkant gestellter Monitor in den Boden schieben. |
+| Großes Vorschaubild am Cursor beim Ziehen | Folge des Firefox-Fixes (Kachelbild als Drag-Bild). | `src/lib/dragPreview.ts`: dezenter 36-px-Chip aus dem bereits geladenen Vorschaubild (blauer Rand, bei Mehrfachauswahl mit Anzahl), in Sidebar und Asset-Library (ersetzt dort den Kartenstapel). |
+| Drag & Drop in Firefox (Zen): Assets lassen sich nicht greifen, kein Dialog | Nachgestellt in Zen 1.22 (Gecko) headless über WebDriver BiDi. `dragstart` und `dragover` über dem Canvas kommen korrekt an (Typen `asset-id` usw.), aber der Platzier-Raycast lief nur in `useFrame`: Ein Drop war nur gültig, wenn seit dem letzten `dragover` ein Frame gerendert wurde. Gecko rendert während einer Drag-Session unzuverlässig (headless praktisch gar nicht). Außerdem setzte die Sidebar ein unsichtbares 1×1-Drag-Bild, in Firefox gab es damit keinerlei Rückmeldung beim Greifen. Ausgeschlossen: `setDragImage` als Abbruchursache, `content-visibility`, `mousedown`-Handler. | `placementResolver` (`src/lib/placementFeedback.ts`): `ArtworkPlacement` stellt den Raycast als Funktion bereit, `EditorPage` ruft ihn direkt in `dragover` und am Drop-Punkt auf. `useFrame` aktualisiert den Ghost weiterhin, wenn Frames laufen. Sidebar nutzt das Vorschaubild als Drag-Bild. **Nutzer-Retest in Zen nötig**, BiDi erzeugt in Gecko kein `drop`. |
+| Verarbeitungsfortschritt auch auf der Kachel | – | `useVideoProcessing` (gemeinsamer Polling-Hook, 2 s) + `VideoProcessingBadge` in Sidebar und Asset-Library: Phase, Warteschlangenposition, Prozent, Balken. Lädt die Liste neu, sobald fertig. Ersetzt das 5-s-Listen-Polling. Restzeit rechnet der Server (`phaseElapsedMs`), keine Client-Uhr. |
+| **VID-04:** Video-LOD für die Qualitätsstufen | Gab es nicht: `VideoInstance` spielte immer die volle Web-Version. | Nach der Hauptverarbeitung ist das Video sofort platzierbar (`ready`, `metadata.proxiesPending`). Ein zweiter Job erzeugt Proxys mit 720 px und 480 px kurzer Kante (nur kleiner als die Web-Version; H.264 veryfast, AAC 96 k, faststart) → `metadata.videoProxies`. Presets: Niedrig 480 p, Mittel 720 p, Hoch volle Version (`videoMaxShortEdge`). `VideoInstance` wechselt beim Umschalten die Datei und behält Position und Wiedergabestatus. Kachel und Edit-Dialog zeigen „Kleinere Versionen …“ mit Fortschritt. Löschen entfernt die Proxys. Wiederaufnahme nach Neustart. Backfill für bestehende Videos: `node dist/scripts/backfill-video-proxies.js --dry-run` bzw. `--apply [--limit n]`. **Grenze:** Ein frisch per Drag platziertes Video nutzt bis zum Neuladen die volle Version (der Drag-Snapshot trägt keine Metadaten). |
+
+### Vorschlag Welle 5
+Produktion: Deploy mit SEC-08 (Portbindung), erster Start mit `prepare-db` (Baseline), danach Thumbnail- und Video-Backfill, Cloudflare-Cache-Rules. Code: 3D-Modell-Konvertierung in dieselbe Hintergrund-Queue wie Videos, `server/.env` aus Git entfernen + Secrets rotieren (Hinweis aus Welle 1), bei Bedarf KTX2. Danach WebGPU-Prototyp.
+
+### (Archiv) Vorschlag Welle 4
+`VID-03`, Shader-Precompile (s. o.), `LOAD-05` Schritt 4 (KTX2), `RND-08` erneut versuchen (Rapier lazy im Editor, diesmal mit dem korrekten GLB), `CLN-03`, `CLN-04`, Cloudflare-Cache-Rules für `.glb`/`.webp`/`.mp4`, Editor-Laufzeittest mit Login.
+
+### (Archiv) Vorschlag Welle 3
+Siehe Render-Pipeline: `RND-01`, `LOAD-05`, `LOAD-07`, `RND-06`, `RND-04`, `RND-05`, `RND-11`, `RND-07`, `API-01`, `VID-02/03`, `SEC-06` + Overlay-Bereitschaft (s. o.).
+
+### (Archiv) Vorschlag Welle 2
+`LOAD-01` (Route-Splitting, Rapier/React-Flow/Markdown lazy), `LOAD-04` (Bild-Thumbnails + Backfill-Skript, `loading="lazy"`, einheitlich `crossOrigin`), `UPL-01` (Client-Resize im Worker), `UPL-02` (Stream-Hash), `API-01` (Rest: Instances/Walls in einem Request), `RND-09` + lokales Environment-HDR, `CLN-01` (Rest).
+
+### Später (nach Abschluss aller Wellen): WebGPU-Prototyp
+Vom Nutzer vorgemerkt (13.09.2026). **Erst starten, wenn alle Performance-Wellen abgeschlossen sind.**
+- Eigener Branch, Opt-in per `?renderer=webgpu` (three r181 `WebGPURenderer` über die asynchrone `gl`-Factory von R3F).
+- Messung mit Yol auf M2 und iGPU-Laptop: Ladezeit, längster LoAF, FPS, GPU-Speicher, Draw Calls.
+- Nur bei messbarem Vorteil per Feature-Erkennung aktivieren. Fallback bleibt der klassische `WebGLRenderer`, **nicht** das WebGL2-Backend des `WebGPURenderer`.
+- Bekannte Hürden: drei `Grid` (Custom-Shader), RectAreaLight-Setup, `ShaderMaterial`/`onBeforeCompile`.
+- Begründung für „später“: Die gemessenen Engpässe (React-Commit, Textur-Decode/-Upload, Texturspeicher) löst WebGPU nicht, und Geräte ohne WebGPU würden den weniger ausgereiften Pfad bekommen.

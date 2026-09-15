@@ -175,27 +175,55 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
         // Use frontend instances, or fallback to deep-copying if not provided (backwards compat)
         let instancesToCreate: any[] = [];
         if (data.instances) {
-            // Resolve assetIds to artworkIds if necessary
+            // STATE-04: batch-resolve assetIds -> artworkIds instead of a
+            // findUnique/findFirst/create sequence per instance.
+            const assetIds = Array.from(new Set(
+                data.instances
+                    .filter(inst => !inst.artworkId && inst.assetId)
+                    .map(inst => inst.assetId as number)
+            ));
+
+            const assetsById = new Map<number, { id: number; filename: string }>();
+            const artworkByAssetId = new Map<number, { id: number }>();
+
+            if (assetIds.length > 0) {
+                const assets = await prisma.asset.findMany({ where: { id: { in: assetIds } } });
+                for (const asset of assets) assetsById.set(asset.id, asset);
+
+                const existingArtworks = await prisma.artwork.findMany({
+                    where: { assetId: { in: assetIds } }
+                });
+                for (const artwork of existingArtworks) {
+                    if (artwork.assetId != null && !artworkByAssetId.has(artwork.assetId)) {
+                        artworkByAssetId.set(artwork.assetId, artwork);
+                    }
+                }
+
+                // Create artworks only for assets that don't have one yet.
+                const missingAssetIds = assetIds.filter(
+                    id => assetsById.has(id) && !artworkByAssetId.has(id)
+                );
+                for (const assetId of missingAssetIds) {
+                    const asset = assetsById.get(assetId)!;
+                    const artwork = await prisma.artwork.create({
+                        data: {
+                            title: asset.filename,
+                            assetId: asset.id,
+                            artist: 'Unknown',
+                            year: new Date().getFullYear().toString()
+                        }
+                    });
+                    artworkByAssetId.set(assetId, artwork);
+                }
+            }
+
             for (const inst of data.instances) {
                 let artworkId = inst.artworkId;
                 if (!artworkId && inst.assetId) {
-                    const asset = await prisma.asset.findUnique({ where: { id: inst.assetId } });
-                    if (!asset) continue;
-                    
-                    let artwork = await prisma.artwork.findFirst({ where: { assetId: asset.id } });
-                    if (!artwork) {
-                        artwork = await prisma.artwork.create({
-                            data: {
-                                title: asset.filename,
-                                assetId: asset.id,
-                                artist: 'Unknown',
-                                year: new Date().getFullYear().toString()
-                            }
-                        });
-                    }
-                    artworkId = artwork.id;
+                    if (!assetsById.has(inst.assetId)) continue;
+                    artworkId = artworkByAssetId.get(inst.assetId)?.id;
                 }
-                
+
                 if (artworkId) {
                     instancesToCreate.push({
                         artworkId,

@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { Button } from "@/components/ui/button";
 import { CloudUpload } from "lucide-react";
+import { preprocessImageForUpload } from '@/lib/imageUtils';
 
 interface DuplicateInfo {
   filename: string;
@@ -71,11 +72,35 @@ export const UploadDropzone = ({
   // ── Direct upload path (used by EditorLayout) ──────────────────────────
 
   const uploadFile = async (rawFile: File, force = false) => {
+      let fileToSend = rawFile;
+      let clientHash: string | undefined;
+      let originalWidth: number | undefined;
+      let originalHeight: number | undefined;
+      let dpi: number | undefined;
+
+      if (rawFile.type.startsWith('image/')) {
+        try {
+          const preprocessed = await preprocessImageForUpload(rawFile);
+          fileToSend = preprocessed.file;
+          clientHash = preprocessed.clientHash;
+          originalWidth = preprocessed.originalWidth;
+          originalHeight = preprocessed.originalHeight;
+          dpi = preprocessed.dpi;
+        } catch {
+          // Preprocessing must never block the upload — fall back to the original file.
+          fileToSend = rawFile;
+        }
+      }
+
       const formData = new FormData();
-      formData.append('file', rawFile);
+      formData.append('file', fileToSend);
       if (projectId) formData.append('projectId', projectId.toString());
       if (folderId) formData.append('folderId', folderId.toString());
       if (force) formData.append('force', 'true');
+      if (clientHash) formData.append('clientHash', clientHash);
+      if (originalWidth) formData.append('originalWidth', originalWidth.toString());
+      if (originalHeight) formData.append('originalHeight', originalHeight.toString());
+      if (dpi) formData.append('dpi', dpi.toString());
 
       const response = await fetch('/upload', {
           method: 'POST',

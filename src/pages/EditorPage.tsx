@@ -1,16 +1,29 @@
 import { Canvas } from '@react-three/fiber';
-import { Loader } from '@react-three/drei';
-import { Physics } from '@react-three/rapier';
+import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { Scene } from '../components/Scene';
-// Player is now handled inside PlannerCameraSystem
+// Player + colliders: components/physics/PhysicsWorld (lazy, first person only — RND-08)
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
-import { useEditorStore, type MediumType } from '../store/editorStore';
+import { FrameloopController } from '../components/FrameloopController';
+import { SceneLoadingIndicator } from '../components/SceneLoadingIndicator';
+import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
+import { RenderQualityControl } from '../components/RenderQualityControl';
+import { useRenderQualitySettings } from '../hooks/use-render-quality';
+import { useEditorStore, nextTempId, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
-import { useEffect, useRef, useState } from 'react';
-import { Eye, EyeOff, Move, RotateCw, Maximize2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
+import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
+
+/** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
+const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
+  if (issue === 'unlocked-wall') return 'Die Wand ist nicht gesperrt. Wand sperren, dann Werke daran platzieren.';
+  if (assetType === 'model3d') return '3D-Modelle lassen sich nur auf dem Boden platzieren.';
+  if (issue === 'not-vertical') return 'Werke lassen sich nur an senkrechten Wandflächen platzieren.';
+  return 'Hier lässt sich nichts platzieren. Werk auf eine Wand ziehen.';
+};
 
 // Snapshot of a pending placement awaiting user choice (used for the video drop modal)
 type DraggedAssetSnapshot = NonNullable<ReturnType<typeof useEditorStore.getState>['dragState']['draggedAsset']>;
@@ -89,15 +102,24 @@ const ToolSeparator = () => (
   <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
 );
 
+// RND-08: Rapier (~2.3 MB chunk + WASM) is only needed for the first-person preview.
+const PhysicsWorld = lazy(() => import('../components/physics/PhysicsWorld'));
+
 const GL_CONFIG = {
     toneMapping: THREE.ACESFilmicToneMapping,
     toneMappingExposure: 1.1,
     outputColorSpace: THREE.SRGBColorSpace,
 };
 
-export const EditorPage = () => {
+interface EditorPageProps {
+  /** false while the editor Canvas is hidden behind another route (e.g. /assets) — stops the render loop entirely. */
+  isVisible?: boolean;
+}
+
+export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const isPlacing = useEditorStore((state) => state.isPlacing);
   const viewMode = useEditorStore((state) => state.plannerViewMode);
+  const setPlannerViewMode = useEditorStore((state) => state.setPlannerViewMode);
   const setDragPosition = useEditorStore((state) => state.setDragPosition);
   const setDragging = useEditorStore((state) => state.setDragging);
   // Do not subscribe to dragState here to avoid re-renders on every mouse move/raycast
@@ -117,6 +139,11 @@ export const EditorPage = () => {
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
+  // RND-11: preset-dependent pixel ratio; antialiasing is a context attribute and stays as
+  // chosen when the Canvas was created.
+  const renderSettings = useRenderQualitySettings();
+  const [antialias] = useState(renderSettings.antialias);
+  const glConfig = useMemo(() => ({ ...GL_CONFIG, antialias }), [antialias]);
 
   // Captured placement awaiting the user's Monitor/Beamer choice (video drops only)
   const [pendingVideoDrop, setPendingVideoDrop] = useState<PendingVideoDrop | null>(null);
@@ -130,7 +157,7 @@ export const EditorPage = () => {
   // and the deferred video-drop path (after Monitor/Beamer is picked).
   const placeInstance = (medium: MediumType, snapshot: PendingVideoDrop): number => {
     const store = useEditorStore.getState();
-    const newInstanceId = -Date.now(); // Temporary ID until saved
+    const newInstanceId = nextTempId(); // Unique temporary ID until saved (STATE-03)
     const { draggedAsset } = snapshot;
     const assetType = draggedAsset.assetType || 'image';
 
@@ -176,6 +203,15 @@ export const EditorPage = () => {
   // Keep ref in sync every render
   placeInstanceRef.current = placeInstance;
 
+  // Preload the room model and the models used by placed artworks (Monitor GLB + picture frame
+  // GLB) once the editor actually mounts — moved off module scope so the home page no longer
+  // downloads them (LOAD-02).
+  useEffect(() => {
+    useGLTF.preload(SATELLIT_MODEL_URL);
+    useGLTF.preload('/models/Monitor65.glb');
+    useGLTF.preload('/models/Halbe_Classic_Alu8.glb');
+  }, []);
+
   // ── Capture-phase drag listeners ──────────────────────────────────────────
   // UploadDropzone (a common ancestor) calls e.stopPropagation() in its
   // onDragOver handler, and Chrome does not honour pointer-events:none for
@@ -197,6 +233,8 @@ export const EditorPage = () => {
       const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1;
       const ndcY = -((e.clientY - rect.top) / rect.height) * 2 + 1;
       setDragPosition({ x: ndcX, y: ndcY });
+      // Update ghost + placement right away instead of waiting for the next frame.
+      placementResolver.resolve?.({ x: ndcX, y: ndcY });
     };
 
     const handleDrop = async (e: DragEvent) => {
@@ -209,12 +247,22 @@ export const EditorPage = () => {
       e.preventDefault();
       e.stopPropagation();
 
-      const { isDragging, validPlacement, draggedAsset } = useEditorStore.getState().dragState;
+      // Resolve the placement at the drop point — don't rely on a frame having rendered since the
+      // last dragover (Firefox can hold back rendering during a native drag).
+      const dropNdc = {
+        x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
+        y: -((e.clientY - rect.top) / rect.height) * 2 + 1,
+      };
+      const resolvedPlacement = placementResolver.resolve?.(dropNdc);
+      const { isDragging, draggedAsset } = useEditorStore.getState().dragState;
+      const validPlacement = resolvedPlacement !== undefined
+        ? resolvedPlacement
+        : useEditorStore.getState().dragState.validPlacement;
 
       if (isDragging && validPlacement && draggedAsset) {
         if (!useEditorStore.getState().activeVersionId) {
-          gooeyToast.error("No Project Selected", {
-            description: "Please select or create a project first.",
+          gooeyToast.error('Kein Projekt ausgewählt', {
+            description: 'Bitte zuerst ein Projekt auswählen oder anlegen.',
           });
         } else {
           try {
@@ -231,23 +279,21 @@ export const EditorPage = () => {
             } else {
               const medium: MediumType = assetType === 'model3d' ? 'model3d' : 'frame';
               placeInstanceRef.current(medium, snapshot);
-              const label = assetType === 'model3d' ? '3D Model' : 'Artwork';
-              gooeyToast.success(`${label} Placed`, {
-                description: `Placed ${draggedAsset.url.split('/').pop()}`,
+              const label = assetType === 'model3d' ? '3D-Modell' : 'Werk';
+              gooeyToast.success(`${label} platziert`, {
+                description: draggedAsset.url.split('/').pop(),
               });
             }
           } catch (err) {
             console.error('Placement error:', err);
-            gooeyToast.error('Placement Failed', {
-              description: 'Could not place artwork.',
+            gooeyToast.error('Platzieren fehlgeschlagen', {
+              description: 'Das Werk konnte nicht platziert werden.',
             });
           }
         }
       } else if (isDragging && !validPlacement) {
-        gooeyToast.error('Invalid Placement', {
-          description: draggedAsset?.assetType === 'model3d'
-            ? 'Cannot place here. Try the floor.'
-            : 'Cannot place here. Try a wall.',
+        gooeyToast.error('Platzieren nicht möglich', {
+          description: placementIssueText(draggedAsset?.assetType, placementFeedback.issue),
         });
       }
 
@@ -294,12 +340,25 @@ export const EditorPage = () => {
       const hasSelection = !!(store.selectedInstanceId || store.selectedWallId || store.selectedZoneId);
       const key = e.key.toLowerCase();
 
-      // Escape always works — deselect everything
+      // Escape always works — deselect everything, and leave first-person mode if active
       if (key === 'escape') {
+        if (useEditorStore.getState().plannerViewMode === 'firstPerson') {
+          setPlannerViewMode('perspective');
+          if (document.pointerLockElement) document.exitPointerLock();
+        }
         selectInstance(null);
         selectWall(null);
         selectZone(null);
         setTransformAxisLock('none');
+        return;
+      }
+
+      // First-person preview toggle — works regardless of current selection
+      if (key === 'v' && !cmdOrCtrl) {
+        e.preventDefault();
+        if (useEditorStore.getState().plannerViewMode !== 'firstPerson') {
+          setPlannerViewMode('firstPerson');
+        }
         return;
       }
 
@@ -390,28 +449,40 @@ export const EditorPage = () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock]);
-  // We need a ref to the container to calculate relative coordinates if needed, 
+  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock, setPlannerViewMode]);
+  // We need a ref to the container to calculate relative coordinates if needed,
   // but for full screen editor, window coordinates are fine for NDC.
-  
+
+  // RND-02: render continuously only in first-person mode (player movement, idle head
+  // bob). Otherwise render on demand (orbit/transform/drag already call invalidate()).
+  // While the editor is hidden behind another route (e.g. /assets) stop rendering
+  // entirely — FrameloopController fires one invalidate() when isVisible flips back on.
+  const frameloop: 'always' | 'demand' | 'never' =
+    viewMode === 'firstPerson' ? 'always' : (isVisible ? 'demand' : 'never');
+
   return (
     <div
         ref={containerRef}
         style={{ width: '100%', height: '100%', position: 'relative' }}
     >
-      <Canvas 
-        shadows 
+      <Canvas
+        dpr={renderSettings.dpr}
+        frameloop={frameloop}
         // Camera is managed by PlannerCameraSystem in Scene
         style={{ width: '100%', height: '100%' }}
-        gl={GL_CONFIG}
+        gl={glConfig}
         onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
       >
-        <Physics gravity={[0, -9.81, 0]}>
-            <Scene />
-            <ArtworkPlacement />
-        </Physics>
+        <FrameloopController isVisible={isVisible} />
+        <Scene />
+        <ArtworkPlacement />
+        {viewMode === 'firstPerson' && (
+          <Suspense fallback={null}>
+            <PhysicsWorld mode="editor" />
+          </Suspense>
+        )}
       </Canvas>
-      <Loader />
+      <SceneLoadingIndicator />
       
       {/* FPV Crosshair + Artwork Info Overlay */}
       {viewMode === 'firstPerson' && <ArtworkInfoOverlay />}
@@ -423,7 +494,7 @@ export const EditorPage = () => {
                background: 'rgba(0,0,0,0.7)', color: 'white', padding: '10px 20px', borderRadius: '20px',
                zIndex: 20
            }}>
-               Placing Artwork... Click to place.
+               Werk wird platziert … Klicken zum Platzieren.
            </div>
       )}
 
@@ -460,6 +531,15 @@ export const EditorPage = () => {
 
           {/* Traverses */}
           <ToolButton icon={showTraverses ? <Eye size={16} /> : <EyeOff size={16} />} tooltip={showTraverses ? 'Traverses ausblenden' : 'Traverses einblenden'} active={showTraverses} onClick={toggleTraverses} />
+
+          <ToolSeparator />
+
+          {/* First-person preview */}
+          <ToolButton icon={<Footprints size={16} />} tooltip="Ego-Perspektive (V)" onClick={() => setPlannerViewMode('firstPerson')} />
+
+          <ToolSeparator />
+
+          <RenderQualityControl className="px-2" />
         </div>
       )}
 

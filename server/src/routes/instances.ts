@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
+import { idempotency } from '../lib/idempotency';
 
 export const instancesRouter = Router();
 const prisma = new PrismaClient();
@@ -17,7 +18,7 @@ const instanceSchema = z.object({
   scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional()
 });
 
-instancesRouter.post('/', authenticate, async (req: any, res) => {
+instancesRouter.post('/', authenticate, idempotency, async (req: any, res) => {
     try {
         const data = instanceSchema.parse(req.body);
         const userId = req.user.userId;

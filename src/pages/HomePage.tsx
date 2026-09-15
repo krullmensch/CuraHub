@@ -1,8 +1,22 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, Layers, Calendar } from 'lucide-react';
+
+// `navigator.connection` (Network Information API) isn't in the standard DOM
+// lib types yet — narrow it with a type guard instead of `any`.
+interface NetworkInformationLike {
+  saveData?: boolean;
+}
+interface NavigatorWithConnection extends Navigator {
+  connection?: NetworkInformationLike;
+}
+
+function hasSaveDataEnabled(): boolean {
+  const nav = navigator as NavigatorWithConnection;
+  return nav.connection?.saveData === true;
+}
 
 interface ExhibitionEntry {
   exhibition: { id: number; title: string; slug: string };
@@ -31,6 +45,7 @@ export const HomePage = () => {
   const [exhibitions, setExhibitions] = useState<ExhibitionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
 
   const fetchData = async () => {
     setLoading(true);
@@ -57,16 +72,57 @@ export const HomePage = () => {
     fetchData();
   }, []);
 
+  // LOAD-08: don't force every visitor to download the background video.
+  // Only start loading/playing it after first paint (idle time), and skip
+  // it entirely — showing just the poster frame — for users who prefer
+  // reduced motion or have "Datensparmodus" (Save-Data) enabled.
+  useEffect(() => {
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (prefersReducedMotion || hasSaveDataEnabled()) {
+      return;
+    }
+
+    let cancelled = false;
+    const startVideo = () => {
+      if (cancelled) return;
+      const video = videoRef.current;
+      if (!video) return;
+      video.src = '/BG_Video_CuraHub-720p.webm';
+      video.play().catch(() => {
+        // Browser blocked autoplay — the poster frame stays visible.
+      });
+    };
+
+    let idleId: number | undefined;
+    let timeoutId: number | undefined;
+    if (typeof window.requestIdleCallback === 'function') {
+      idleId = window.requestIdleCallback(startVideo, { timeout: 2000 });
+    } else {
+      timeoutId = window.setTimeout(startVideo, 200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (idleId !== undefined && typeof window.cancelIdleCallback === 'function') {
+        window.cancelIdleCallback(idleId);
+      }
+      if (timeoutId !== undefined) {
+        window.clearTimeout(timeoutId);
+      }
+    };
+  }, []);
+
   return (
     <div className="h-screen w-full overflow-y-auto bg-black text-white relative">
       {/* ── Background Video ── */}
       <video
-        autoPlay
+        ref={videoRef}
         muted
         loop
         playsInline
+        preload="metadata"
+        poster="/BG_Video_CuraHub-poster.webp"
         className="fixed inset-0 w-full h-full object-cover pointer-events-none z-0 grayscale"
-        src="/BG_Video_CuraHub.webm"
       />
       <div className="fixed inset-0 bg-black/70 pointer-events-none z-0" />
 

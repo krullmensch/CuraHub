@@ -1,7 +1,6 @@
 import { forwardRef, useMemo, useEffect } from 'react';
 import { useGLTF } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
-import { RigidBody, CuboidCollider } from '@react-three/rapier';
 import * as THREE from 'three';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
 
@@ -16,19 +15,44 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
         const asset = instance.artwork.asset;
         const selectInstance = useEditorStore((state) => state.selectInstance);
 
-        const { scene } = useGLTF(asset.path);
+        // Uploaded GLBs are Draco-compressed; decoder served same-origin (no gstatic CDN).
+        const { scene } = useGLTF(asset.path, '/draco/gltf/');
 
-        // Clone the scene so multiple instances of the same model don't conflict
+        // Clone the scene AND its materials so multiple instances of the same model
+        // (and the shared useGLTF cache) don't conflict when we mutate emissive
+        // below on selection (RND-10).
         const clonedScene = useMemo(() => {
             const clone = scene.clone(true);
             clone.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
-                    child.castShadow = true;
-                    child.receiveShadow = true;
+                    const mesh = child as THREE.Mesh;
+                    if (Array.isArray(mesh.material)) {
+                        mesh.material = mesh.material.map((m) => m.clone());
+                    } else if (mesh.material) {
+                        mesh.material = mesh.material.clone();
+                    }
                 }
             });
             return clone;
         }, [scene]);
+
+        // Dispose the per-instance cloned materials on unmount / re-clone so we
+        // don't leak GPU resources (geometries are shared with the useGLTF cache
+        // and must NOT be disposed here).
+        useEffect(() => {
+            return () => {
+                clonedScene.traverse((child) => {
+                    if ((child as THREE.Mesh).isMesh) {
+                        const mesh = child as THREE.Mesh;
+                        if (Array.isArray(mesh.material)) {
+                            mesh.material.forEach((m) => m.dispose());
+                        } else {
+                            mesh.material?.dispose();
+                        }
+                    }
+                });
+            };
+        }, [clonedScene]);
 
         // Compute bounding box from the cloned scene
         const bbox = useMemo(() => {
@@ -75,13 +99,7 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             >
                 <primitive object={clonedScene} />
 
-                {/* Physics collider for first-person collision */}
-                <RigidBody type="fixed" colliders={false}>
-                    <CuboidCollider
-                        args={[bbox.size.x / 2, bbox.size.y / 2, bbox.size.z / 2]}
-                        position={[bbox.center.x, bbox.center.y, bbox.center.z]}
-                    />
-                </RigidBody>
+                {/* First-person collider: physics/PhysicsWorld.tsx (RND-08) */}
 
                 {/* Bounding box wireframe — only when selected */}
                 {selected && (

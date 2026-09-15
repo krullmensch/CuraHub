@@ -3,11 +3,15 @@ import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { authenticate, requireProf, roleAtLeast, AppRole } from '../lib/middleware';
+import { loginRateLimit, resetLoginAttempts } from '../lib/loginRateLimit';
 
 export const authRouter = Router();
 const prisma = new PrismaClient();
 
 const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
+// SEC-06: was 365 days. /auth/me hands out a fresh token while the editor is in use, so
+// active users stay logged in; a leaked token expires after a month.
+const TOKEN_TTL = '30d';
 
 // Validation Schema
 const loginSchema = z.object({
@@ -52,7 +56,7 @@ export async function validateHSBI(username: string, password: string): Promise<
 
 // ─── Login ───────────────────────────────────────────────────────────────────
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', loginRateLimit, async (req, res) => {
   try {
     const { username, password } = loginSchema.parse(req.body);
 
@@ -73,7 +77,8 @@ authRouter.post('/login', async (req, res) => {
       });
     }
 
-    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: '365d' });
+    resetLoginAttempts(req);
+    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: TOKEN_TTL });
     res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (error) {
     console.error('[Auth Error]:', error);
@@ -101,7 +106,7 @@ authRouter.get('/me', async (req, res) => {
         const freshToken = jwt.sign(
             { userId: user.id, role: user.role },
             JWT_SECRET,
-            { expiresIn: '365d' }
+            { expiresIn: TOKEN_TTL }
         );
 
         res.json({

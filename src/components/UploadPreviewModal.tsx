@@ -20,10 +20,12 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { cn } from '@/lib/utils';
+import { preprocessImageForUpload, type PreprocessResult } from '@/lib/imageUtils';
+import { CHUNKED_UPLOAD_THRESHOLD, uploadFileInChunks } from '@/lib/chunkedUpload';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
-type FileStatus = 'pending' | 'uploading' | 'processing' | 'done' | 'error' | 'duplicate';
+type FileStatus = 'pending' | 'optimizing' | 'uploading' | 'processing' | 'done' | 'error' | 'duplicate';
 
 interface UploadFileItem {
   id: string;
@@ -37,6 +39,12 @@ interface UploadFileItem {
   compressedSize?: number;
   errorMsg?: string;
   existingAsset?: Record<string, unknown>; // for duplicates
+  /** Result of client-side preprocessing (images only) — computed once, reused on force-retry. */
+  preprocessed?: PreprocessResult;
+  /** Aborts the running upload (multipart XHR or chunked upload). */
+  cancel?: () => void;
+  /** VID-03: the server accepted the file and processes it in the background. */
+  backgroundProcessing?: boolean;
 }
 
 interface UploadPreviewModalProps {
@@ -58,18 +66,35 @@ const formatBytes = (bytes: number): string => {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
 
+interface UploadXHROpts {
+  projectId: number | null;
+  folderId: number | null;
+  token: string;
+  force?: boolean;
+  clientHash?: string;
+  originalWidth?: number;
+  originalHeight?: number;
+  dpi?: number;
+}
+
 function uploadXHR(
   file: File,
-  opts: { projectId: number | null; folderId: number | null; token: string; force?: boolean },
+  opts: UploadXHROpts,
   onProgress: (pct: number) => void,
+  onXhrReady: (xhr: XMLHttpRequest) => void,
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
+    onXhrReady(xhr);
     const form = new FormData();
     form.append('file', file);
     if (opts.projectId) form.append('projectId', opts.projectId.toString());
     if (opts.folderId) form.append('folderId', opts.folderId.toString());
     if (opts.force) form.append('force', 'true');
+    if (opts.clientHash) form.append('clientHash', opts.clientHash);
+    if (opts.originalWidth) form.append('originalWidth', opts.originalWidth.toString());
+    if (opts.originalHeight) form.append('originalHeight', opts.originalHeight.toString());
+    if (opts.dpi) form.append('dpi', opts.dpi.toString());
 
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable) onProgress(Math.round((e.loaded / e.total) * 90));
@@ -92,10 +117,45 @@ function uploadXHR(
       }
     };
     xhr.onerror = () => reject(new Error('Netzwerkfehler beim Upload'));
+    xhr.onabort = () => reject(new Error('Abgebrochen'));
     xhr.open('POST', '/upload');
     xhr.setRequestHeader('Authorization', `Bearer ${opts.token}`);
     xhr.send(form);
   });
+}
+
+/** Form fields of a multipart upload, reused by the chunked upload. */
+function uploadFields(opts: UploadXHROpts): Record<string, string> {
+  const fields: Record<string, string> = {};
+  if (opts.projectId) fields.projectId = opts.projectId.toString();
+  if (opts.folderId) fields.folderId = opts.folderId.toString();
+  if (opts.force) fields.force = 'true';
+  if (opts.clientHash) fields.clientHash = opts.clientHash;
+  if (opts.originalWidth) fields.originalWidth = opts.originalWidth.toString();
+  if (opts.originalHeight) fields.originalHeight = opts.originalHeight.toString();
+  if (opts.dpi) fields.dpi = opts.dpi.toString();
+  return fields;
+}
+
+const UPLOAD_CONCURRENCY = 3;
+
+/** Runs `worker` over `items` with at most `limit` in flight at once. */
+async function runWithConcurrency<T>(
+  items: T[],
+  limit: number,
+  worker: (item: T) => Promise<void>,
+  isAborted: () => boolean,
+): Promise<void> {
+  let cursor = 0;
+  const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+    while (cursor < items.length) {
+      if (isAborted()) return;
+      const item = items[cursor];
+      cursor += 1;
+      await worker(item);
+    }
+  });
+  await Promise.all(runners);
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
@@ -110,6 +170,8 @@ export const UploadPreviewModal = ({
 }: UploadPreviewModalProps) => {
   const token = useAuthStore((s) => s.token);
   const abortRef = useRef(false);
+  // Confirmation step before aborting running uploads.
+  const [confirmCancel, setConfirmCancel] = useState(false);
 
   // Build initial items from `files` once on mount.
   // The parent passes a changing `key` prop so this component remounts when files change.
@@ -152,21 +214,60 @@ export const UploadPreviewModal = ({
 
   const uploadOne = async (item: UploadFileItem, force = false) => {
     if (!token) return;
+    if (abortRef.current) return;
 
-    // Build a File with the (possibly renamed) name
+    // Preprocess images once (resize + hash + dims); reuse on force-retry.
+    let preprocessed = item.preprocessed;
+    const isImage = item.file.type.startsWith('image/');
+    if (isImage && !preprocessed) {
+      patchItem(item.id, { status: 'optimizing', progress: 0, errorMsg: undefined });
+      try {
+        preprocessed = await preprocessImageForUpload(item.file);
+      } catch {
+        preprocessed = { file: item.file };
+      }
+      if (abortRef.current) return;
+      patchItem(item.id, { preprocessed });
+    }
+
+    const baseFile = preprocessed?.file ?? item.file;
+
+    // Build a File with the (possibly renamed) name, preserving the (possibly changed) extension
+    const dot = baseFile.name.lastIndexOf('.');
+    const processedExt = dot > 0 ? baseFile.name.slice(dot) : item.ext;
+    const desiredName = item.name + processedExt;
     const uploadFile =
-      item.name + item.ext !== item.file.name
-        ? new File([item.file], item.name + item.ext, { type: item.file.type })
-        : item.file;
+      desiredName !== baseFile.name
+        ? new File([baseFile], desiredName, { type: baseFile.type })
+        : baseFile;
 
     patchItem(item.id, { status: 'uploading', progress: 0, errorMsg: undefined });
 
     try {
-      const { status, body } = await uploadXHR(
-        uploadFile,
-        { projectId, folderId, token, force },
-        (pct) => patchItem(item.id, { progress: pct }),
-      );
+      const uploadOpts: UploadXHROpts = {
+        projectId,
+        folderId,
+        token,
+        force,
+        clientHash: preprocessed?.clientHash,
+        originalWidth: preprocessed?.originalWidth,
+        originalHeight: preprocessed?.originalHeight,
+        dpi: preprocessed?.dpi,
+      };
+      // VID-03: Cloudflare rejects bodies > 100 MB — large files go up in chunks.
+      const { status, body } = uploadFile.size > CHUNKED_UPLOAD_THRESHOLD
+        ? await uploadFileInChunks(uploadFile, {
+            token,
+            fields: uploadFields(uploadOpts),
+            onProgress: (fraction) => patchItem(item.id, { progress: Math.round(fraction * 90) }),
+            onCancelReady: (cancel) => patchItem(item.id, { cancel }),
+          })
+        : await uploadXHR(
+            uploadFile,
+            uploadOpts,
+            (pct) => patchItem(item.id, { progress: pct }),
+            (xhr) => patchItem(item.id, { cancel: () => xhr.abort() }),
+          );
 
       if (status === 409 && body.duplicate) {
         patchItem(item.id, {
@@ -186,13 +287,19 @@ export const UploadPreviewModal = ({
         return;
       }
 
+      const backgroundProcessing = body.status === 'processing';
       patchItem(item.id, {
         status: 'done',
         progress: 100,
-        compressedSize: body.size as number,
+        compressedSize: backgroundProcessing ? undefined : (body.size as number),
+        backgroundProcessing,
       });
       onAssetUploaded(body);
     } catch (err) {
+      if (abortRef.current) {
+        patchItem(item.id, { status: 'error', errorMsg: 'Abgebrochen' });
+        return;
+      }
       patchItem(item.id, {
         status: 'error',
         errorMsg: err instanceof Error ? err.message : 'Unbekannter Fehler',
@@ -203,10 +310,12 @@ export const UploadPreviewModal = ({
   const handleUpload = async () => {
     setPhase('uploading');
     const pending = items.filter((it) => it.status === 'pending');
-    for (const item of pending) {
-      if (abortRef.current) break;
-      await uploadOne(item);
-    }
+    await runWithConcurrency(
+      pending,
+      UPLOAD_CONCURRENCY,
+      (item) => uploadOne(item),
+      () => abortRef.current,
+    );
     setPhase('done');
   };
 
@@ -220,7 +329,28 @@ export const UploadPreviewModal = ({
 
   const handleClose = () => {
     abortRef.current = true;
+    // Abort any in-flight uploads so the browser stops sending bytes.
+    items.forEach((it) => {
+      if (it.status === 'uploading' && it.cancel) {
+        it.cancel();
+      }
+    });
     onClose();
+  };
+
+  /** Aborts running uploads after confirmation; finished files stay in the library. */
+  const cancelUploads = () => {
+    abortRef.current = true;
+    items.forEach((it) => {
+      if (it.status === 'uploading' && it.cancel) it.cancel();
+    });
+    setItems((prev) => prev.map((it) =>
+      it.status === 'pending' || it.status === 'optimizing' || it.status === 'uploading'
+        ? { ...it, status: 'error', progress: 0, errorMsg: 'Abgebrochen', cancel: undefined }
+        : it
+    ));
+    setConfirmCancel(false);
+    setPhase('done');
   };
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -237,7 +367,16 @@ export const UploadPreviewModal = ({
         ].filter(Boolean).join(' · ') || 'Upload abgeschlossen';
 
   return (
-    <Dialog open={open} onOpenChange={(v) => !v && phase !== 'uploading' && handleClose()}>
+    <>
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (v) return;
+        // Closing while uploading would abort silently — ask first.
+        if (phase === 'uploading') setConfirmCancel(true);
+        else handleClose();
+      }}
+    >
       <DialogContent className="max-w-2xl gap-4">
         <DialogHeader>
           <DialogTitle className="text-zinc-100">{dialogTitle}</DialogTitle>
@@ -306,10 +445,16 @@ export const UploadPreviewModal = ({
             </>
           )}
           {phase === 'uploading' && (
-            <Button disabled className="bg-blue-600 text-white opacity-60 cursor-not-allowed">
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              Lädt hoch…
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setConfirmCancel(true)}>
+                <X className="h-4 w-4 mr-2" />
+                Upload abbrechen
+              </Button>
+              <Button disabled className="bg-blue-600 text-white opacity-60 cursor-not-allowed">
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Lädt hoch…
+              </Button>
+            </>
           )}
           {phase === 'done' && duplicateCount > 0 && (
             <Button
@@ -317,10 +462,12 @@ export const UploadPreviewModal = ({
               className="border-amber-700 text-amber-300 hover:bg-amber-900/30 hover:text-amber-100"
               onClick={async () => {
                 setPhase('uploading');
-                for (const it of duplicateItems) {
-                  if (abortRef.current) break;
-                  await uploadOne(it, true);
-                }
+                await runWithConcurrency(
+                  duplicateItems,
+                  UPLOAD_CONCURRENCY,
+                  (it) => uploadOne(it, true),
+                  () => abortRef.current,
+                );
                 setPhase('done');
               }}
             >
@@ -339,6 +486,28 @@ export const UploadPreviewModal = ({
         </div>
       </DialogContent>
     </Dialog>
+
+    {/* Abort confirmation */}
+    <Dialog open={confirmCancel} onOpenChange={setConfirmCancel}>
+      <DialogContent className="max-w-md gap-4">
+        <DialogHeader>
+          <DialogTitle className="text-zinc-100">Upload abbrechen?</DialogTitle>
+        </DialogHeader>
+        <p className="text-sm text-zinc-400">
+          Laufende und wartende Uploads werden abgebrochen, bereits übertragene Daten dieser Dateien
+          gehen verloren. Vollständig hochgeladene Dateien bleiben in der Bibliothek.
+        </p>
+        <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800">
+          <Button variant="outline" onClick={() => setConfirmCancel(false)}>
+            Weiter hochladen
+          </Button>
+          <Button variant="destructive" onClick={cancelUploads}>
+            Ja, abbrechen
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 };
 
@@ -393,7 +562,7 @@ function FileCard({
             <AlertCircle className="h-9 w-9 text-amber-400 drop-shadow" />
           </div>
         )}
-        {item.status === 'processing' && (
+        {(item.status === 'processing' || item.status === 'optimizing') && (
           <div className="absolute inset-0 bg-black/60 flex items-center justify-center rounded-lg">
             <Loader2 className="h-9 w-9 text-blue-400 animate-spin" />
           </div>
@@ -402,6 +571,9 @@ function FileCard({
 
       {/* Progress bar */}
       <div className="h-1 rounded-full overflow-hidden bg-zinc-800">
+        {item.status === 'optimizing' && (
+          <div className="h-full bg-blue-400/60 w-1/3 animate-pulse rounded-full" />
+        )}
         {item.status === 'uploading' && (
           <div
             className="h-full bg-blue-500 transition-all duration-200 rounded-full"
@@ -439,7 +611,9 @@ function FileCard({
 
       {/* Size / status line */}
       <div className="text-[10px] text-zinc-500 px-0.5 leading-tight min-h-[14px]">
-        {item.status === 'done' && item.compressedSize !== undefined ? (
+        {item.status === 'done' && item.backgroundProcessing ? (
+          <span className="text-blue-400">Wird im Hintergrund verarbeitet …</span>
+        ) : item.status === 'done' && item.compressedSize !== undefined ? (
           <span className="flex items-center gap-1">
             <span className="line-through text-zinc-600">{formatBytes(item.originalSize)}</span>
             <span className="text-green-400">{formatBytes(item.compressedSize)}</span>
@@ -449,6 +623,10 @@ function FileCard({
           </span>
         ) : item.status === 'error' ? (
           <span className="text-red-400">{item.errorMsg}</span>
+        ) : item.status === 'optimizing' ? (
+          <span className="text-blue-400">Wird optimiert …</span>
+        ) : item.status === 'uploading' ? (
+          <span>{formatBytes(item.originalSize)} · {item.progress}%</span>
         ) : (
           <span>{formatBytes(item.originalSize)}</span>
         )}

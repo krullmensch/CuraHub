@@ -7,8 +7,10 @@ services:
       MARIADB_DATABASE: ${DB_NAME}
       MARIADB_USER: ${DB_USER}
       MARIADB_PASSWORD: ${DB_PASSWORD}
+    # SEC-08: Docker port publishing bypasses ufw. Bind to loopback by default; cloudflared runs
+    # on the host and reaches the app via 127.0.0.1. Override *_BIND_ADDRESS only deliberately.
     ports:
-      - "${DB_EXTERNAL_PORT:-3306}:3306"
+      - "${DB_BIND_ADDRESS:-127.0.0.1}:${DB_EXTERNAL_PORT:-3306}:3306"
     volumes:
       - db_data:/var/lib/mysql
     networks:
@@ -25,7 +27,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     ports:
-      - "${APP_EXTERNAL_PORT:-3000}:${APP_PORT:-3000}"
+      - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_EXTERNAL_PORT:-3000}:${APP_PORT:-3000}"
     environment:
       DATABASE_URL: ${DATABASE_URL}
       PORT: ${APP_PORT:-3000}

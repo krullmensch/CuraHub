@@ -5,8 +5,6 @@ import { BrowserRouter } from 'react-router-dom'
 import App from './App.tsx'
 // import { ThemeProvider } from "./components/theme-provider"
 
-console.log("DEBUG: Main.tsx executing...");
-
 createRoot(document.getElementById('root')!).render(
 //   <StrictMode>
 //     <ThemeProvider defaultTheme="system" storageKey="vite-ui-theme">

@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { UploadDropzone } from './UploadDropzone';
-import { UploadPreviewModal } from './UploadPreviewModal';
+import { VideoProcessingBadge } from './VideoProcessingBadge';
+import { setCompactDragImage } from '@/lib/dragPreview';
 import { useEditorStore } from '../store/editorStore';
+import { useAuthStore } from '../store/authStore';
 import { Card, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
@@ -27,24 +29,8 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { gooeyToast } from 'goey-toast';
-import {
-  Trash2,
-  FileIcon,
-  Loader2,
-  Edit,
-  Play,
-  Folder as FolderIcon,
-  FolderPlus,
-  Inbox,
-  Layers,
-  MoreHorizontal,
-  Palette,
-  Pencil,
-  FolderInput,
-  Upload,
-} from 'lucide-react';
+import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus, Inbox, Layers, MoreHorizontal, Palette, Pencil, FolderInput, Upload, AlertCircle } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
-import { MetadataDialog } from './MetadataDialog';
 import { FolderColorPicker } from './FolderColorPicker';
 import {
   type Folder,
@@ -56,6 +42,15 @@ import {
   DEFAULT_FOLDER_COLOR,
 } from '@/lib/folders';
 import { cn } from '@/lib/utils';
+
+// LOAD-04: lazy-load these two dialogs — they pull in upload/preview/metadata
+// logic that isn't needed until the user actually uploads or edits an asset.
+const UploadPreviewModal = lazy(() =>
+  import('./UploadPreviewModal').then((m) => ({ default: m.UploadPreviewModal }))
+);
+const MetadataDialog = lazy(() =>
+  import('./MetadataDialog').then((m) => ({ default: m.MetadataDialog }))
+);
 
 interface Asset {
   id: number;
@@ -69,6 +64,8 @@ interface Asset {
   dpi: number;
   duration?: number | null;
   thumbnailPath?: string | null;
+  /** VID-03: 'processing' | 'ready' | 'failed' */
+  status?: string;
   folderId?: number | null;
   createdAt: string;
   artwork?: {
@@ -84,10 +81,22 @@ interface Asset {
     widthCm?: number;
     heightCm?: number;
     projectId?: string;
+    proxiesPending?: boolean;
   };
 }
 
 type FolderSelection = number | 'all' | 'unsorted';
+
+
+const isAssetReady = (asset: Asset) => asset.status !== 'processing' && asset.status !== 'failed';
+
+// LOAD-04: `Asset.thumbnailPath` stores the 512px variant; the 256px variant
+// is derived by naming convention (see server/src/lib/thumbnails.ts).
+function thumbnailSrcSet(asset: Asset): string | undefined {
+  if (!asset.thumbnailPath || !asset.thumbnailPath.endsWith('-thumb-512.webp')) return undefined;
+  const path256 = asset.thumbnailPath.replace(/-thumb-512\.webp$/, '-thumb-256.webp');
+  return `${path256} 256w, ${asset.thumbnailPath} 512w`;
+}
 
 const formatDuration = (seconds: number) => {
   const m = Math.floor(seconds / 60);
@@ -104,6 +113,8 @@ export const AssetLibrary = () => {
   const [contextMenu, setContextMenu] = useState<{ assetId: number; x: number; y: number } | null>(null);
   const activeProjectId = useEditorStore((state) => state.activeProjectId);
   const setDragging = useEditorStore((state) => state.setDragging);
+  const token = useAuthStore((state) => state.token);
+  const isAdmin = useAuthStore((state) => state.isAdmin);
 
   // Folder state
   const [folders, setFolders] = useState<Folder[]>([]);
@@ -147,10 +158,18 @@ export const AssetLibrary = () => {
   );
 
   const fetchAssets = useCallback(
-    async (folderSel: FolderSelection) => {
+    async (folderSel: FolderSelection, silent = false) => {
+      // SEC-03: the API requires a projectId for non-admins — the project may not be resolved yet.
+      if (!activeProjectId && !isAdmin) {
+        setAssets([]);
+        setLoading(false);
+        return;
+      }
       try {
-        setLoading(true);
-        const res = await fetch(buildAssetsUrl(folderSel));
+        if (!silent) setLoading(true);
+        const res = await fetch(buildAssetsUrl(folderSel), {
+          headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+        });
         if (!res.ok) throw new Error('Failed to fetch assets');
         const data = await res.json();
         setAssets(data);
@@ -163,7 +182,7 @@ export const AssetLibrary = () => {
         setLoading(false);
       }
     },
-    [buildAssetsUrl]
+    [buildAssetsUrl, token, activeProjectId, isAdmin]
   );
 
   const fetchFolders = useCallback(async () => {
@@ -195,6 +214,9 @@ export const AssetLibrary = () => {
     fetchAssets(selectedFolder);
   }, [selectedFolder, fetchAssets]);
 
+  // VID-03: a tile's processing badge reloads the list once its video is done.
+  const refreshAssetsSilently = useCallback(() => fetchAssets(selectedFolder, true), [fetchAssets, selectedFolder]);
+
   // ── Derived ──
   const totalAssetsCount =
     folders.reduce((sum, f) => sum + (f._count?.assets ?? 0), 0) + unsortedCount;
@@ -208,7 +230,10 @@ export const AssetLibrary = () => {
 
     try {
       const deletePromises = assetsToDelete.map((id) =>
-        fetch(`/api/assets/${id}`, { method: 'DELETE' }).then(async (res) => {
+        fetch(`/api/assets/${id}`, {
+          method: 'DELETE',
+          headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+        }).then(async (res) => {
           if (!res.ok) throw new Error(`Failed to delete asset ${id}`);
           return id;
         })
@@ -388,6 +413,8 @@ export const AssetLibrary = () => {
     e.stopPropagation();
     dragMovedRef.current = true;
     e.dataTransfer.setData('asset-id', assetId.toString());
+    // A standard type as well: Firefox/Zen can drop drags that only carry custom MIME types.
+    e.dataTransfer.setData('text/plain', String(assetId));
     e.dataTransfer.effectAllowed = 'move';
 
     // Set store drag state so ArtworkPlacement and EditorPage onDrop can work
@@ -409,126 +436,11 @@ export const AssetLibrary = () => {
       });
     }
 
-    // Build a custom drag ghost showing a stack of cards for multi-selections
+    // Subtle drag image: small thumbnail chip, with a count for multi-selections.
     const draggedIds = selectedIds.includes(assetId) && selectedIds.length > 1
       ? selectedIds
       : [assetId];
-
-    {
-      // Collect up to 3 thumbnails for the stack (front = dragged card)
-      const stackAssets = [
-        assets.find((a) => a.id === assetId),
-        ...assets.filter((a) => a.id !== assetId && draggedIds.includes(a.id)).slice(0, 2),
-      ].filter(Boolean) as Asset[];
-
-      const SIZE = 96;
-      const CARD_RADIUS = 10;
-      const PADDING = 20; // extra space for rotated back-cards
-      const TOTAL = SIZE + PADDING * 2;
-
-      const ghost = document.createElement('div');
-      ghost.style.cssText = `
-        position: fixed;
-        top: -1000px;
-        left: -1000px;
-        width: ${TOTAL}px;
-        height: ${TOTAL}px;
-        pointer-events: none;
-      `;
-
-      // Render back cards first (reversed), then front card on top
-      const rotations = [7, 3.5];
-      const offsets = [10, 5];
-
-      stackAssets
-        .slice()
-        .reverse()
-        .forEach((asset, reverseIdx) => {
-          const isFront = reverseIdx === stackAssets.length - 1;
-          const stackIdx = stackAssets.length - 1 - reverseIdx; // 0 = front
-          const card = document.createElement('div');
-
-          const rot = isFront ? 0 : rotations[Math.min(stackIdx - 1, rotations.length - 1)];
-          const tx = isFront ? 0 : offsets[Math.min(stackIdx - 1, offsets.length - 1)];
-          const shadow = isFront
-            ? '0 8px 24px rgba(0,0,0,0.55)'
-            : '0 4px 12px rgba(0,0,0,0.4)';
-
-          card.style.cssText = `
-            position: absolute;
-            top: ${PADDING}px;
-            left: ${PADDING}px;
-            width: ${SIZE}px;
-            height: ${SIZE}px;
-            border-radius: ${CARD_RADIUS}px;
-            overflow: hidden;
-            background: #18181b;
-            border: 1.5px solid #3f3f46;
-            box-shadow: ${shadow};
-            transform: rotate(${rot}deg) translateX(${tx}px);
-            transform-origin: center center;
-          `;
-
-          const thumb =
-            asset.type === 'video' && asset.thumbnailPath
-              ? asset.thumbnailPath
-              : (asset.type || 'image') === 'image'
-              ? asset.path
-              : null;
-
-          if (thumb) {
-            const img = document.createElement('img');
-            img.src = thumb;
-            img.style.cssText = `
-              width: 100%;
-              height: 100%;
-              object-fit: cover;
-              display: block;
-            `;
-            card.appendChild(img);
-          } else {
-            // Fallback for 3D models / unknown types
-            card.style.background = '#27272a';
-            card.style.display = 'flex';
-            card.style.alignItems = 'center';
-            card.style.justifyContent = 'center';
-            card.innerHTML = `<span style="color:#71717a;font-size:11px;font-family:sans-serif;text-transform:uppercase;letter-spacing:.05em;">${asset.filename.split('.').pop() ?? '3D'}</span>`;
-          }
-
-          ghost.appendChild(card);
-        });
-
-      // Count badge
-      if (draggedIds.length > 1) {
-        const badge = document.createElement('div');
-        badge.style.cssText = `
-          position: absolute;
-          top: ${PADDING - 8}px;
-          right: ${PADDING - 8}px;
-          min-width: 22px;
-          height: 22px;
-          padding: 0 6px;
-          border-radius: 11px;
-          background: #2563eb;
-          color: #fff;
-          font-size: 11px;
-          font-weight: 700;
-          font-family: sans-serif;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-          z-index: 10;
-        `;
-        badge.textContent = String(draggedIds.length);
-        ghost.appendChild(badge);
-      }
-
-      document.body.appendChild(ghost);
-      e.dataTransfer.setDragImage(ghost, TOTAL / 2, TOTAL / 2);
-      // Remove after the browser has captured the drag image
-      requestAnimationFrame(() => document.body.removeChild(ghost));
-    }
+    setCompactDragImage(e.dataTransfer, (e.currentTarget as Element).querySelector('img'), draggedIds.length);
   }; // end handleAssetDragStart
 
   const handleFolderDragOver = (e: React.DragEvent, folderSel: FolderSelection) => {
@@ -680,7 +592,10 @@ export const AssetLibrary = () => {
   };
 
   // ── Render helpers ──
-  const FolderRow = ({
+  // Plain render function, not a component: a component defined inside render is a new type on
+  // every render, so React remounted all folder rows on each state change (e.g. the drop-target
+  // highlight while dragging, or asset polling) — drop targets were replaced mid-drag.
+  const renderFolderRow = ({
     sel,
     label,
     icon,
@@ -699,6 +614,7 @@ export const AssetLibrary = () => {
     const isDropTarget = dragOverFolder === sel && sel !== 'all';
     return (
       <div
+        key={String(sel)}
         onClick={() => setSelectedFolder(sel)}
         onDragOver={(e) => handleFolderDragOver(e, sel)}
         onDragLeave={handleFolderDragLeave}
@@ -809,30 +725,29 @@ export const AssetLibrary = () => {
             </h3>
           </div>
           <div className="flex-1 overflow-y-auto p-2 space-y-1">
-            <FolderRow
-              sel="all"
-              label="Alle Assets"
-              icon={<Layers className="h-4 w-4" />}
-              count={totalAssetsCount}
-            />
-            <FolderRow
-              sel="unsorted"
-              label="Unsortiert"
-              icon={<Inbox className="h-4 w-4" />}
-              count={unsortedCount}
-            />
+            {renderFolderRow({
+              sel: 'all',
+              label: 'Alle Assets',
+              icon: <Layers className="h-4 w-4" />,
+              count: totalAssetsCount,
+            })}
+            {renderFolderRow({
+              sel: 'unsorted',
+              label: 'Unsortiert',
+              icon: <Inbox className="h-4 w-4" />,
+              count: unsortedCount,
+            })}
             {folders.length > 0 && (
               <div className="pt-2 mt-2 border-t border-zinc-800/50">
                 {folders.map((folder) => (
-                  <FolderRow
-                    key={folder.id}
-                    sel={folder.id}
-                    label={folder.name}
-                    icon={<FolderIcon className="h-4 w-4" />}
-                    color={folder.color}
-                    count={folder._count?.assets ?? 0}
-                    folder={folder}
-                  />
+                  renderFolderRow({
+                    sel: folder.id,
+                    label: folder.name,
+                    icon: <FolderIcon className="h-4 w-4" />,
+                    color: folder.color,
+                    count: folder._count?.assets ?? 0,
+                    folder,
+                  })
                 ))}
               </div>
             )}
@@ -976,7 +891,7 @@ export const AssetLibrary = () => {
                 return (
                   <Card
                     key={asset.id}
-                    draggable
+                    draggable={isAssetReady(asset)}
                     onDragStart={(e) => handleAssetDragStart(e, asset.id)}
                     onDragEnd={() => setDragging(false, null)}
                     onContextMenu={(e) => {
@@ -990,6 +905,7 @@ export const AssetLibrary = () => {
                         : 'border-zinc-800 hover:border-zinc-700'
                     )}
                     onClick={(e) => toggleSelect(asset.id, e)}
+                    style={{ contentVisibility: 'auto', containIntrinsicSize: '220px 220px' }}
                   >
                     <div className="aspect-square relative flex items-center justify-center bg-black/40 p-2">
                       {isModel ? (
@@ -1014,17 +930,35 @@ export const AssetLibrary = () => {
                         </div>
                       ) : (asset.type || 'image') === 'image' ? (
                         <img
-                          src={asset.path}
+                          src={asset.thumbnailPath || asset.path}
+                          srcSet={thumbnailSrcSet(asset)}
+                          sizes="220px"
                           alt={asset.filename}
                           className={cn(
                             'max-h-full max-w-full object-contain transition-opacity',
                             isSelected ? 'opacity-90' : 'opacity-100'
                           )}
                           draggable={false}
+                          loading="lazy"
+                          decoding="async"
                         />
                       ) : (
                         <FileIcon className="h-12 w-12 text-gray-600" />
                       )}
+
+                      {asset.status === 'failed' ? (
+                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-black/60 px-2 text-center pointer-events-none">
+                          <AlertCircle className="h-6 w-6 text-amber-400" />
+                          <span className="text-xs text-white">Verarbeitung fehlgeschlagen</span>
+                        </div>
+                      ) : (asset.status === 'processing' || asset.metadata?.proxiesPending) ? (
+                        <VideoProcessingBadge
+                          assetId={asset.id}
+                          blocking={asset.status === 'processing'}
+                          size="md"
+                          onSettled={refreshAssetsSilently}
+                        />
+                      ) : null}
 
                       <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 pointer-events-none">
                         <Button
@@ -1126,16 +1060,20 @@ export const AssetLibrary = () => {
             </>
           )}
 
-          {/* Upload Preview Modal */}
-          <UploadPreviewModal
-            key={uploadKey}
-            files={pendingFiles}
-            projectId={activeProjectId}
-            folderId={folderForUpload}
-            open={uploadModalOpen}
-            onClose={handleUploadModalClose}
-            onAssetUploaded={handleAssetUploaded}
-          />
+          {/* Upload Preview Modal — mounted (and its module loaded) only once needed */}
+          {(uploadModalOpen || pendingFiles.length > 0) && (
+            <Suspense fallback={null}>
+              <UploadPreviewModal
+                key={uploadKey}
+                files={pendingFiles}
+                projectId={activeProjectId}
+                folderId={folderForUpload}
+                open={uploadModalOpen}
+                onClose={handleUploadModalClose}
+                onAssetUploaded={handleAssetUploaded}
+              />
+            </Suspense>
+          )}
 
           {/* Delete Confirmation Dialog */}
           <Dialog
@@ -1166,11 +1104,13 @@ export const AssetLibrary = () => {
 
           {/* Metadata Edit Dialog */}
           {selectedAsset && (
-            <MetadataDialog
-              asset={selectedAsset}
-              onSave={handleMetadataSaved}
-              onCancel={() => setSelectedAsset(null)}
-            />
+            <Suspense fallback={null}>
+              <MetadataDialog
+                asset={selectedAsset}
+                onSave={handleMetadataSaved}
+                onCancel={() => setSelectedAsset(null)}
+              />
+            </Suspense>
           )}
 
           {/* Create Folder Dialog */}

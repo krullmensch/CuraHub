@@ -31,8 +31,6 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
                 {/* Main wall mesh */}
                 <mesh
                     name="ModularWall"
-                    castShadow
-                    receiveShadow
                     onClick={handleClick}
                     userData={{ wallId: wall.id }}
                 >

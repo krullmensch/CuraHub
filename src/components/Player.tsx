@@ -1,9 +1,10 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls, KeyboardControls, useKeyboardControls } from '@react-three/drei';
 import { RigidBody, CapsuleCollider, RapierRigidBody } from '@react-three/rapier';
 import * as THREE from 'three';
 import { useEditorStore } from '../store/editorStore';
+import { firstPersonTransition } from '../lib/cameraTransition';
 
 const SPEED = 3.5;
 const ACCEL_FACTOR = 12;  // How fast we reach target speed (higher = snappier)
@@ -14,19 +15,39 @@ const IDLE_BOB_SPEED = 0.6;       // Breathing rhythm (Hz-ish)
 const IDLE_BOB_AMOUNT_Y = 0.003;  // Vertical sway amplitude
 const IDLE_BOB_AMOUNT_X = 0.002;  // Horizontal sway amplitude
 
-export const PlayerController = ({ paused }: { paused: boolean }) => {
+/** Height of the camera above the player body's center. */
+export const PLAYER_EYE_OFFSET = 0.8;
+const DEFAULT_SPAWN: [number, number, number] = [-5.99, 0.8, 2.6];
+const DEFAULT_ROTATION: [number, number, number] = [0, -1.1, 0];
+
+interface PlayerControllerProps {
+    paused: boolean;
+    /** Body center at mount. Read once — later changes don't teleport the player. */
+    spawn?: [number, number, number];
+    /** Camera rotation (Euler XYZ) at mount. */
+    initialRotation?: [number, number, number];
+}
+
+export const PlayerController = ({ paused, spawn = DEFAULT_SPAWN, initialRotation = DEFAULT_ROTATION }: PlayerControllerProps) => {
     const { camera } = useThree();
     const [, getKeys] = useKeyboardControls();
     const rigidBody = useRef<RapierRigidBody>(null);
     const currentVelocity = useRef(new THREE.Vector2(0, 0)); // smoothed XZ velocity
 
+    const [spawnPosition] = useState(spawn);
+    const [spawnRotation] = useState(initialRotation);
+
     useEffect(() => {
-        // Apply initial rotation on mount to ensure looking straight ahead
-        camera.rotation.set(0, -1.1, 0);
-    }, [camera]);
+        // Apply initial rotation on mount (saved view when returning to first person). While the
+        // editor's camera flight is running it sets the same rotation when it lands.
+        if (firstPersonTransition.active) return;
+        camera.rotation.set(spawnRotation[0], spawnRotation[1], spawnRotation[2]);
+    }, [camera, spawnRotation]);
 
     useFrame((state, delta) => {
         if (!rigidBody.current) return;
+        // Editor camera still flying into first person — don't move or steer yet.
+        if (firstPersonTransition.active) return;
 
         // If paused, just dampen velocity to zero and return
         if (paused) {
@@ -83,7 +104,7 @@ export const PlayerController = ({ paused }: { paused: boolean }) => {
 
         // Sync Camera to Body
         const translation = rigidBody.current.translation();
-        const baseY = translation.y + 0.8;
+        const baseY = translation.y + PLAYER_EYE_OFFSET;
 
         // Subtle idle head sway when standing still
         const speed = currentVelocity.current.length();
@@ -101,7 +122,7 @@ export const PlayerController = ({ paused }: { paused: boolean }) => {
             colliders={false}
             mass={1}
             type="dynamic"
-            position={[-5.99, 0.8, 2.6]}
+            position={spawnPosition}
             enabledRotations={[false, false, false]}
             lockRotations
         >

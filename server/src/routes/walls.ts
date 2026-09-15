@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
+import { idempotency } from '../lib/idempotency';
 
 export const wallsRouter = Router();
 const prisma = new PrismaClient();
@@ -67,7 +68,7 @@ wallsRouter.get('/', authenticate, async (req: any, res) => {
 });
 
 // POST /walls — create a new wall
-wallsRouter.post('/', authenticate, async (req: any, res) => {
+wallsRouter.post('/', authenticate, idempotency, async (req: any, res) => {
     try {
         const data = createWallSchema.parse(req.body);
 

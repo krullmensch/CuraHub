@@ -1,6 +1,6 @@
 import { useState, Suspense, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { useGLTF, Center, OrbitControls, Environment } from '@react-three/drei';
+import { useGLTF, Center, OrbitControls, Environment, Lightformer } from '@react-three/drei';
 import * as THREE from 'three';
 import { useAuthStore } from '../store/authStore';
 import {
@@ -13,6 +13,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from 'lucide-react';
+import { VideoProcessingStatus, VideoProxiesProgress } from './VideoProcessingStatus';
+import type { VideoProcessingState } from '../hooks/use-video-processing';
 
 interface AssetData {
     id: number;
@@ -25,10 +27,13 @@ interface AssetData {
     height?: number;
     dpi?: number;
     thumbnailPath?: string | null;
+    /** VID-03: 'processing' | 'ready' | 'failed' */
+    status?: string;
     metadata?: {
         widthCm?: number;
         heightCm?: number;
         projectId?: string;
+        proxiesPending?: boolean;
     };
     artwork?: {
         id: number;
@@ -48,7 +53,8 @@ interface MetadataDialogProps {
 }
 
 function InteractiveModel({ url }: { url: string }) {
-  const { scene } = useGLTF(url);
+  // Uploaded GLBs are Draco-compressed; decoder served same-origin (no gstatic CDN).
+  const { scene } = useGLTF(url, '/draco/gltf/');
   const clonedScene = useMemo(() => {
     const clone = scene.clone(true);
     clone.traverse((child) => {
@@ -71,6 +77,9 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
   const token = useAuthStore((state) => state.token);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // VID-03: fields of a video whose background processing finished while this dialog was open.
+  const [processed, setProcessed] = useState<VideoProcessingState | null>(null);
+  const videoStatus = processed?.status ?? asset.status;
 
   const existingArtwork = asset.artwork;
 
@@ -165,13 +174,18 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
 
         <form onSubmit={handleSubmit} className="grid gap-4 py-4">
           <div className="flex justify-center mb-4 bg-black/20 rounded-lg p-2">
-             {(asset.type || 'image') === 'video' ? (
-                <video
-                    src={getImageUrl(asset.path)}
-                    controls
-                    className="h-48 object-contain"
-                    poster={asset.thumbnailPath || undefined}
-                />
+             {(asset.type || 'image') === 'video' && (videoStatus === 'processing' || videoStatus === 'failed') ? (
+                <VideoProcessingStatus assetId={asset.id} onFinished={setProcessed} />
+             ) : (asset.type || 'image') === 'video' ? (
+                <div className="flex w-full flex-col items-center gap-2">
+                    <video
+                        src={getImageUrl(processed?.path ?? asset.path)}
+                        controls
+                        className="h-48 object-contain"
+                        poster={(processed ? processed.thumbnailPath : asset.thumbnailPath) || undefined}
+                    />
+                    {(processed ? processed.proxiesPending : asset.metadata?.proxiesPending) && <VideoProxiesProgress assetId={asset.id} />}
+                </div>
              ) : (asset.type) === 'model3d' ? (
                 <div className="h-48 w-full">
                     <Suspense fallback={
@@ -187,7 +201,14 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
                         >
                             <ambientLight intensity={1.0} />
                             <directionalLight position={[2, 3, 4]} intensity={1.2} />
-                            <Environment preset="warehouse" background={false} environmentIntensity={0.3} />
+                            {/* LOAD-08: no external HDR (previously Environment preset="warehouse"
+                                fetched an HDR from raw.githack.com). Lightformer children bake a
+                                neutral studio environment entirely client-side, no file needed. */}
+                            <Environment background={false} environmentIntensity={0.3} resolution={64}>
+                                <Lightformer intensity={2} color="white" position={[0, 5, 0]} scale={[10, 10, 1]} />
+                                <Lightformer intensity={1} color="white" position={[-5, 1, 3]} rotation={[0, Math.PI / 2, 0]} scale={[10, 5, 1]} />
+                                <Lightformer intensity={1} color="white" position={[5, 1, 3]} rotation={[0, -Math.PI / 2, 0]} scale={[10, 5, 1]} />
+                            </Environment>
                             <Suspense fallback={null}>
                                 <InteractiveModel url={getImageUrl(asset.path)} />
                             </Suspense>

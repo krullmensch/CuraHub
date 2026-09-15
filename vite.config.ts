@@ -14,6 +14,58 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        // LOAD-01: long-term-cacheable vendor chunks, split so Home/Login only load
+        // the React runtime, while three/drei/rapier/xyflow/markdown stay in lazy chunks.
+        //
+        // This project runs rolldown-vite 7.2.5. With `manualChunks`, rolldown captured
+        // shared dependencies into the first group that imported them (verified in the
+        // build output: React itself ended up in vendor-markdown via react-markdown and
+        // the React scheduler in vendor-r3f via react-reconciler), which made both heavy
+        // chunks eager on every route. `advancedChunks` with
+        // `includeDependenciesRecursively: false` only places modules whose id matches a
+        // group's `test`; everything else follows its importers. The React runtime group
+        // has the highest priority so nested copies (e.g. under @react-three/fiber) also
+        // land there instead of pulling a heavy chunk into the entry graph.
+        advancedChunks: {
+          includeDependenciesRecursively: false,
+          groups: [
+            {
+              name: 'vendor-react',
+              priority: 50,
+              test: /node_modules[\\/](react|react-dom|scheduler|react-router|react-router-dom|zustand|use-sync-external-store)[\\/]/,
+            },
+            {
+              name: 'vendor-rapier',
+              priority: 40,
+              test: /node_modules[\\/](@react-three[\\/]rapier|@dimforge)[\\/]/,
+            },
+            {
+              name: 'vendor-xyflow',
+              priority: 40,
+              test: /node_modules[\\/](@xyflow|d3-[^\\/]+|classcat)[\\/]/,
+            },
+            // No separate markdown group: splitting react-markdown's CJS dependencies
+            // (style-to-js, inline-style-parser, …) into their own chunk broke module
+            // initialisation order ("o is not a function" on load, wiki did not open).
+            // Unmatched modules follow their only importer, the lazy WikiView chunk.
+            {
+              name: 'vendor-three',
+              priority: 30,
+              test: /node_modules[\\/](three|three-stdlib)[\\/]/,
+            },
+            {
+              name: 'vendor-r3f',
+              priority: 30,
+              test: /node_modules[\\/](@react-three[\\/](fiber|drei)|troika-[^\\/]+|three-mesh-bvh|camera-controls|maath|@use-gesture|its-fine|react-reconciler|suspend-react|react-use-measure|tunnel-rat|stats-gl|detect-gpu|hls\.js|@monogrid|@mediapipe|meshline|glsl-noise|@pmndrs)[\\/]/,
+            },
+          ],
+        },
+      },
+    },
+  },
   server: {
     host: true,
     proxy: {

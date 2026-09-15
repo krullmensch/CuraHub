@@ -1,12 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play } from 'lucide-react';
+import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play, AlertCircle } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/store/editorStore';
+import { useAuthStore } from '@/store/authStore';
 import { type Folder, listFolders, moveAssetToFolder } from '@/lib/folders';
+import { VideoProcessingBadge } from './VideoProcessingBadge';
+import { setCompactDragImage } from '@/lib/dragPreview';
 
 interface AssetSidebarProps {
     isOpen: boolean;
@@ -23,6 +26,9 @@ interface Asset {
   height: number;
   dpi?: number;
   thumbnailPath?: string | null;
+  /** VID-03: 'processing' | 'ready' | 'failed' */
+  status?: string;
+  metadata?: { proxiesPending?: boolean } | null;
   artwork?: {
     id: number;
     title: string;
@@ -33,6 +39,17 @@ interface Asset {
 
 type FolderFilter = 'all' | number;
 
+
+const isAssetReady = (asset: Asset) => asset.status !== 'processing' && asset.status !== 'failed';
+
+// LOAD-04: `Asset.thumbnailPath` stores the 512px variant; the 256px variant
+// is derived by naming convention (see server/src/lib/thumbnails.ts).
+function thumbnailSrcSet(asset: Asset): string | undefined {
+    if (!asset.thumbnailPath || !asset.thumbnailPath.endsWith('-thumb-512.webp')) return undefined;
+    const path256 = asset.thumbnailPath.replace(/-thumb-512\.webp$/, '-thumb-256.webp');
+    return `${path256} 256w, ${asset.thumbnailPath} 512w`;
+}
+
 export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [assets, setAssets] = useState<Asset[]>([]);
     const [loading, setLoading] = useState(false);
@@ -42,20 +59,23 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [dragOverFolderId, setDragOverFolderId] = useState<number | 'all' | null>(null);
     const setDragging = useEditorStore((state) => state.setDragging);
     const activeProjectId = useEditorStore((state) => state.activeProjectId);
+    const token = useAuthStore((state) => state.token);
 
-    const fetchAssets = useCallback(async (filter: FolderFilter) => {
+    const fetchAssets = useCallback(async (filter: FolderFilter, silent = false) => {
         if (!activeProjectId) {
             setAssets([]);
             setLoading(false);
             return;
         }
         try {
-            setLoading(true);
+            if (!silent) setLoading(true);
             const params = new URLSearchParams();
             params.set('projectId', String(activeProjectId));
             if (typeof filter === 'number') params.set('folderId', String(filter));
             const qs = params.toString();
-            const res = await fetch(`/api/assets?${qs}`);
+            const res = await fetch(`/api/assets?${qs}`, {
+                headers: token ? { 'Authorization': `Bearer ${token}` } : undefined,
+            });
             if (!res.ok) throw new Error('Failed to fetch assets');
             const data = await res.json();
             setAssets(data);
@@ -67,7 +87,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
         } finally {
             setLoading(false);
         }
-    }, [activeProjectId]);
+    }, [activeProjectId, token]);
 
     // Fetch folders list
     useEffect(() => {
@@ -86,6 +106,9 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     useEffect(() => {
         fetchAssets(activeFilter);
     }, [activeFilter, fetchAssets]);
+
+    // VID-03: a tile's processing badge reloads the list once its video is done.
+    const refreshAssetsSilently = useCallback(() => fetchAssets(activeFilter, true), [fetchAssets, activeFilter]);
 
     const handleAssetClick = (e: React.MouseEvent, assetId: number) => {
         if (e.ctrlKey || e.metaKey) {
@@ -108,15 +131,10 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
 
         // Store IDs for folder drop targets
         e.dataTransfer.setData('asset-ids', JSON.stringify(dragIds));
-
-        // Replace browser drag ghost with an invisible image (canvas drop uses store state instead)
-        const emptyImg = document.createElement('canvas');
-        emptyImg.width = 1;
-        emptyImg.height = 1;
-        e.dataTransfer.setDragImage(emptyImg, 0, 0);
-
         e.dataTransfer.setData('asset-id', asset.id.toString());
         e.dataTransfer.setData('asset-data', JSON.stringify(asset));
+        // A standard type as well: Firefox/Zen can drop drags that only carry custom MIME types.
+        e.dataTransfer.setData('text/plain', asset.artwork?.title || asset.filename);
         e.dataTransfer.effectAllowed = 'copyMove';
 
         const isArtwork = !!asset.artwork;
@@ -134,6 +152,9 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
             artworkWidth: asset.artwork?.width,
             artworkHeight: asset.artwork?.height,
         });
+
+        // Drag image last (after the data): a small thumbnail chip at the cursor.
+        setCompactDragImage(e.dataTransfer, e.currentTarget.querySelector('img'), dragIds.length);
     };
 
     const handleDragEnd = () => {
@@ -255,7 +276,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                             {assets.map((asset) => (
                                 <div
                                     key={asset.id}
-                                    draggable
+                                    draggable={isAssetReady(asset)}
                                     onClick={(e) => handleAssetClick(e, asset.id)}
                                     onDragStart={(e) => handleDragStart(e, asset)}
                                     onDragEnd={handleDragEnd}
@@ -266,13 +287,18 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                             : "border-zinc-800 hover:border-zinc-600"
                                     )}
                                     title={asset.artwork?.title || asset.filename}
+                                    style={{ contentVisibility: 'auto', containIntrinsicSize: '256px 256px' }}
                                 >
                                     {(asset.type || 'image') === 'image' ? (
                                         <img
-                                            src={asset.path}
+                                            src={asset.thumbnailPath || asset.path}
+                                            srcSet={thumbnailSrcSet(asset)}
+                                            sizes="128px"
                                             alt={asset.filename}
                                             className="w-full h-full object-cover"
                                             draggable={false}
+                                            loading="lazy"
+                                            decoding="async"
                                         />
                                     ) : asset.type === 'video' ? (
                                         <div className="relative w-full h-full flex items-center justify-center bg-zinc-800">
@@ -294,6 +320,18 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                             <FileIcon className="h-6 w-6 text-zinc-600" />
                                         </div>
                                     )}
+                                    {asset.status === 'failed' ? (
+                                        <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/60 px-1 text-center pointer-events-none">
+                                            <AlertCircle className="h-4 w-4 text-amber-400" />
+                                            <span className="text-[10px] leading-tight text-white">Verarbeitung fehlgeschlagen</span>
+                                        </div>
+                                    ) : (asset.status === 'processing' || asset.metadata?.proxiesPending) ? (
+                                        <VideoProcessingBadge
+                                            assetId={asset.id}
+                                            blocking={asset.status === 'processing'}
+                                            onSettled={refreshAssetsSilently}
+                                        />
+                                    ) : null}
                                     <div className="absolute inset-x-0 bottom-0 bg-black/60 p-1 translate-y-full group-hover:translate-y-0 transition-transform">
                                         <p className="text-[10px] text-white truncate text-center">
                                             {asset.artwork?.title || asset.filename}

@@ -4,9 +4,12 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
+import { useRenderQualitySettings } from '../hooks/use-render-quality';
+import { pickVideoSource } from '../lib/videoSource';
 
-// Preload the monitor GLB so the first Monitor placement doesn't stall the main scene.
-useGLTF.preload('/models/Monitor65.glb');
+// Monitor GLB preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing
+// this component no longer downloads the model on every route, including the home page
+// (LOAD-02).
 
 interface VideoInstanceProps {
     instance: ArtworkInstanceData;
@@ -19,7 +22,11 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
         const asset = instance.artwork.asset;
         const selectInstance = useEditorStore((state) => state.selectInstance);
         const gl = useThree((state) => state.gl);
+        const invalidate = useThree((state) => state.invalidate);
         const [muted, setMuted] = useState(true);
+        // VID-04: low/medium presets play a smaller proxy version when one exists.
+        const { videoMaxShortEdge } = useRenderQualitySettings();
+        const src = pickVideoSource(asset, videoMaxShortEdge);
 
         // DPI-based sizing (same as SelectableInstance) — used as the base unit before user scale
         const dpi = asset.dpi || 72;
@@ -33,12 +40,14 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
         // Create a dedicated video element and texture per instance
         const { video, texture } = useMemo(() => {
             const vid = document.createElement('video');
-            vid.src = asset.path;
+            vid.src = src;
             vid.crossOrigin = 'anonymous';
             vid.loop = true;
             vid.muted = true;
             vid.playsInline = true;
-            vid.preload = 'auto';
+            // Load metadata only — full data loads on play() (VID-01). The viewer still
+            // autoplays because play() itself triggers loading.
+            vid.preload = 'metadata';
 
             const tex = new THREE.VideoTexture(vid);
             tex.minFilter = THREE.LinearFilter;
@@ -61,6 +70,20 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             if (video.videoWidth > 0) onMeta();
             return () => video.removeEventListener('loadedmetadata', onMeta);
         }, [video]);
+
+        // Preset switched to another version: keep playback position and play state.
+        useEffect(() => {
+            if (video.getAttribute('src') === src) return;
+            const time = video.currentTime;
+            const wasPlaying = !video.paused;
+            const onLoaded = () => {
+                if (time > 0 && Number.isFinite(video.duration)) video.currentTime = Math.min(time, video.duration);
+                if (wasPlaying) video.play().catch(() => { /* autoplay blocked */ });
+            };
+            video.addEventListener('loadedmetadata', onLoaded, { once: true });
+            video.src = src;
+            return () => video.removeEventListener('loadedmetadata', onLoaded);
+        }, [video, src]);
 
         // Track the material we attach to the Monitor's VideoScreen mesh so we can dispose it.
         const screenMaterialRef = useRef<THREE.MeshBasicMaterial | null>(null);
@@ -111,13 +134,16 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 let handle: number;
                 const onFrame = () => {
                     hasNewFrame.current = true;
+                    // RND-02: under frameloop="demand" nothing else requests a new frame
+                    // while a video plays — ask for one whenever a decoded frame is ready.
+                    invalidate();
                     handle = vid.requestVideoFrameCallback(onFrame);
                 };
                 handle = vid.requestVideoFrameCallback(onFrame);
                 return () => vid.cancelVideoFrameCallback(handle);
             }
             return undefined;
-        }, [video]);
+        }, [video, invalidate]);
 
         useFrame(() => {
             if (video.paused || video.readyState < 2) return;
@@ -133,6 +159,9 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 if (frameCounter.current % 2 === 0) {
                     texture.needsUpdate = true;
                 }
+                // No requestVideoFrameCallback here to drive invalidate() — keep requesting
+                // frames every tick while playing so the texture actually advances under demand.
+                invalidate();
             }
         });
 
@@ -151,16 +180,23 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
         const medium = instance.medium || 'display';
         const isPortrait = videoAspect !== null && videoAspect < 1;
 
+        // Portrait video on a monitor: the whole monitor is turned by -90° (see the Monitor branch),
+        // but the display's UVs are landscape — without counter-rotating the texture the video
+        // appeared sideways and stretched. Beamer planes already match the video aspect.
+        useEffect(() => {
+            texture.center.set(0.5, 0.5);
+            texture.rotation = medium === 'monitor' && isPortrait ? -Math.PI / 2 : 0;
+            invalidate();
+        }, [texture, medium, isPortrait, invalidate]);
+
         // Monitor branch: load Monitor65.glb and map the video texture onto the VideoScreen mesh.
         // useGLTF is always called (rules of hooks) — the result is only mounted when medium === 'monitor'.
         const { scene: monitorGltfScene } = useGLTF('/models/Monitor65.glb');
-        const { monitorScene, monitorMaxZ } = useMemo(() => {
+        const { monitorScene, monitorMaxZ, monitorSize, monitorCenter } = useMemo(() => {
             const cloned = monitorGltfScene.clone(true);
             cloned.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
                     const mesh = child as THREE.Mesh;
-                    mesh.castShadow = true;
-                    mesh.receiveShadow = true;
                     if (mesh.name === 'Display') {
                         const mat = new THREE.MeshBasicMaterial({
                             map: texture,
@@ -181,7 +217,13 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             const bbox = new THREE.Box3().setFromObject(cloned);
             // Cache the GLB's local bottom extent so artworkMinY() can clamp correctly
             monitorGlbBounds.minY = bbox.min.y;
-            return { monitorScene: cloned, monitorMaxZ: bbox.max.z };
+            monitorGlbBounds.maxX = bbox.max.x;
+            return {
+                monitorScene: cloned,
+                monitorMaxZ: bbox.max.z,
+                monitorSize: bbox.getSize(new THREE.Vector3()),
+                monitorCenter: bbox.getCenter(new THREE.Vector3()),
+            };
         }, [monitorGltfScene, texture]);
 
         // Beamer branch: derive the plane size from the live video aspect (fall back to asset metadata, then 16:9).
@@ -242,8 +284,10 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                         <primitive object={monitorScene} />
                     </group>
                     {selected && (
-                        <mesh position={[0, 0, 0]}>
-                            <boxGeometry args={[1.5, 0.9, 0.1]} />
+                        // Selection box from the model's real bounds, following the portrait rotation
+                        // (Ry(π) then Rz(-π/2) maps the model's (x, y) to (-y, -x); landscape to (-x, y)).
+                        <mesh position={isPortrait ? [-monitorCenter.y, -monitorCenter.x, 0] : [-monitorCenter.x, monitorCenter.y, 0]}>
+                            <boxGeometry args={isPortrait ? [monitorSize.y, monitorSize.x, 0.1] : [monitorSize.x, monitorSize.y, 0.1]} />
                             <meshBasicMaterial color="#3b82f6" wireframe transparent opacity={0.4} />
                         </mesh>
                     )}

@@ -59,6 +59,5 @@ RUN mkdir -p uploads
 # Expose backend port
 EXPOSE 3000
 
-# Run prisma db push to ensure tables exist, then start
-# We use db push instead of migrate deploy because there are no migration files yet
-CMD ["sh", "-c", "npx prisma db push && npm start"]
+# CLN-03: apply migrations (baselines databases created by the old `prisma db push` start), then start
+CMD ["sh", "-c", "node dist/scripts/prepare-db.js && npm start"]

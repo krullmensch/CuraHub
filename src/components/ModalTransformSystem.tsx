@@ -10,7 +10,7 @@ export const ModalTransformSystem = () => {
     const transformMode = useEditorStore(state => state.transformMode);
     const transformAxisLock = useEditorStore(state => state.transformAxisLock);
     const commitActiveObjectTransform = useEditorStore(state => state.commitActiveObjectTransform);
-    const { camera } = useThree();
+    const { camera, invalidate } = useThree();
 
     // Store initial transform when modal starts
     const initialTransform = useRef<{ position: THREE.Vector3, quaternion: THREE.Quaternion, scale: THREE.Vector3 } | null>(null);
@@ -76,6 +76,11 @@ export const ModalTransformSystem = () => {
 
                 activeObjectRef.rotateOnWorldAxis(axis, angle);
             }
+
+            // RND-02: this mutates the Object3D directly (no gizmo, no JSX prop change),
+            // so nothing else requests a frame under frameloop="demand" — invalidate on
+            // every move while the modal G/R/S transform is active.
+            invalidate();
         };
 
         const onMouseDown = (e: MouseEvent) => {
@@ -88,6 +93,8 @@ export const ModalTransformSystem = () => {
                      activeObjectRef.position.copy(initialTransform.current.position);
                      activeObjectRef.quaternion.copy(initialTransform.current.quaternion);
                      activeObjectRef.scale.copy(initialTransform.current.scale);
+                     // Revert is a direct Object3D mutation too — request the frame that shows it.
+                     invalidate();
                  }
              }
         };
@@ -103,7 +110,7 @@ export const ModalTransformSystem = () => {
             window.removeEventListener('mousedown', onMouseDown);
             window.removeEventListener('contextmenu', onContextMenu);
         };
-    }, [modalTransformActive, activeObjectRef, transformMode, transformAxisLock, camera, commitActiveObjectTransform, setModalTransformActive]);
+    }, [modalTransformActive, activeObjectRef, transformMode, transformAxisLock, camera, commitActiveObjectTransform, setModalTransformActive, invalidate]);
 
     return null;
 };
