@@ -40,11 +40,45 @@ type SatellitProps = React.JSX.IntrinsicElements['group'] & {
   viewMode?: 'orthographic' | 'perspective' | 'firstPerson';
   /** RND-04: false in the "low" render preset. */
   rectAreaLights?: boolean;
+  /**
+   * Clear window glass instead of the modelled one. The modelled glass (alpha ≈ 0.53, beige, rough
+   * metal) was made for an empty void outside and looks frosted in front of the street view.
+   */
+  clearGlass?: boolean;
 }
 
-export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, ...props }: SatellitProps) {
+/**
+ * Smooth, slightly tinted glass: almost transparent when looked through straight on, more opaque
+ * and reflective at grazing angles (Fresnel), which is what makes a pane readable as glass.
+ */
+function createClearGlassMaterial(): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({
+    color: '#dfe8e6',
+    metalness: 0,
+    roughness: 0.06,
+    transparent: true,
+    opacity: 0.1,
+    depthWrite: false,
+    side: THREE.DoubleSide,
+  });
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <opaque_fragment>',
+      `#include <opaque_fragment>
+      float glassFacing = abs(dot(normalize(normal), normalize(vViewPosition)));
+      gl_FragColor.a = mix(gl_FragColor.a, 0.6, pow(1.0 - glassFacing, 5.0));`,
+    );
+  };
+  material.customProgramCacheKey = () => 'curahub-clear-window-glass';
+  return material;
+}
+
+export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clearGlass = false, ...props }: SatellitProps) {
   const { nodes, materials } = useGLTF(SATELLIT_MODEL_URL) as unknown as GLTFResult
   const showTraverses = useEditorStore((state) => state.showTraverses);
+
+  const clearGlassMaterial = useMemo(() => (clearGlass ? createClearGlassMaterial() : null), [clearGlass]);
+  useEffect(() => () => clearGlassMaterial?.dispose(), [clearGlassMaterial]);
 
   // Ensure wall material is visible from both sides (inside the room in first-person)
   useEffect(() => {
@@ -90,7 +124,7 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, ...p
       <mesh geometry={nodes.Decke001.geometry} material={materials['Material.005']} visible={viewMode === 'firstPerson'} />
       <mesh name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} />
       <mesh geometry={nodes.Boden001.geometry} material={materials['Material.005']} />
-      <mesh geometry={nodes.Fenster001.geometry} material={materials.Glass} />
+      <mesh geometry={nodes.Fenster001.geometry} material={clearGlassMaterial ?? materials.Glass} />
       <mesh geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />
       <mesh geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={[6.33, 1, 0.12]} />
       <mesh geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={[-6.33, 1, 2.372]} />

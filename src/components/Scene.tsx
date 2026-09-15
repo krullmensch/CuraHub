@@ -1,4 +1,4 @@
-import { Suspense } from 'react';
+import { Suspense, useState } from 'react';
 import { Grid } from '@react-three/drei';
 import { Satellit } from './Satellit';
 import { PlacedArtworks } from './PlacedArtworks';
@@ -8,6 +8,7 @@ import { FPVArtworkRaycaster } from './FPVArtworkRaycaster';
 import { ArtworkTextureProvider } from './ArtworkTextureProvider';
 import { FrameInstancerProvider } from './FrameInstancer';
 import { ShaderWarmup } from './ShaderWarmup';
+import { WindowView } from './WindowView';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
@@ -22,9 +23,11 @@ interface SceneProps {
 export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShadersReady }: SceneProps) => {
     const plannerViewMode = useEditorStore(state => state.plannerViewMode);
     const { rectAreaLights } = useRenderQualitySettings();
+    const [windowViewReady, setWindowViewReady] = useState(false);
 
     // In Viewer mode (not editor), always force First Person
     const viewMode = isEditor ? plannerViewMode : 'firstPerson';
+    const showWindowView = viewMode === 'firstPerson';
 
     return (
         <ArtworkTextureProvider>
@@ -69,7 +72,18 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShaders
                 )}
 
                 {/* Room collider lives in physics/PhysicsWorld.tsx (RND-08: Rapier loads only for first person). */}
-                <Satellit viewMode={viewMode} rectAreaLights={rectAreaLights} />
+                <Satellit
+                    viewMode={viewMode}
+                    rectAreaLights={rectAreaLights}
+                    clearGlass={showWindowView && windowViewReady}
+                />
+
+                {/* Street outside the windows — first person only; loads when entering it. */}
+                {showWindowView && (
+                    <Suspense fallback={null}>
+                        <WindowView onReadyChange={setWindowViewReady} />
+                    </Suspense>
+                )}
 
                 <Suspense fallback={null}>
                     <PlacedArtworks viewerInstances={viewerInstances} isEditor={isEditor} />
