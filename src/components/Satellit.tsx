@@ -5,7 +5,8 @@ Command: npx gltfjsx@6.5.3 public/models/Satellit_new-optimized.glb --types --sh
 
 import * as THREE from 'three'
 import { RectAreaLightUniformsLib } from 'three/examples/jsm/lights/RectAreaLightUniformsLib.js'
-import React, { useMemo, useEffect } from 'react'
+import React, { useMemo, useEffect, useRef } from 'react'
+import { useThree } from '@react-three/fiber'
 import { useGLTF } from '@react-three/drei'
 import type { GLTF } from 'three-stdlib'
 import { useEditorStore } from '../store/editorStore'
@@ -47,17 +48,34 @@ type SatellitProps = React.JSX.IntrinsicElements['group'] & {
   clearGlass?: boolean;
 }
 
+/** Resolution of the room capture the window glass reflects. */
+const GLASS_REFLECTION_SIZE = 256;
+/** Delays (ms) after the street view appears at which the room is captured again, so artworks that load late show up. */
+const GLASS_REFLECTION_CAPTURES_MS = [400, 3000, 10000];
+/** Eye height of the reflection capture above the room's floor level. */
+const GLASS_REFLECTION_EYE_HEIGHT = 1.6;
+
 /**
- * Smooth, slightly tinted glass: almost transparent when looked through straight on, more opaque
- * and reflective at grazing angles (Fresnel), which is what makes a pane readable as glass.
+ * Tinted window glass for the street view: grey-green tint, dirt from the modelled glass texture
+ * (its alpha channel holds the smudge pattern) and a reflection of the room, all getting stronger
+ * at grazing angles (Fresnel), which is what makes a pane readable as glass.
  */
-function createClearGlassMaterial(): THREE.MeshStandardMaterial {
+function createClearGlassMaterial(modelledGlass: THREE.MeshStandardMaterial) {
+  const reflection = new THREE.WebGLCubeRenderTarget(GLASS_REFLECTION_SIZE, { type: THREE.HalfFloatType });
+  // Build the (still empty) PMREM right away so the shader compiles with the env map once, not again after the first capture.
+  reflection.texture.needsPMREMUpdate = true;
+
   const material = new THREE.MeshStandardMaterial({
-    color: '#dfe8e6',
+    color: '#6f837f',
     metalness: 0,
-    roughness: 0.06,
+    roughness: 0.12,
+    map: modelledGlass.map,
+    roughnessMap: modelledGlass.roughnessMap,
+    normalMap: modelledGlass.normalMap,
+    normalScale: modelledGlass.normalScale.clone().multiplyScalar(0.3),
+    envMap: reflection.texture,
+    envMapIntensity: 3,
     transparent: true,
-    opacity: 0.1,
     depthWrite: false,
     side: THREE.DoubleSide,
   });
@@ -65,20 +83,37 @@ function createClearGlassMaterial(): THREE.MeshStandardMaterial {
     shader.fragmentShader = shader.fragmentShader.replace(
       '#include <opaque_fragment>',
       `#include <opaque_fragment>
+      float glassDirt = 0.0;
+      #ifdef USE_MAP
+        glassDirt = smoothstep(0.49, 0.6, texture2D(map, vMapUv).a);
+      #endif
+      // Dust scatters the room light: lighter, warm grey wherever the pane is dirty.
+      vec3 glassIrradiance = totalDiffuse / max(diffuseColor.rgb, vec3(0.01));
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.62, 0.6, 0.55) * glassIrradiance, glassDirt * 0.55);
+      float glassReflection = clamp(dot(totalSpecular, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
       float glassFacing = abs(dot(normalize(normal), normalize(vViewPosition)));
-      gl_FragColor.a = mix(gl_FragColor.a, 0.6, pow(1.0 - glassFacing, 5.0));`,
+      float glassAlpha = 0.2 + glassDirt * 0.22 + glassReflection * 0.7;
+      gl_FragColor.a = clamp(mix(glassAlpha, 0.8, pow(1.0 - glassFacing, 5.0)), 0.0, 0.92);`,
     );
   };
-  material.customProgramCacheKey = () => 'curahub-clear-window-glass';
-  return material;
+  material.customProgramCacheKey = () => 'curahub-clear-window-glass-v2';
+  return { material, reflection };
 }
 
 export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clearGlass = false, ...props }: SatellitProps) {
   const { nodes, materials } = useGLTF(SATELLIT_MODEL_URL) as unknown as GLTFResult
   const showTraverses = useEditorStore((state) => state.showTraverses);
+  const gl = useThree((state) => state.gl);
+  const scene = useThree((state) => state.scene);
+  const invalidate = useThree((state) => state.invalidate);
+  const groupRef = useRef<THREE.Group>(null);
+  const glassRef = useRef<THREE.Mesh>(null);
 
-  const clearGlassMaterial = useMemo(() => (clearGlass ? createClearGlassMaterial() : null), [clearGlass]);
-  useEffect(() => () => clearGlassMaterial?.dispose(), [clearGlassMaterial]);
+  const clearGlassMaterial = useMemo(() => (clearGlass ? createClearGlassMaterial(materials.Glass) : null), [clearGlass, materials.Glass]);
+  useEffect(() => () => {
+    clearGlassMaterial?.material.dispose();
+    clearGlassMaterial?.reflection.dispose();
+  }, [clearGlassMaterial]);
 
   // Ensure wall material is visible from both sides (inside the room in first-person)
   useEffect(() => {
@@ -97,8 +132,30 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
     return { width: size.x, height: size.z, posX: center.x, posY: box.min.y, posZ: center.z }
   }, [nodes.Decke001.geometry])
 
+  // Capture the room (walls, artworks) from its centre into the glass reflection a few times after the
+  // street view appears. Not every frame: a cube capture renders the whole scene six times.
+  useEffect(() => {
+    if (!clearGlassMaterial) return;
+    const { reflection } = clearGlassMaterial;
+    const cubeCamera = new THREE.CubeCamera(0.05, 80, reflection);
+    const capture = () => {
+      const group = groupRef.current;
+      const glass = glassRef.current;
+      if (!group || !glass) return;
+      cubeCamera.position.set(ceilingLight.posX, GLASS_REFLECTION_EYE_HEIGHT, ceilingLight.posZ);
+      group.localToWorld(cubeCamera.position);
+      glass.visible = false;
+      cubeCamera.update(gl, scene);
+      glass.visible = true;
+      reflection.texture.needsPMREMUpdate = true;
+      invalidate();
+    };
+    const timers = GLASS_REFLECTION_CAPTURES_MS.map((ms) => window.setTimeout(capture, ms));
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [clearGlassMaterial, ceilingLight, gl, scene, invalidate]);
+
   return (
-    <group {...props} dispose={null}>
+    <group ref={groupRef} {...props} dispose={null}>
       {rectAreaLights && (
         <>
           {/* Ceiling area light – positioned just below Decke001, facing downward */}
@@ -124,7 +181,7 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
       <mesh geometry={nodes.Decke001.geometry} material={materials['Material.005']} visible={viewMode === 'firstPerson'} />
       <mesh name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} />
       <mesh geometry={nodes.Boden001.geometry} material={materials['Material.005']} />
-      <mesh geometry={nodes.Fenster001.geometry} material={clearGlassMaterial ?? materials.Glass} />
+      <mesh ref={glassRef} geometry={nodes.Fenster001.geometry} material={clearGlassMaterial?.material ?? materials.Glass} />
       <mesh geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />
       <mesh geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={[6.33, 1, 0.12]} />
       <mesh geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={[-6.33, 1, 2.372]} />
