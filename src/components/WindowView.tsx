@@ -4,6 +4,8 @@ import { useRenderQuality, useRenderQualitySettings } from '../hooks/use-render-
 import { WINDOW_VIEW_TEXTURES, buildWindowViewGeometries, loadWindowViewTexture } from '../lib/windowView';
 
 const noRaycast = () => null;
+/** The photos are brighter than the lit room; darken the street by 20 %. */
+const WINDOW_VIEW_DIMMING = new THREE.Color(0.8, 0.8, 0.8);
 
 interface WindowViewProps {
     /** true once the street is shown, false again on unmount (e.g. to make the window glass clearer meanwhile). */
@@ -24,12 +26,12 @@ export const WindowView = ({ onReadyChange }: WindowViewProps) => {
 
     const geometries = useMemo(() => buildWindowViewGeometries(), []);
     const backgroundMaterial = useMemo(
-        () => (panoTexture ? new THREE.MeshBasicMaterial({ map: panoTexture, side: THREE.DoubleSide, toneMapped: false }) : null),
+        () => (panoTexture ? new THREE.MeshBasicMaterial({ map: panoTexture, color: WINDOW_VIEW_DIMMING, side: THREE.DoubleSide, toneMapped: false }) : null),
         [panoTexture],
     );
     const carsMaterial = useMemo(
         () => (carsTexture
-            ? new THREE.MeshBasicMaterial({ map: carsTexture, side: THREE.DoubleSide, toneMapped: false, transparent: true, depthWrite: false, alphaTest: 0.01 })
+            ? new THREE.MeshBasicMaterial({ map: carsTexture, color: WINDOW_VIEW_DIMMING, side: THREE.DoubleSide, toneMapped: false, transparent: true, depthWrite: false, alphaTest: 0.01 })
             : null),
         [carsTexture],
     );

@@ -85,14 +85,14 @@ function createClearGlassMaterial(modelledGlass: THREE.MeshStandardMaterial) {
       `#include <opaque_fragment>
       float glassDirt = 0.0;
       #ifdef USE_MAP
-        glassDirt = smoothstep(0.49, 0.6, texture2D(map, vMapUv).a);
+        glassDirt = smoothstep(0.51, 0.6, texture2D(map, vMapUv).a);
       #endif
       // Dust scatters the room light: lighter, warm grey wherever the pane is dirty.
       vec3 glassIrradiance = totalDiffuse / max(diffuseColor.rgb, vec3(0.01));
-      gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.62, 0.6, 0.55) * glassIrradiance, glassDirt * 0.55);
+      gl_FragColor.rgb = mix(gl_FragColor.rgb, vec3(0.62, 0.6, 0.55) * glassIrradiance, glassDirt * 0.35);
       float glassReflection = clamp(dot(totalSpecular, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
       float glassFacing = abs(dot(normalize(normal), normalize(vViewPosition)));
-      float glassAlpha = 0.2 + glassDirt * 0.22 + glassReflection * 0.7;
+      float glassAlpha = 0.2 + glassDirt * 0.13 + glassReflection * 0.7;
       gl_FragColor.a = clamp(mix(glassAlpha, 0.8, pow(1.0 - glassFacing, 5.0)), 0.0, 0.92);`,
     );
   };
