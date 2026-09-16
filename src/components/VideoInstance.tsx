@@ -1,9 +1,9 @@
-import { forwardRef, useEffect, useRef, useMemo, useState } from 'react';
+import { forwardRef, useCallback, useEffect, useRef, useMemo, useState } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { getMaxAnisotropy } from '../lib/rendererBackend';
+import { getMaxAnisotropy, isWebGPURenderer } from '../lib/rendererBackend';
 import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { pickVideoSource } from '../lib/videoSource';
@@ -39,7 +39,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
         const [videoAspect, setVideoAspect] = useState<number | null>(null);
 
         // Create a dedicated video element and texture per instance
-        const { video, texture } = useMemo(() => {
+        const { video, texture, canvas } = useMemo(() => {
             const vid = document.createElement('video');
             vid.src = src;
             vid.crossOrigin = 'anonymous';
@@ -50,15 +50,46 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             // autoplays because play() itself triggers loading.
             vid.preload = 'metadata';
 
-            const tex = new THREE.VideoTexture(vid);
+            // WebGPURenderer uploads THREE.VideoTexture via copyExternalImageToTexture()
+            // directly from the <video> element. On some GPUs/drivers that intermittently
+            // fails to produce a valid frame — three.js itself silently discards the error
+            // (see r186 WebGPUTextureUtils._copyImageToTexture, "fix bad video frame data on
+            // certain devices", three.js#32391) — leaving the plane stuck on a stale frame.
+            // Route WebGPU through an offscreen canvas instead: copyExternalImageToTexture()
+            // from a canvas source is the same, far more battle-tested path images/photos
+            // already use. Costs one CPU-side drawImage() per decoded frame; WebGL keeps the
+            // zero-copy VideoTexture it always used.
+            let canvasEl: HTMLCanvasElement | null = null;
+            let tex: THREE.Texture;
+            if (isWebGPURenderer(gl)) {
+                canvasEl = document.createElement('canvas');
+                canvasEl.width = 16;
+                canvasEl.height = 9; // placeholder until video metadata is known
+                tex = new THREE.CanvasTexture(canvasEl);
+            } else {
+                tex = new THREE.VideoTexture(vid);
+            }
             tex.minFilter = THREE.LinearFilter;
             tex.magFilter = THREE.LinearFilter;
             tex.colorSpace = THREE.SRGBColorSpace;
             tex.anisotropy = 4; // updated in effect with actual max
 
-            return { video: vid, texture: tex };
+            return { video: vid, texture: tex, canvas: canvasEl };
             // eslint-disable-next-line react-hooks/exhaustive-deps
-        }, [instance.id]);
+        }, [instance.id, gl]);
+
+        // WebGPU only: blits the current video frame into `canvas` right before the texture is
+        // marked dirty (see the rVFC callback and the no-rVFC fallback in useFrame below).
+        const canvasCtxRef = useRef<CanvasRenderingContext2D | null>(null);
+        const drawVideoFrame = useCallback(() => {
+            if (!canvas || video.videoWidth === 0) return;
+            if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+            }
+            canvasCtxRef.current ??= canvas.getContext('2d');
+            canvasCtxRef.current?.drawImage(video, 0, 0, canvas.width, canvas.height);
+        }, [canvas, video]);
 
         // Read the actual video aspect once metadata is available.
         useEffect(() => {
@@ -134,6 +165,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             if ('requestVideoFrameCallback' in vid) {
                 let handle: number;
                 const onFrame = () => {
+                    drawVideoFrame();
                     hasNewFrame.current = true;
                     // RND-02: under frameloop="demand" nothing else requests a new frame
                     // while a video plays — ask for one whenever a decoded frame is ready.
@@ -144,7 +176,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 return () => vid.cancelVideoFrameCallback(handle);
             }
             return undefined;
-        }, [video, invalidate]);
+        }, [video, invalidate, drawVideoFrame]);
 
         useFrame(() => {
             if (video.paused || video.readyState < 2) return;
@@ -158,6 +190,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 // Fallback: update every 2nd frame (~30fps at 60fps render)
                 frameCounter.current++;
                 if (frameCounter.current % 2 === 0) {
+                    drawVideoFrame();
                     texture.needsUpdate = true;
                 }
                 // No requestVideoFrameCallback here to drive invalidate() — keep requesting

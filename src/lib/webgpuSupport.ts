@@ -88,8 +88,9 @@ export function createClearGlassMaterial(modelledGlass: THREE.MeshStandardMateri
         normalMap: modelledGlass.normalMap,
         normalScale: modelledGlass.normalScale.clone().multiplyScalar(0.3),
         envMap: reflection.texture,
-        // 3 in the WebGL version; the WebGPU reflection is stronger (matched against WebGL screenshots).
-        envMapIntensity: 0.5,
+        // Matches the WebGL version's envMapIntensity (3); a lower value looked visually
+        // duller here in side-by-side testing, so it stays at parity rather than "matched down".
+        envMapIntensity: 3,
         transparent: true,
         depthWrite: false,
         side: THREE.DoubleSide,
