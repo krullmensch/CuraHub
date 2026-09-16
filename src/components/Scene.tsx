@@ -1,5 +1,4 @@
 import { Suspense, useState } from 'react';
-import { Grid } from '@react-three/drei';
 import { Satellit } from './Satellit';
 import { PlacedArtworks } from './PlacedArtworks';
 import { ModularWallsController } from './ModularWallsController';
@@ -9,6 +8,7 @@ import { ArtworkTextureProvider } from './ArtworkTextureProvider';
 import { FrameInstancerProvider } from './FrameInstancer';
 import { ShaderWarmup } from './ShaderWarmup';
 import { WindowView } from './WindowView';
+import { EditorGrid } from './EditorGrid';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
@@ -68,7 +68,7 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShaders
                 )}
 
                 {isEditor && viewMode !== 'firstPerson' && (
-                    <Grid args={[20, 20]} cellColor="white" sectionColor="gray" infiniteGrid fadeDistance={50} position={[0, -0.01, 0]} />
+                    <EditorGrid />
                 )}
 
                 {/* Room collider lives in physics/PhysicsWorld.tsx (RND-08: Rapier loads only for first person). */}

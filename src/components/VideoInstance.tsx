@@ -3,6 +3,7 @@ import { useThree, useFrame } from '@react-three/fiber';
 import type { ThreeEvent } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
+import { getMaxAnisotropy } from '../lib/rendererBackend';
 import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { pickVideoSource } from '../lib/videoSource';
@@ -90,7 +91,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
 
         // Set max anisotropy, autoplay in viewer mode, and clean up on unmount
         useEffect(() => {
-            texture.anisotropy = gl.capabilities.getMaxAnisotropy();
+            texture.anisotropy = getMaxAnisotropy(gl);
             if (!isEditor) {
                 video.play().catch(() => {/* autoplay blocked, user interaction required */ });
             }

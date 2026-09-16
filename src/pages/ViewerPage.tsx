@@ -1,18 +1,19 @@
-import { Suspense, useCallback, useEffect, useState, lazy } from 'react';
+import { Suspense, useCallback, useEffect, useMemo, useState, lazy } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { Canvas } from '@react-three/fiber';
 import { useProgress, useGLTF, PerformanceMonitor } from '@react-three/drei';
 import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
+import { CANVAS_SHADOWS, createRendererFactory } from '../lib/rendererBackend';
 import { Scene } from '../components/Scene';
 import { SceneReadySignal } from '../components/SceneReadySignal';
 import { RenderQualityControl } from '../components/RenderQualityControl';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
+import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { ArrowLeft } from 'lucide-react';
 import type { ArtworkInstanceData, ModularWallData } from '../store/editorStore';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { Grid } from 'ldrs/react';
 import 'ldrs/react/Grid.css';
-import * as THREE from 'three';
 
 const MouseLeftIcon = ({ size = 20, color = "white" }: { size?: number, color?: string }) => (
     <svg
@@ -64,12 +65,13 @@ export const ViewerPage = () => {
     const [error, setError] = useState<string | null>(null);
     const renderSettings = useRenderQualitySettings();
     // Antialiasing is a WebGL context attribute — fixed for the lifetime of this Canvas.
-    const [glConfig] = useState(() => ({
-        toneMapping: THREE.ACESFilmicToneMapping,
-        toneMappingExposure: 1.1,
-        outputColorSpace: THREE.SRGBColorSpace,
-        antialias: renderSettings.antialias,
-    }));
+    // WebGPU with the classic WebGLRenderer as fallback. R3F sets ACES tone mapping and sRGB output.
+    const preparedRenderer = usePreparedRenderer();
+    const [antialias] = useState(renderSettings.antialias);
+    const glConfig = useMemo(
+        () => (preparedRenderer ? createRendererFactory(preparedRenderer, { antialias, toneMappingExposure: 1.1 }) : null),
+        [preparedRenderer, antialias],
+    );
     // RND-03 / RND-11: PerformanceMonitor drops the pixel ratio to 1 while frames are too slow.
     const [lowDpr, setLowDpr] = useState(false);
     const handleSceneReady = useCallback(() => setRoomReady(true), []);
@@ -178,43 +180,46 @@ export const ViewerPage = () => {
 
     return (
         <>
-            <Canvas
-                dpr={lowDpr ? [1, 1] : renderSettings.dpr}
-                frameloop={frameloop}
-                camera={{ position: [0, 1.7, 0], fov: 60 }}
-                style={{ width: '100vw', height: '100vh' }}
-                gl={glConfig}
-            >
-                {/* Frame timing is only meaningful with a continuous render loop. */}
-                {frameloop === 'always' && (
-                    <PerformanceMonitor
-                        flipflops={3}
-                        onDecline={() => setLowDpr(true)}
-                        onIncline={() => setLowDpr(false)}
-                        onFallback={() => setLowDpr(true)}
-                    />
-                )}
-                {data && (
-                    <>
-                        <Suspense fallback={null}>
-                            <Scene
-                                isEditor={false}
-                                viewerInstances={data.instances}
-                                viewerWalls={data.walls}
-                                onShadersReady={handleShadersReady}
-                            />
-                        </Suspense>
-                        {/* Separate boundary: the room renders while Rapier still loads. PhysicsWorld
-                            suspends until the room collider exists, so the player never spawns early;
-                            SceneReadySignal fires after the first frame with the player in place. */}
-                        <Suspense fallback={null}>
-                            <PhysicsWorld mode="viewer" viewerWalls={data.walls} viewerInstances={data.instances}>
-                                <SceneReadySignal onReady={handleSceneReady} />
-                            </PhysicsWorld>
-                        </Suspense>
-                    </>
-                )}
-            </Canvas>
+            {glConfig && (
+                <Canvas
+                    dpr={lowDpr ? [1, 1] : renderSettings.dpr}
+                    frameloop={frameloop}
+                    camera={{ position: [0, 1.7, 0], fov: 60 }}
+                    style={{ width: '100vw', height: '100vh' }}
+                    gl={glConfig}
+                    shadows={CANVAS_SHADOWS}
+                >
+                    {/* Frame timing is only meaningful with a continuous render loop. */}
+                    {frameloop === 'always' && (
+                        <PerformanceMonitor
+                            flipflops={3}
+                            onDecline={() => setLowDpr(true)}
+                            onIncline={() => setLowDpr(false)}
+                            onFallback={() => setLowDpr(true)}
+                        />
+                    )}
+                    {data && (
+                        <>
+                            <Suspense fallback={null}>
+                                <Scene
+                                    isEditor={false}
+                                    viewerInstances={data.instances}
+                                    viewerWalls={data.walls}
+                                    onShadersReady={handleShadersReady}
+                                />
+                            </Suspense>
+                            {/* Separate boundary: the room renders while Rapier still loads. PhysicsWorld
+                                suspends until the room collider exists, so the player never spawns early;
+                                SceneReadySignal fires after the first frame with the player in place. */}
+                            <Suspense fallback={null}>
+                                <PhysicsWorld mode="viewer" viewerWalls={data.walls} viewerInstances={data.instances}>
+                                    <SceneReadySignal onReady={handleSceneReady} />
+                                </PhysicsWorld>
+                            </Suspense>
+                        </>
+                    )}
+                </Canvas>
+            )}
 
             {/* FPV Crosshair + Artwork Info Overlay */}
             <ArtworkInfoOverlay />

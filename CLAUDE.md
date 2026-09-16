@@ -35,7 +35,8 @@ Both frontend and backend must run simultaneously for development. The backend r
 | Layer | Library | Version |
 |---|---|---|
 | UI Framework | React | 19.2.0 |
-| 3D Rendering | Three.js | 0.181.2 |
+| 3D Rendering | Three.js (WebGPURenderer, WebGLRenderer fallback) | 0.186.0 |
+| Gaussian Splats (WebGL fallback) | @sparkjsdev/spark | 2.2.0 |
 | React ↔ Three.js | @react-three/fiber | 9.4.2 |
 | 3D Helpers | @react-three/drei | 10.7.7 |
 | Physics | @react-three/rapier | 2.2.0 |
@@ -127,6 +128,23 @@ The editor layout is structured as follows:
 
 Keyboard shortcuts: `G` grab, `R` rotate, `S` scale, `X/Y/Z` axis lock, `Shift` fine-tune, `Esc` cancel. Implemented via Three.js TransformControls + custom `ModalTransformSystem`.
 
+### Render Backends (WebGPU + WebGL fallback)
+
+- `src/lib/rendererBackend.ts` decides per Canvas: WebGPU (`WebGPURenderer`) when a hardware adapter exists, otherwise the **classic `WebGLRenderer`** (never WebGPURenderer's WebGL2 backend). Override: `?renderer=webgl|webgpu` or the "Renderer" select in `RenderQualityControl` (localStorage `curahub-renderer`).
+- `usePreparedRenderer()` creates the GPU device **before** `<Canvas>` mounts; the R3F `gl` factory must resolve immediately. R3F re-runs its async `configure()` on every Canvas render and, after awaiting a slow factory, works on a stale store snapshot (second camera with `aspect = 0` → black canvas).
+- Everything WebGPU-only (`three/webgpu`, TSL, splat addon) lives in `src/lib/webgpuSupport.ts` (own chunk `vendor-three-webgpu`). Components get it via `getWebGPUSupport(gl)` after checking `isWebGPURenderer(gl)`.
+- WebGPURenderer ignores `material.toneMapped`. `webgpuSupport` turns the renderer's tone mapping off and tone-maps converted classic materials with `toneMapped: true` per material, so photos/videos/street view stay untonemapped like on WebGL. Custom node materials (glass, grid) call `applySceneToneMapping` themselves.
+- No `ShaderMaterial`/`onBeforeCompile` on the WebGPU path: port to TSL in `webgpuSupport` (see window glass, editor grid) and keep the GLSL version for WebGL.
+- Use `getMaxAnisotropy(gl)` / `getMaxTextureSize(gl)` instead of `gl.capabilities`.
+- Browser panes/tabs of agents run hidden (no rAF): verify rendering with headless Chrome over CDP (`--headless=new --enable-unsafe-webgpu`).
+
+### Gaussian Splats
+
+- Asset/medium type `splat` (`.ply`, `.spz`, `.splat`, `.ksplat`, max 1 GB). Server (`server/src/lib/splats.ts`) validates headers and tells splat PLYs from mesh PLYs; files are stored unchanged.
+- `SplatInstance` stands on the floor like `model3d`: capture flipped upright (`SPLAT_UP_FLIP`), anchored at the bottom centre of its robust (1–99 %) bounds. Clicks hit a box proxy (`SplatHitProxy`), not the splats.
+- WebGPU: three.js `GaussianSplat`, parsed in `src/workers/splatParse.worker.ts`, geometry cached per URL. WebGL: Spark (`src/lib/sparkSupport.ts`, one `SparkRenderer` per renderer, `onDirty` → `invalidate`).
+- `GaussianSplat` smears splats in render targets — hide splats (`hideSplats`) during offscreen captures such as the glass reflection.
+
 ### Backend API
 
 Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
@@ -144,6 +162,7 @@ Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/pr
 - **Images** — client-side resize to 2500px max as WebP 80%, server extracts EXIF
 - **Video** — server transcodes to H.264 MP4 via ffmpeg, generates thumbnails
 - **3D Models** — direct upload (GLB/GLTF/OBJ/FBX), 50MB limit
+- **Gaussian Splats** — PLY/SPZ/SPLAT/KSPLAT stored as uploaded, decoded in the browser, 1GB limit
 - **Size limits** — image 10MB, video 200MB, model 50MB
 
 ---
@@ -181,7 +200,7 @@ Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/pr
 - Scene render order: physics world → room geometry → artworks → lighting → post-processing
 - `three-mesh-bvh` applied to complex room meshes for raycast performance
 - Frame loop: use `useFrame` with `delta` for time-independent animations; never mutate state inside `useFrame`
-- Renderer settings: `shadows`, `shadowMap.type = THREE.PCFSoftShadowMap`, tone mapping `THREE.ACESFilmicToneMapping`
+- Renderer settings: no shadows (`CANVAS_SHADOWS`, `PCFShadowMap` — `PCFSoftShadowMap` is gone in r186), tone mapping `THREE.ACESFilmicToneMapping` (exposure 1.1)
 
 **Key components:**
 - `<SceneCanvas />` — root canvas wrapper

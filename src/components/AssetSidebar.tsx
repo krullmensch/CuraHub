@@ -5,7 +5,8 @@ import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play, AlertCircle } from 
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
-import { useEditorStore } from '@/store/editorStore';
+import { useEditorStore, type AssetType } from '@/store/editorStore';
+import { SplatPreviewTile } from './SplatPreviewTile';
 import { useAuthStore } from '@/store/authStore';
 import { type Folder, listFolders, moveAssetToFolder } from '@/lib/folders';
 import { VideoProcessingBadge } from './VideoProcessingBadge';
@@ -143,7 +144,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
         setDragging(true, {
             id,
             type: isArtwork ? 'artwork' : 'asset',
-            assetType: (asset.type as 'image' | 'video' | 'model3d') || 'image',
+            assetType: (asset.type as AssetType) || 'image',
             width: asset.width,
             height: asset.height,
             dpi: asset.dpi || 72,
@@ -311,6 +312,8 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                                 </div>
                                             </div>
                                         </div>
+                                    ) : asset.type === 'splat' ? (
+                                        <SplatPreviewTile filename={asset.filename} compact />
                                     ) : asset.type === 'model3d' ? (
                                         <div className="flex items-center justify-center h-full bg-zinc-800">
                                             <ModelPreviewCard url={asset.path} compact />

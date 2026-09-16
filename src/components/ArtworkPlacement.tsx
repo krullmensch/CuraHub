@@ -2,7 +2,8 @@ import { useRef, useState, useEffect, useCallback, Suspense } from 'react';
 import { useThree, useFrame } from '@react-three/fiber';
 import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
-import { useEditorStore, WALL_PLACEMENT_OFFSET } from '../store/editorStore';
+import { getMaxAnisotropy } from '../lib/rendererBackend';
+import { useEditorStore, WALL_PLACEMENT_OFFSET, isFloorAssetType } from '../store/editorStore';
 import { ModularFrame } from './ModularFrame';
 import { placementFeedback, placementResolver, type PlacementResult } from '../lib/placementFeedback';
 
@@ -33,7 +34,7 @@ const GhostPreview = ({ url, width, height, dpi, artworkWidth, artworkHeight, po
     useEffect(() => {
         if (texture) {
             // eslint-disable-next-line react-hooks/immutability
-            texture.anisotropy = gl.capabilities.getMaxAnisotropy();
+            texture.anisotropy = getMaxAnisotropy(gl);
             // eslint-disable-next-line react-hooks/immutability
             texture.needsUpdate = true;
         }
@@ -122,7 +123,8 @@ export const ArtworkPlacement = () => {
         if (!asset) return null;
         const { camera, scene } = get();
 
-        const isModel = asset.assetType === 'model3d';
+        // 3D models and splats stand on the floor.
+        const isModel = isFloorAssetType(asset.assetType);
 
         // Setup Raycaster from NDC
         raycaster.current.setFromCamera(new THREE.Vector2(ndc.x, ndc.y), camera);
@@ -291,7 +293,7 @@ export const ArtworkPlacement = () => {
     if (!isDragging || !draggedAsset || !ghostState) return null;
 
     // 3D model ghost
-    if (draggedAsset.assetType === 'model3d') {
+    if (isFloorAssetType(draggedAsset.assetType)) {
         return <ModelGhostPreview position={ghostState.position} isValid={ghostState.isValid} />;
     }
 

@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { SelectableInstance } from './SelectableInstance';
 import { VideoInstance } from './VideoInstance';
 import { ModelInstance } from './ModelInstance';
+import { SplatInstance } from './SplatInstance';
 import { InstanceTransformControls } from './InstanceTransformControls';
 
 interface PlacedArtworksProps {
@@ -38,6 +39,7 @@ const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProp
     const Component =
         assetType === 'video' ? VideoInstance :
         assetType === 'model3d' ? ModelInstance :
+        assetType === 'splat' ? SplatInstance :
         SelectableInstance;
 
     return (

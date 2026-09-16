@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, type InputHTMLAttributes } from 'react';
-import { useEditorStore, videoRefMap, modelBBoxMap } from '../store/editorStore';
+import { useEditorStore, videoRefMap, modelBBoxMap, isFloorAssetType } from '../store/editorStore';
 import type { TransformMode, MediumType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { gooeyToast } from 'goey-toast';
@@ -116,13 +116,13 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
     // For 3D models: use the natural bounding box size (in meters) from the scene as the base.
     // Falls back to { 1, 1, 1 } until the model renders and populates modelBBoxMap.
-    const modelNaturalSize = (assetMeta?.type === 'model3d' && selectedId != null)
+    const modelNaturalSize = (isFloorAssetType(assetMeta?.type) && selectedId != null)
         ? (modelBBoxMap.get(selectedId) ?? null)
         : null;
 
     const baseCm = modelNaturalSize
         ? { x: modelNaturalSize.x, y: modelNaturalSize.y, z: modelNaturalSize.z }
-        : assetMeta?.type === 'model3d' ? { x: 1, y: 1, z: 1 }
+        : isFloorAssetType(assetMeta?.type) ? { x: 1, y: 1, z: 1 }
         : assetMeta ? {
             x: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalWidth : (assetMeta.widthPx / assetMeta.dpi) * 2.54,
             y: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalHeight : (assetMeta.heightPx / assetMeta.dpi) * 2.54,
@@ -227,7 +227,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         if (isNaN(value)) return;
         // Keep artwork above floor: bottom edge must not go below Y=0
         if (group === 'position' && axis === 'y') {
-            if (instanceMedium === 'model3d') {
+            if (isFloorAssetType(instanceMedium)) {
                 value = Math.max(0, value);
             } else {
                 // Center is at position_y; bottom edge = position_y - halfHeight
@@ -432,7 +432,8 @@ const ArtworkPropertiesContent = ({
     handleInputChange, handleScaleChange, handleFocus, handleDelete,
     medium, assetType, onMediumChange, selectedInstanceId,
 }: ArtworkPropertiesContentProps) => {
-    const isModel = assetType === 'model3d';
+    // Splats get the same floor-object controls as 3D models.
+    const isModel = isFloorAssetType(assetType);
     const isVideo = assetType === 'video';
     const sizeLocked  = isVideo && medium === 'monitor';
     const sizeIsBeamer = isVideo && medium === 'beamer';
@@ -516,7 +517,7 @@ const ArtworkPropertiesContent = ({
             <div className="space-y-2">
                 <Label className="text-xs text-zinc-400 uppercase tracking-wider">Medium</Label>
                 {isModel ? (
-                    <div className="text-xs text-zinc-500 bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2">3D Model</div>
+                    <div className="text-xs text-zinc-500 bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2">{assetType === 'splat' ? 'Gaussian Splat' : '3D Model'}</div>
                 ) : isVideo ? (
                     <select
                         value={medium === 'monitor' || medium === 'beamer' ? medium : 'monitor'}

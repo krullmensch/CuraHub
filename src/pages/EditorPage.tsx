@@ -1,15 +1,16 @@
 import { Canvas } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
-import * as THREE from 'three';
 import { Scene } from '../components/Scene';
 // Player + colliders: components/physics/PhysicsWorld (lazy, first person only — RND-08)
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { FrameloopController } from '../components/FrameloopController';
 import { SceneLoadingIndicator } from '../components/SceneLoadingIndicator';
 import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
+import { CANVAS_SHADOWS, createRendererFactory } from '../lib/rendererBackend';
 import { RenderQualityControl } from '../components/RenderQualityControl';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
-import { useEditorStore, nextTempId, type MediumType } from '../store/editorStore';
+import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
+import { useEditorStore, nextTempId, isFloorAssetType, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
 import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints } from 'lucide-react';
@@ -21,6 +22,7 @@ import { placementFeedback, placementResolver, type PlacementIssue } from '../li
 const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
   if (issue === 'unlocked-wall') return 'Die Wand ist nicht gesperrt. Wand sperren, dann Werke daran platzieren.';
   if (assetType === 'model3d') return '3D-Modelle lassen sich nur auf dem Boden platzieren.';
+  if (assetType === 'splat') return 'Splats lassen sich nur auf dem Boden platzieren.';
   if (issue === 'not-vertical') return 'Werke lassen sich nur an senkrechten Wandflächen platzieren.';
   return 'Hier lässt sich nichts platzieren. Werk auf eine Wand ziehen.';
 };
@@ -105,11 +107,8 @@ const ToolSeparator = () => (
 // RND-08: Rapier (~2.3 MB chunk + WASM) is only needed for the first-person preview.
 const PhysicsWorld = lazy(() => import('../components/physics/PhysicsWorld'));
 
-const GL_CONFIG = {
-    toneMapping: THREE.ACESFilmicToneMapping,
-    toneMappingExposure: 1.1,
-    outputColorSpace: THREE.SRGBColorSpace,
-};
+// WebGPU with the classic WebGLRenderer as fallback. R3F sets ACES tone mapping and sRGB output.
+const TONE_MAPPING_EXPOSURE = 1.1;
 
 interface EditorPageProps {
   /** false while the editor Canvas is hidden behind another route (e.g. /assets) — stops the render loop entirely. */
@@ -143,7 +142,11 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   // chosen when the Canvas was created.
   const renderSettings = useRenderQualitySettings();
   const [antialias] = useState(renderSettings.antialias);
-  const glConfig = useMemo(() => ({ ...GL_CONFIG, antialias }), [antialias]);
+  const preparedRenderer = usePreparedRenderer();
+  const glConfig = useMemo(
+    () => (preparedRenderer ? createRendererFactory(preparedRenderer, { antialias, toneMappingExposure: TONE_MAPPING_EXPOSURE }) : null),
+    [preparedRenderer, antialias],
+  );
 
   // Captured placement awaiting the user's Monitor/Beamer choice (video drops only)
   const [pendingVideoDrop, setPendingVideoDrop] = useState<PendingVideoDrop | null>(null);
@@ -166,7 +169,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     const baseHeightM = hasPhysical
       ? (draggedAsset.artworkHeight! / 100)
       : (draggedAsset.height / (draggedAsset.dpi || 72)) * 0.0254;
-    const placementMinY = medium === 'model3d' ? 0 : baseHeightM / 2; // scale = 1 at placement
+    const placementMinY = isFloorAssetType(medium) ? 0 : baseHeightM / 2; // scale = 1 at placement
     const clampedY = Math.max(placementMinY, snapshot.position[1]);
 
     store.commitLocalChange([...store.localInstances, {
@@ -277,9 +280,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
             if (assetType === 'video') {
               setPendingVideoDrop(snapshot);
             } else {
-              const medium: MediumType = assetType === 'model3d' ? 'model3d' : 'frame';
+              const medium: MediumType = assetType === 'model3d' || assetType === 'splat' ? assetType : 'frame';
               placeInstanceRef.current(medium, snapshot);
-              const label = assetType === 'model3d' ? '3D-Modell' : 'Werk';
+              const label = assetType === 'model3d' ? '3D-Modell' : assetType === 'splat' ? 'Splat' : 'Werk';
               gooeyToast.success(`${label} platziert`, {
                 description: draggedAsset.url.split('/').pop(),
               });
@@ -465,23 +468,26 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         ref={containerRef}
         style={{ width: '100%', height: '100%', position: 'relative' }}
     >
-      <Canvas
-        dpr={renderSettings.dpr}
-        frameloop={frameloop}
-        // Camera is managed by PlannerCameraSystem in Scene
-        style={{ width: '100%', height: '100%' }}
-        gl={glConfig}
-        onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
-      >
-        <FrameloopController isVisible={isVisible} />
-        <Scene />
-        <ArtworkPlacement />
-        {viewMode === 'firstPerson' && (
-          <Suspense fallback={null}>
-            <PhysicsWorld mode="editor" />
-          </Suspense>
-        )}
-      </Canvas>
+      {glConfig && (
+        <Canvas
+          dpr={renderSettings.dpr}
+          frameloop={frameloop}
+          // Camera is managed by PlannerCameraSystem in Scene
+          style={{ width: '100%', height: '100%' }}
+          gl={glConfig}
+          shadows={CANVAS_SHADOWS}
+          onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
+        >
+          <FrameloopController isVisible={isVisible} />
+          <Scene />
+          <ArtworkPlacement />
+          {viewMode === 'firstPerson' && (
+            <Suspense fallback={null}>
+              <PhysicsWorld mode="editor" />
+            </Suspense>
+          )}
+        </Canvas>
+      )}
       <SceneLoadingIndicator />
       
       {/* FPV Crosshair + Artwork Info Overlay */}

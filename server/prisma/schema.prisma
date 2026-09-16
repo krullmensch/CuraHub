@@ -123,7 +123,7 @@ model Asset {
   path          String   // Relative path or URL
   mimetype      String
   size          Int
-  type          String   @default("image") // "image", "video", "model3d"
+  type          String   @default("image") // "image", "video", "model3d", "splat"
   width         Int?     // Original pixel width
   height        Int?     // Original pixel height
   dpi           Int?     // Original DPI
@@ -172,7 +172,7 @@ model ArtworkInstance {
   scale_y     Float             @default(1.0)
   scale_z     Float             @default(1.0)
 
-  medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d", "monitor", "beamer"
+  medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d", "monitor", "beamer", "splat"
 
   createdAt   DateTime          @default(now())
 }

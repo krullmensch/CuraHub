@@ -19,6 +19,7 @@ import { authenticate, requireCurator, userCanAccessProject } from '../lib/middl
 import { tryGenerateImageThumbnails } from '../lib/thumbnails';
 import { enqueueVideoJob } from '../lib/videoJobs';
 import { CHUNK_MAX_BYTES, CHUNK_SIZE_BYTES, ChunkedUploadStore } from '../lib/chunkedUploads';
+import { SPLAT_ONLY_EXTENSIONS, inspectSplatFile, type SplatInspection } from '../lib/splats';
 
 export const uploadRouter = Router();
 const prisma = new PrismaClient();
@@ -45,10 +46,15 @@ const MODEL_EXTENSIONS = [
     '.glb2', '.gltf2',                  // glTF 2.0 variants
 ];
 
-function detectAssetType(mimetype: string, filename: string): 'image' | 'video' | 'model3d' | null {
+type AssetType = 'image' | 'video' | 'model3d' | 'splat';
+
+// `.ply` is detected as 'model3d' here; handleStoredUpload looks into the header and turns
+// Gaussian splat PLYs into 'splat' (see lib/splats).
+function detectAssetType(mimetype: string, filename: string): AssetType | null {
+    const ext = path.extname(filename).toLowerCase();
+    if (SPLAT_ONLY_EXTENSIONS.includes(ext)) return 'splat';
     if (mimetype.startsWith('image/')) return 'image';
     if (mimetype.startsWith('video/')) return 'video';
-    const ext = path.extname(filename).toLowerCase();
     if (MODEL_EXTENSIONS.includes(ext)) return 'model3d';
     // Browsers often send application/octet-stream for binary formats
     if (mimetype === 'application/octet-stream' && MODEL_EXTENSIONS.includes(ext)) return 'model3d';
@@ -67,7 +73,14 @@ const SIZE_LIMITS: Record<string, number> = {
     image: 200 * 1024 * 1024,   // 200MB (increased from 10MB as client handles optimization)
     video: 2 * 1024 * 1024 * 1024, // 2GB (was Infinity — see SEC-01)
     model3d: 100 * 1024 * 1024, // 100MB (source formats are larger, output is compressed)
+    splat: 1024 * 1024 * 1024, // 1GB (uncompressed PLY captures; stored as uploaded)
 };
+
+/** Size limit before the file's content is known: a `.ply` may still turn out to be a splat. */
+function preliminarySizeLimit(assetType: AssetType, filename: string): number {
+    const isPly = path.extname(filename).toLowerCase() === '.ply';
+    return isPly ? Math.max(SIZE_LIMITS.model3d, SIZE_LIMITS.splat) : SIZE_LIMITS[assetType];
+}
 
 // Stored filename for an upload. Unique prefix prevents different files with the same
 // sanitized name from overwriting each other on disk (SEC-04). Derived filenames
@@ -106,7 +119,7 @@ const upload = multer({
       if (type) {
           cb(null, true);
       } else {
-          cb(new Error('Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …)'));
+          cb(new Error('Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .spz, .splat, .ksplat)'));
       }
   }
 });
@@ -176,9 +189,9 @@ uploadRouter.post('/chunks', authenticate, requireCurator, async (req: Request, 
 
     const assetType = detectAssetType(mimetype, filename);
     if (!assetType) {
-        return res.status(400).json({ error: 'Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …)' });
+        return res.status(400).json({ error: 'Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .spz, .splat, .ksplat)' });
     }
-    const sizeLimit = Math.min(SIZE_LIMITS[assetType], UPLOAD_MAX_BYTES);
+    const sizeLimit = Math.min(preliminarySizeLimit(assetType, filename), UPLOAD_MAX_BYTES);
     if (size > sizeLimit) {
         return res.status(400).json({
             error: `File too large. Max ${Math.round(sizeLimit / 1024 / 1024)}MB for ${assetType} files.`
@@ -350,7 +363,20 @@ async function handleStoredUpload(
       folderId = parsed;
   }
 
-  const assetType = detectAssetType(file.mimetype, file.originalname) || 'image';
+  let assetType: AssetType = detectAssetType(file.mimetype, file.originalname) || 'image';
+
+  // Gaussian splats: validate the file and tell splat PLYs from mesh PLYs.
+  let splat: SplatInspection | null = null;
+  const ext = path.extname(file.originalname).toLowerCase();
+  if (assetType === 'splat' || ext === '.ply') {
+      try {
+          splat = await inspectSplatFile(file.path, ext, file.size);
+      } catch (err) {
+          discard();
+          return { status: 400, body: { error: (err as Error).message || 'Ungültige Splat-Datei' } };
+      }
+      if (splat) assetType = 'splat';
+  }
 
   // Validate per-type size limit (before hashing — no point hashing a rejected file)
   const sizeLimit = SIZE_LIMITS[assetType];
@@ -431,6 +457,11 @@ async function handleStoredUpload(
           return { status: 200, body: asset };
       }
 
+      if (assetType === 'splat' && splat) {
+          const asset = await processSplat(file, splat, projectId, folderId, fileHash);
+          return { status: 200, body: asset };
+      }
+
       const asset = await processModel(file, projectId, folderId, fileHash);
       return { status: 200, body: asset };
   } catch (err) {
@@ -438,6 +469,31 @@ async function handleStoredUpload(
       discard();
       return { status: 500, body: { error: `Failed to process ${assetType} upload` } };
   }
+}
+
+// ── Gaussian splats: stored as uploaded, decoded in the browser ──
+async function processSplat(file: StoredFile, splat: SplatInspection, projectId: string | undefined, folderId?: number, fileHash?: string) {
+    console.log(`[Upload] Gaussian splat: ${file.originalname} (${splat.format}, ${splat.splatCount ?? '?'} splats)`);
+    return prisma.asset.create({
+        data: {
+            filename: file.originalname,
+            path: `/uploads/${file.filename}`,
+            mimetype: 'application/octet-stream',
+            size: file.size,
+            type: 'splat',
+            width: null,
+            height: null,
+            dpi: null,
+            fileHash,
+            projectId: projectId ? parseInt(projectId, 10) : undefined,
+            folderId,
+            metadata: {
+                projectId: projectId ? String(projectId) : undefined,
+                splatFormat: splat.format,
+                splatCount: splat.splatCount ?? undefined,
+            },
+        },
+    });
 }
 
 // ── Image processing (original pipeline) ──

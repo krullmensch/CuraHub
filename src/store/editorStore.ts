@@ -32,13 +32,13 @@ export const monitorGlbBounds = { minY: 0, maxX: 0 };
 /**
  * Minimum Y position for an artwork instance so its bottom edge stays at or above the floor (Y=0).
  * Position is the center point, so minY = halfHeight.
- * For 3D models the origin sits on the floor, so minY = 0.
+ * For 3D models and splats the origin sits on the floor, so minY = 0.
  *
  * Pass `overrideScaleY` when the live Three.js scale differs from the stored value
  * (e.g. right after a scale transform before it is committed to the store).
  */
 export function artworkMinY(inst: Pick<ArtworkInstanceData, 'medium' | 'artwork' | 'scale_y'>, overrideScaleY?: number): number {
-  if (inst.medium === 'model3d') return 0;
+  if (inst.medium === 'model3d' || inst.medium === 'splat') return 0;
   // Monitor pivot may not be at the model's bottom — use the actual GLB bbox
   if (inst.medium === 'monitor') {
     const { width, height } = inst.artwork.asset;
@@ -57,8 +57,13 @@ export type PlannerViewMode = 'orthographic' | 'perspective' | 'firstPerson';
 export type TransformMode = 'translate' | 'rotate' | 'scale';
 export type TransformAxisLock = 'none' | 'x' | 'y' | 'z';
 
-export type AssetType = 'image' | 'video' | 'model3d';
-export type MediumType = 'frame' | 'wallpaper' | 'projector' | 'display' | 'model3d' | 'monitor' | 'beamer';
+export type AssetType = 'image' | 'video' | 'model3d' | 'splat';
+export type MediumType = 'frame' | 'wallpaper' | 'projector' | 'display' | 'model3d' | 'monitor' | 'beamer' | 'splat';
+
+/** Assets that stand on the floor (3D models, Gaussian splats) instead of hanging on a wall. */
+export function isFloorAssetType(type: string | null | undefined): boolean {
+  return type === 'model3d' || type === 'splat';
+}
 
 export interface ArtworkInstanceData {
   id: number;

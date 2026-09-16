@@ -11,8 +11,11 @@ import { useGLTF } from '@react-three/drei'
 import type { GLTF } from 'three-stdlib'
 import { useEditorStore } from '../store/editorStore'
 import { SATELLIT_MODEL_URL } from '../lib/modelUrls'
+import { getWebGPUSupport, isWebGPURenderer } from '../lib/rendererBackend'
+import { hideSplats } from '../lib/splats'
 
-// Required once for RectAreaLight to work with MeshStandardMaterial
+// Required once for RectAreaLight to work with MeshStandardMaterial on WebGLRenderer
+// (WebGPU: RectAreaLightNode.setLTC in webgpuSupport.createWebGPURenderer).
 RectAreaLightUniformsLib.init()
 
 type GLTFResult = GLTF & {
@@ -109,7 +112,12 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
   const groupRef = useRef<THREE.Group>(null);
   const glassRef = useRef<THREE.Mesh>(null);
 
-  const clearGlassMaterial = useMemo(() => (clearGlass ? createClearGlassMaterial(materials.Glass) : null), [clearGlass, materials.Glass]);
+  const clearGlassMaterial = useMemo(() => {
+    if (!clearGlass) return null;
+    return isWebGPURenderer(gl)
+      ? getWebGPUSupport(gl).createClearGlassMaterial(materials.Glass, GLASS_REFLECTION_SIZE)
+      : createClearGlassMaterial(materials.Glass);
+  }, [clearGlass, materials.Glass, gl]);
   useEffect(() => () => {
     clearGlassMaterial?.material.dispose();
     clearGlassMaterial?.reflection.dispose();
@@ -145,7 +153,9 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
       cubeCamera.position.set(ceilingLight.posX, GLASS_REFLECTION_EYE_HEIGHT, ceilingLight.posZ);
       group.localToWorld(cubeCamera.position);
       glass.visible = false;
+      const showSplats = hideSplats(scene);
       cubeCamera.update(gl, scene);
+      showSplats();
       glass.visible = true;
       reflection.texture.needsPMREMUpdate = true;
       invalidate();

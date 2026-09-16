@@ -26,6 +26,9 @@ const THUMBNAIL_CONCURRENCY = 8;
 /** Keep a higher tier until the artwork needs this many times fewer pixels. */
 const DOWNGRADE_FACTOR = 2;
 
+/** The renderer parts the manager uses — present on WebGLRenderer and WebGPURenderer. */
+type RendererLike = Pick<THREE.WebGLRenderer, 'initTexture' | 'domElement'>;
+
 export type ArtworkMaterial = THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
 
 export interface ArtworkTextureSource {
@@ -228,7 +231,7 @@ export class ArtworkTextureManager {
     }
 
     /** Call once per rendered frame. */
-    tick(camera: THREE.Camera, gl: THREE.WebGLRenderer, now: number): void {
+    tick(camera: THREE.Camera, gl: RendererLike, now: number): void {
         const settings = this.settings;
         if (!settings) return;
 
@@ -455,7 +458,7 @@ export class ArtworkTextureManager {
             });
     }
 
-    private processUploads(gl: THREE.WebGLRenderer, budgetMs: number, now: number): void {
+    private processUploads(gl: RendererLike, budgetMs: number, now: number): void {
         const start = performance.now();
         while (this.ready.length > 0) {
             const item = this.ready.shift()!;

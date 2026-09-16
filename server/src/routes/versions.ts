@@ -15,7 +15,7 @@ const createVersionSchema = z.object({
         assetId: z.number().optional(),
         wallId: z.number().nullable().optional(),
         wallIndex: z.number().nullable().optional(), // Index into walls[] array for ID remapping
-        medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer']).optional(),
+        medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat']).optional(),
         position_x: z.number(),
         position_y: z.number(),
         position_z: z.number(),

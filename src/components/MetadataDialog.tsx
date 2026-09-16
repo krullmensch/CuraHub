@@ -13,6 +13,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from 'lucide-react';
+import { SplatPreviewTile } from './SplatPreviewTile';
 import { VideoProcessingStatus, VideoProxiesProgress } from './VideoProcessingStatus';
 import type { VideoProcessingState } from '../hooks/use-video-processing';
 
@@ -186,6 +187,10 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
                     />
                     {(processed ? processed.proxiesPending : asset.metadata?.proxiesPending) && <VideoProxiesProgress assetId={asset.id} />}
                 </div>
+             ) : asset.type === 'splat' ? (
+                <div className="h-48 w-full overflow-hidden rounded-md">
+                    <SplatPreviewTile filename={asset.filename} />
+                </div>
              ) : (asset.type) === 'model3d' ? (
                 <div className="h-48 w-full">
                     <Suspense fallback={
@@ -258,7 +263,7 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
              />
           </div>
 
-          <div className={`grid gap-2 ${asset.type === 'model3d' ? 'grid-cols-1' : 'grid-cols-3'}`}>
+          <div className={`grid gap-2 ${asset.type === 'model3d' || asset.type === 'splat' ? 'grid-cols-1' : 'grid-cols-3'}`}>
              <Input
                 name="year"
                 placeholder="Year"
@@ -270,7 +275,7 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
                 }}
                 className="bg-zinc-900 border-zinc-700 focus:border-zinc-500"
              />
-             {asset.type !== 'model3d' && (
+             {asset.type !== 'model3d' && asset.type !== 'splat' && (
                 <>
                     <div className="relative">
                         <Input

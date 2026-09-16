@@ -7,6 +7,7 @@ Du kannst Dateien per Drag & Drop direkt in die Bibliothek oder in den 3D-Editor
 - **Bilder:** Werden automatisch skaliert (max. 2500px) und für das Web optimiert (WebP-Format). Physische Maße werden, falls vorhanden, aus den EXIF-Metadaten extrahiert.
 - **Videos:** Werden auf dem Server automatisch in das MP4-Format (H.264) umgewandelt. Zudem werden Thumbnails generiert.
 - **3D-Modelle:** Unterstützt werden GLB, GLTF, OBJ und FBX-Dateien (max. 50MB).
+- **Gaussian Splats:** 3D-Scans aus Gaussian Splatting (z. B. aus Postshot, Polycam, Scaniverse oder Luma) als `.ply`, `.spz`, `.splat` oder `.ksplat` (max. 1 GB). Die Dateien werden unverändert gespeichert. Für schnelle Ladezeiten ist `.spz` am besten, weil es etwa zehnmal kleiner ist als eine `.ply`. Komprimierte PLY-Dateien (SuperSplat/PlayCanvas) werden nicht unterstützt, bitte vorher als `.spz` oder unkomprimierte `.ply` exportieren.
 
 ## Metadaten verwalten
 Jedes Kunstwerk besitzt wichtige Metadaten:

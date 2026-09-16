@@ -51,6 +51,13 @@ export default defineConfig({
             // (style-to-js, inline-style-parser, …) into their own chunk broke module
             // initialisation order ("o is not a function" on load, wiki did not open).
             // Unmatched modules follow their only importer, the lazy WikiView chunk.
+            // WebGPURenderer, TSL and the WebGPU-only addons: only webgpuSupport imports them,
+            // so the WebGL fallback never downloads this chunk.
+            {
+              name: 'vendor-three-webgpu',
+              priority: 35,
+              test: /node_modules[\\/]three[\\/](build[\\/]three\.(webgpu|tsl)\.js|examples[\\/]jsm[\\/](objects[\\/]GaussianSplat|gpgpu[\\/]))/,
+            },
             {
               name: 'vendor-three',
               priority: 30,

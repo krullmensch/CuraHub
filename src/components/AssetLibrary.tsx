@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react'
 import { UploadDropzone } from './UploadDropzone';
 import { VideoProcessingBadge } from './VideoProcessingBadge';
 import { setCompactDragImage } from '@/lib/dragPreview';
-import { useEditorStore } from '../store/editorStore';
+import { useEditorStore, type AssetType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { Card, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -31,6 +31,7 @@ import {
 import { gooeyToast } from 'goey-toast';
 import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus, Inbox, Layers, MoreHorizontal, Palette, Pencil, FolderInput, Upload, AlertCircle } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
+import { SplatPreviewTile } from './SplatPreviewTile';
 import { FolderColorPicker } from './FolderColorPicker';
 import {
   type Folder,
@@ -425,7 +426,7 @@ export const AssetLibrary = () => {
       setDragging(true, {
         id,
         type: isArtwork ? 'artwork' : 'asset',
-        assetType: (asset.type as 'image' | 'video' | 'model3d') || 'image',
+        assetType: (asset.type as AssetType) || 'image',
         width: asset.width,
         height: asset.height,
         dpi: asset.dpi || 72,
@@ -908,7 +909,9 @@ export const AssetLibrary = () => {
                     style={{ contentVisibility: 'auto', containIntrinsicSize: '220px 220px' }}
                   >
                     <div className="aspect-square relative flex items-center justify-center bg-black/40 p-2">
-                      {isModel ? (
+                      {asset.type === 'splat' ? (
+                        <SplatPreviewTile filename={asset.filename} />
+                      ) : isModel ? (
                         <ModelPreviewCard url={asset.path} />
                       ) : isVideo ? (
                         <div className="relative w-full h-full flex items-center justify-center">
@@ -997,7 +1000,7 @@ export const AssetLibrary = () => {
                         <span>{formatBytes(asset.size)}</span>
                         {asset.type === 'video' && asset.duration ? (
                           <span>{formatDuration(asset.duration)}</span>
-                        ) : asset.type === 'model3d' ? (
+                        ) : asset.type === 'model3d' || asset.type === 'splat' ? (
                           <span>.{asset.filename.split('.').pop()}</span>
                         ) : (
                           <span>
