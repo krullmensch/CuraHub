@@ -174,6 +174,10 @@ model ArtworkInstance {
 
   medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d", "monitor", "beamer", "splat"
 
+  // Picture frame profile, "none" for an unframed work. See src/lib/frameStyles.ts (client)
+  // and server/src/lib/frameStyles.ts (accepted values).
+  frameStyle  String            @default("alu-silver")
+
   createdAt   DateTime          @default(now())
 }
 

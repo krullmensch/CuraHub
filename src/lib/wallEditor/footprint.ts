@@ -1,10 +1,18 @@
 import * as THREE from 'three';
 import { instanceRefMap, type ArtworkInstanceData } from '@/store/editorStore';
 import { worldToWall, worldToWallMatrix, type WallFrame } from './geometry';
+import { frameProfile, frameStyleOf } from '@/lib/frameStyles';
 import type { Rect } from './layout';
 
-/** Halbe Classic Alu8: the profile reaches 9 mm beyond the picture on every side (measured from the GLB). */
-export const FRAME_OUTER_MARGIN = 0.009;
+/**
+ * How far the chosen frame profile reaches beyond the picture on every side — 9 mm for the
+ * Halbe Classic Alu 8, up to ~20 mm for the wide wooden profiles, 0 for an unframed work.
+ * Alignment, spacing and collision in the 2D wall editor all measure the frame, not the picture.
+ */
+export function frameOuterMargin(inst: ArtworkInstanceData): number {
+    const styleId = frameStyleOf(inst.frameStyle);
+    return styleId === 'none' ? 0 : frameProfile(styleId).faceWidth;
+}
 
 /** 65" monitor (Monitor65.glb) — only used until the model has loaded. */
 const MONITOR_FALLBACK_SIZE = { w: 1.463, h: 0.837 };
@@ -82,8 +90,9 @@ export function computeFootprint(inst: ArtworkInstanceData, frame: WallFrame): F
 
     if (type === 'image') {
         const base = baseArtworkSize(inst);
-        const w = base.w * safeScale(inst.scale_x) + 2 * FRAME_OUTER_MARGIN;
-        const h = base.h * safeScale(inst.scale_y) + 2 * FRAME_OUTER_MARGIN;
+        const margin = frameOuterMargin(inst);
+        const w = base.w * safeScale(inst.scale_x) + 2 * margin;
+        const h = base.h * safeScale(inst.scale_y) + 2 * margin;
         return symmetric(w, h, true);
     }
 

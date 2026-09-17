@@ -2,10 +2,13 @@ import { forwardRef, useMemo } from 'react';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
 import { FRAME_MODEL, extractFrameParts, getFramePartTransforms } from '../lib/modularFrameParts';
+import { getFrameMaterial } from '../lib/frameMaterials';
+import { DEFAULT_FRAME_STYLE, type FrameStyleId } from '../lib/frameStyles';
 
 interface ModularFrameProps {
     width: number;  // inner picture width in meters
     height: number; // inner picture height in meters
+    styleId?: FrameStyleId;
 }
 
 /**
@@ -13,10 +16,11 @@ interface ModularFrameProps {
  * (RND-01); this component remains for the drag ghost preview and as fallback.
  */
 export const ModularFrame = forwardRef<THREE.Group, ModularFrameProps>(
-    ({ width, height }, ref) => {
+    ({ width, height, styleId = DEFAULT_FRAME_STYLE }, ref) => {
         const { scene } = useGLTF(FRAME_MODEL);
         const parts = useMemo(() => extractFrameParts(scene), [scene]);
-        const { corners, edges } = getFramePartTransforms(width, height);
+        const material = useMemo(() => getFrameMaterial(styleId, parts.baseMaterial), [styleId, parts]);
+        const { corners, edges } = getFramePartTransforms(width, height, styleId);
 
         return (
             <group ref={ref}>
@@ -24,16 +28,17 @@ export const ModularFrame = forwardRef<THREE.Group, ModularFrameProps>(
                     <mesh
                         key={`corner-${i}`}
                         geometry={parts.cornerGeometry}
-                        material={parts.cornerMaterial}
+                        material={material}
                         position={part.position}
                         rotation={part.rotation}
+                        scale={part.scale}
                     />
                 ))}
                 {edges.map((part, i) => (
                     <mesh
                         key={`edge-${i}`}
                         geometry={parts.edgeGeometry}
-                        material={parts.edgeMaterial}
+                        material={material}
                         position={part.position}
                         rotation={part.rotation}
                         scale={part.scale}

@@ -241,6 +241,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       assetId: draggedAsset.type === 'asset' ? draggedAsset.id : undefined,
       wallId: snapshot.wallId,
       medium,
+      // New works use the frame style last picked in the properties panel (the drag ghost
+      // previews the same one).
+      frameStyle: store.defaultFrameStyle,
       artwork: {
         id: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
         width: draggedAsset.artworkWidth,

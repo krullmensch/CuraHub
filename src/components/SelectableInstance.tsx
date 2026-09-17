@@ -3,18 +3,18 @@ import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useEditorStore, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
 import { InstancedFrameSlot } from './FrameInstancer';
+import { frameProfile, frameStyleOf } from '../lib/frameStyles';
 import { useArtworkTexture } from '../hooks/use-artwork-texture';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
-// Halbe_Classic_Alu8 frame profile depth (Z) extracted via Blender MCP.
-const FRAME_PROFILE_DEPTH = 0.027;
 // Inset the image plane 4 mm behind the front face of the frame.
 const IMAGE_INSET_FROM_FRONT = 0.004;
+// How far an unframed work stands off the wall — a mounted print rather than a sticker.
+const UNFRAMED_DEPTH = 0.006;
 // Render so the frame's back face sits at outer-group local z = -WALL_PLACEMENT_OFFSET,
 // cancelling out the placement offset baked into stored positions so the back is
 // flush against the wall surface.
 const FRAME_Z = -WALL_PLACEMENT_OFFSET;
-const IMAGE_Z = FRAME_Z + FRAME_PROFILE_DEPTH - IMAGE_INSET_FROM_FRONT;
 
 interface SelectableInstanceProps {
     instance: ArtworkInstanceData;
@@ -53,6 +53,13 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
         const effWidth = baseWidth * sx;
         const effHeight = baseHeight * sy;
 
+        // Frame style is per instance; 'none' hangs the picture on the wall unframed and the
+        // profile depth of the chosen style decides how far the picture sits from the wall.
+        const frameStyleId = frameStyleOf(instance.frameStyle);
+        const framed = frameStyleId !== 'none';
+        const profileDepth = framed ? frameProfile(frameStyleId).depth : UNFRAMED_DEPTH;
+        const imageZ = FRAME_Z + profileDepth - (framed ? IMAGE_INSET_FROM_FRONT : 0);
+
         // LOAD-05: resolution follows the on-screen size; the selected artwork gets the
         // highest resolution the render preset allows.
         const bindMaterial = useArtworkTexture(instance.id, {
@@ -82,17 +89,19 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
                     are preserved (outer_scale * inverse_scale = identity), so the
                     wall-flush offset and image inset stay correct. */}
                 <group scale={[1 / sx, 1 / sy, 1 / sz]}>
-                    {/* Modular Halbe frame around the picture — wrapped so we can offset
+                    {/* Picture frame in the instance's style — wrapped so we can offset
                         the entire frame back so it sits flush on the wall. Drawn by
-                        FrameInstancer (RND-01). */}
-                    <group position={[0, 0, FRAME_Z]}>
-                        <InstancedFrameSlot width={effWidth} height={effHeight} />
-                    </group>
+                        FrameInstancer (RND-01), one instanced pair per style. */}
+                    {framed && (
+                        <group position={[0, 0, FRAME_Z]}>
+                            <InstancedFrameSlot width={effWidth} height={effHeight} styleId={frameStyleId} />
+                        </group>
+                    )}
 
                     {/* Image plane, inset 4mm behind the front face of the frame.
                         RND-04: unlit MeshBasicMaterial (true photo colours, cheap) unless the
                         "high" preset asks for lit PBR. */}
-                    <mesh ref={imageRef} position={[0, 0, IMAGE_Z]} castShadow={false} receiveShadow={false}>
+                    <mesh ref={imageRef} position={[0, 0, imageZ]} castShadow={false} receiveShadow={false}>
                         <planeGeometry args={[effWidth, effHeight]} />
                         {basicMaterials ? (
                             <meshBasicMaterial ref={bindMaterial} side={THREE.DoubleSide} toneMapped={false} />
@@ -109,8 +118,8 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
 
                     {/* Selection halo — backside-rendered enlarged box (same pattern as ModularWallMesh) */}
                     {selected && (
-                        <mesh position={[0, 0, FRAME_Z + FRAME_PROFILE_DEPTH / 2]}>
-                            <boxGeometry args={[effWidth + 0.05, effHeight + 0.05, FRAME_PROFILE_DEPTH + 0.01]} />
+                        <mesh position={[0, 0, FRAME_Z + profileDepth / 2]}>
+                            <boxGeometry args={[effWidth + 0.05, effHeight + 0.05, profileDepth + 0.01]} />
                             <meshBasicMaterial
                                 color="#4488ff"
                                 transparent

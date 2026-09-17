@@ -5,15 +5,15 @@ import * as THREE from 'three';
 import { getMaxAnisotropy } from '../lib/rendererBackend';
 import { useEditorStore, WALL_PLACEMENT_OFFSET, isFloorAssetType } from '../store/editorStore';
 import { ModularFrame } from './ModularFrame';
+import { frameProfile } from '../lib/frameStyles';
 import { placementFeedback, placementResolver, type PlacementResult } from '../lib/placementFeedback';
 
-// Halbe_Classic_Alu8 frame profile depth (Z) — matches SelectableInstance.
-const FRAME_PROFILE_DEPTH = 0.027;
 const IMAGE_INSET_FROM_FRONT = 0.004;
+// Matches SelectableInstance's UNFRAMED_DEPTH.
+const GHOST_UNFRAMED_DEPTH = 0.006;
 // Same back-face compensation as SelectableInstance so the ghost preview
 // already shows the artwork sitting flush on the wall while dragging.
 const GHOST_FRAME_Z = -WALL_PLACEMENT_OFFSET;
-const GHOST_IMAGE_Z = GHOST_FRAME_Z + FRAME_PROFILE_DEPTH - IMAGE_INSET_FROM_FRONT;
 
 interface GhostPreviewProps {
     url: string;
@@ -28,6 +28,11 @@ interface GhostPreviewProps {
 }
 
 const GhostPreview = ({ url, width, height, dpi, artworkWidth, artworkHeight, position, quaternion, isValid }: GhostPreviewProps) => {
+    // The ghost shows the frame the drop will actually produce (EditorPage reads the same value).
+    const frameStyleId = useEditorStore((state) => state.defaultFrameStyle);
+    const framed = frameStyleId !== 'none';
+    const ghostDepth = framed ? frameProfile(frameStyleId).depth : GHOST_UNFRAMED_DEPTH;
+    const ghostImageZ = GHOST_FRAME_Z + ghostDepth - (framed ? IMAGE_INSET_FROM_FRONT : 0);
     // Apply anisotropy for preview
     const texture = useTexture(url);
     const gl = useThree((state) => state.gl);
@@ -53,10 +58,12 @@ const GhostPreview = ({ url, width, height, dpi, artworkWidth, artworkHeight, po
 
     return (
         <group position={position} quaternion={quaternion} scale={[scale, scale, 1]} name="__ghost__">
-            <group position={[0, 0, GHOST_FRAME_Z]} name="__ghost__">
-                <ModularFrame width={widthM} height={heightM} />
-            </group>
-            <mesh position={[0, 0, GHOST_IMAGE_Z]} name="__ghost__">
+            {framed && (
+                <group position={[0, 0, GHOST_FRAME_Z]} name="__ghost__">
+                    <ModularFrame width={widthM} height={heightM} styleId={frameStyleId} />
+                </group>
+            )}
+            <mesh position={[0, 0, ghostImageZ]} name="__ghost__">
                 <planeGeometry args={[widthM, heightM]} />
                 <meshBasicMaterial
                     map={texture}

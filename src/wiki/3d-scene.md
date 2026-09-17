@@ -25,5 +25,15 @@ Wenn du ein Objekt auswählst, erscheinen 3D-Gizmos. Du kannst aber auch Tastenk
 
 Für exakte Einstellungen (z.B. "Zentrum des Bildes genau auf 1,45m Höhe") nutzt du das **Properties-Panel** auf der rechten Seite.
 
+## Rahmen
+Jedes Bild kann **gerahmt** oder **ohne Rahmen** hängen — im Properties-Panel unter "Rahmen". Ungerahmt liegt das Werk wie ein aufgezogener Druck flach auf der Wand.
+
+Für gerahmte Werke stehen mehrere Profile zur Wahl:
+- **Metall:** Alu silber (Halbe Classic 8) und Alu schwarz eloxiert — schmale 9-mm-Profile.
+- **Holz:** Eiche natur, Nussbaum geölt und Esche schwarz gebeizt, jeweils mit sichtbarer Maserung. Die Profile sind breiter und tiefer als das Aluminium.
+- **Lack:** Weiß seidenmatt, Schwarz hochglanz und Bordeaux. Die Farbe deckt die Maserung, ihr Relief bleibt im Licht sichtbar.
+
+Der Bildausschnitt bleibt immer exakt so groß wie das Werk — das Profil wächst nach außen. Das zuletzt gewählte Profil gilt auch für neu abgelegte Werke, die Drag-Vorschau zeigt es bereits. Im 2D-Wandeditor rechnen Ausrichten, Abstände und Warnungen mit der Außenkante des Rahmens.
+
 ## 2D-Wandeditor
 Zum genauen Hängen öffnest du eine Wand frontal im **2D-Wandeditor** – per Doppelklick auf die Wandfläche, mit **E** oder über das Properties-Panel. Dort richtest du Werke aus, stellst Abstände ein und misst Höhen über dem Boden. Das eigene Wiki-Kapitel "2D-Wandeditor" beschreibt ihn im Detail.

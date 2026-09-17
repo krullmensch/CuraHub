@@ -5,6 +5,7 @@ import { gooeyToast } from 'goey-toast';
 import { readStoredRenderQualitySetting, storeRenderQualitySetting, type RenderQualitySetting } from '../lib/renderQuality';
 import type { WallSide } from '../lib/wallEditor/geometry';
 import type { WallEditorTarget } from '../lib/wallEditor/faces';
+import { DEFAULT_FRAME_STYLE, type FrameStyleId } from '../lib/frameStyles';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -73,6 +74,8 @@ export interface ArtworkInstanceData {
   assetId?: number;
   wallId?: number | null;
   medium?: MediumType;
+  /** Picture frame profile, 'none' for an unframed work. See lib/frameStyles.ts. */
+  frameStyle?: FrameStyleId;
   artwork: {
     id?: number;
     title?: string;
@@ -209,6 +212,9 @@ interface EditorState {
   // RND-11: 'auto' resolves via hardware detection (see src/lib/renderQuality.ts)
   renderQualitySetting: RenderQualitySetting;
 
+  /** Frame style newly dropped artworks get — the last one the curator picked in the panel. */
+  defaultFrameStyle: FrameStyleId;
+
   // 2D wall editor — null while the normal 3D editor is shown
   wallEditor: WallEditorTarget | null;
   /** Artworks selected inside the 2D wall editor (multi-selection, independent of selectedInstanceId). */
@@ -265,6 +271,8 @@ interface EditorState {
   setFpvHoveredInfo: (info: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null) => void;
 
   setRenderQualitySetting: (setting: RenderQualitySetting) => void;
+
+  setDefaultFrameStyle: (styleId: FrameStyleId) => void;
 
   // 2D wall editor actions
   /** Opens a face of a modular wall or a room wall (see lib/wallEditor/faces.ts). */
@@ -339,6 +347,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   futureInstances: [],
   hasUnsavedChanges: false,
   syncStatus: 'idle',
+
+  defaultFrameStyle: DEFAULT_FRAME_STYLE,
 
   // Modular Walls defaults
   localWalls: [],
@@ -579,6 +589,8 @@ export const useEditorStore = create<EditorState>((set) => ({
     storeRenderQualitySetting(setting);
     set({ renderQualitySetting: setting });
   },
+
+  setDefaultFrameStyle: (styleId) => set({ defaultFrameStyle: styleId }),
 
   // 2D wall editor actions
   openWallEditor: (target, selection = []) => set((state) => {
@@ -863,6 +875,7 @@ const syncToBackend = async () => {
               assetId: assetId || undefined,
               wallId: inst.wallId ?? null,
               medium: inst.medium ?? 'frame',
+              frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
               position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
               rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
               scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
@@ -926,7 +939,8 @@ const syncToBackend = async () => {
       const scaleChanged = curr.scale_x !== prev.scale_x || curr.scale_y !== prev.scale_y || curr.scale_z !== prev.scale_z;
       const wallChanged = curr.wallId !== prev.wallId;
       const mediumChanged = curr.medium !== prev.medium;
-      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged)) {
+      const frameStyleChanged = curr.frameStyle !== prev.frameStyle;
+      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged || frameStyleChanged)) {
         nextInstancesMap.set(curr.id, curr); // no pending op — keep the snapshot in sync
         continue;
       }
@@ -937,6 +951,7 @@ const syncToBackend = async () => {
       if (scaleChanged) body.scale = { x: curr.scale_x, y: curr.scale_y, z: curr.scale_z };
       if (wallChanged) body.wallId = curr.wallId ?? null;
       if (mediumChanged) body.medium = curr.medium;
+      if (frameStyleChanged) body.frameStyle = curr.frameStyle;
 
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });

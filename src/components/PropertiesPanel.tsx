@@ -32,6 +32,14 @@ import { sideOfInstance, WALL_SIDES, WALL_SIDE_LABELS, type WallSide } from '@/l
 import { targetForInstance, type WallEditorTarget } from '@/lib/wallEditor/faces';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
 import { useFaceDirectory } from '@/hooks/use-face-directory';
+import {
+    DEFAULT_FRAME_STYLE,
+    FRAME_STYLE_GROUP_LABELS,
+    SELECTABLE_FRAME_STYLES,
+    frameStyleOf,
+    type FrameStyleGroup,
+    type FrameStyleId,
+} from '@/lib/frameStyles';
 import type { LucideIcon } from 'lucide-react';
 
 // Numeric input that holds local string state while focused, only committing on blur/Enter.
@@ -120,6 +128,10 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const [aspectLocked, setAspectLocked] = useState(true);
     const [assetMeta, setAssetMeta] = useState<{ widthPx: number; heightPx: number; dpi: number; type?: string; physicalWidth?: number | null; physicalHeight?: number | null } | null>(null);
     const [instanceMedium, setInstanceMedium] = useState<MediumType>('frame');
+    const [instanceFrameStyle, setInstanceFrameStyle] = useState<FrameStyleId>(DEFAULT_FRAME_STYLE);
+    const setDefaultFrameStyle = useEditorStore((state) => state.setDefaultFrameStyle);
+    // Remembers what to go back to when the curator switches framing back on.
+    const lastFramedStyle = useRef<FrameStyleId>(DEFAULT_FRAME_STYLE);
 
     // For 3D models: use the natural bounding box size (in meters) from the scene as the base.
     // Falls back to { 1, 1, 1 } until the model renders and populates modelBBoxMap.
@@ -158,6 +170,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                 scale: { x: localInst.scale_x, y: localInst.scale_y, z: localInst.scale_z },
             });
             setInstanceMedium(localInst.medium || 'frame');
+            const style = frameStyleOf(localInst.frameStyle);
+            setInstanceFrameStyle(style);
+            if (style !== 'none') lastFramedStyle.current = style;
             if (localInst.artwork?.asset) {
                 setAssetMeta({
                     widthPx: localInst.artwork.asset.width,
@@ -187,6 +202,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                         scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
                     });
                     setInstanceMedium(inst.medium || 'frame');
+                    const style = frameStyleOf(inst.frameStyle);
+                    setInstanceFrameStyle(style);
+                    if (style !== 'none') lastFramedStyle.current = style;
                     if (inst.artwork?.asset) {
                         setAssetMeta({
                             widthPx: inst.artwork.asset.width,
@@ -287,6 +305,27 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         store.commitLocalChange(updatedInstances);
     }, [selectedId]);
 
+    const handleFrameStyleChange = useCallback((frameStyle: FrameStyleId) => {
+        if (!selectedId) return;
+        setInstanceFrameStyle(frameStyle);
+        if (frameStyle !== 'none') {
+            lastFramedStyle.current = frameStyle;
+            // New drops follow the style last picked here.
+            setDefaultFrameStyle(frameStyle);
+        }
+        const store = useEditorStore.getState();
+        store.commitLocalChange(store.localInstances.map(inst =>
+            inst.id === selectedId ? { ...inst, frameStyle } : inst
+        ));
+    }, [selectedId, setDefaultFrameStyle]);
+
+    // Restoring the previous style lives in the handler so the panel body never reads a ref
+    // while rendering.
+    const handleFrameToggle = useCallback((framed: boolean) => {
+        const previous = lastFramedStyle.current;
+        handleFrameStyleChange(!framed ? 'none' : previous === 'none' ? DEFAULT_FRAME_STYLE : previous);
+    }, [handleFrameStyleChange]);
+
     // Auto-promote legacy video media (display/projector/frame/wallpaper) to 'monitor' so the
     // restricted Monitor/Beamer dropdown stays in sync with the underlying instance value.
     useEffect(() => {
@@ -357,6 +396,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                             medium={instanceMedium}
                             assetType={assetMeta?.type}
                             onMediumChange={handleMediumChange}
+                            frameStyle={instanceFrameStyle}
+                            onFrameToggle={handleFrameToggle}
+                            onFrameStyleChange={handleFrameStyleChange}
                             selectedInstanceId={selectedId}
                         />
                     ) : (
@@ -444,6 +486,9 @@ interface ArtworkPropertiesContentProps {
     medium: MediumType;
     assetType?: string;
     onMediumChange: (medium: MediumType) => void;
+    frameStyle: FrameStyleId;
+    onFrameToggle: (framed: boolean) => void;
+    onFrameStyleChange: (frameStyle: FrameStyleId) => void;
     selectedInstanceId: number | null;
 }
 
@@ -455,6 +500,10 @@ const MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
     { value: 'model3d', label: '3D Model' },
 ];
 
+/** Frame styles for the panel's dropdown, grouped by material. */
+const FRAME_STYLE_GROUPS = (['metall', 'holz', 'lack'] as FrameStyleGroup[])
+    .map((group) => [group, SELECTABLE_FRAME_STYLES.filter((style) => style.group === group)] as const);
+
 const VIDEO_MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
     { value: 'monitor', label: 'Monitor' },
     { value: 'beamer',  label: 'Beamer'  },
@@ -464,12 +513,13 @@ const ArtworkPropertiesContent = ({
     transform, transformMode, setTransformMode, modeButtons,
     toDeg, toFixed, baseCm, aspectLocked, setAspectLocked,
     handleInputChange, handleScaleChange, handleFocus, handleDelete,
-    medium, assetType, onMediumChange, selectedInstanceId,
+    medium, assetType, onMediumChange, frameStyle, onFrameToggle, onFrameStyleChange, selectedInstanceId,
 }: ArtworkPropertiesContentProps) => {
     // Splats get the same floor-object controls as 3D models.
     const isModel = isFloorAssetType(assetType);
     const isVideo = assetType === 'video';
     const sizeLocked  = isVideo && medium === 'monitor';
+    const framed = frameStyle !== 'none';
     const sizeIsBeamer = isVideo && medium === 'beamer';
     const hideAspectToggle = sizeLocked || sizeIsBeamer;
 
@@ -574,6 +624,46 @@ const ArtworkPropertiesContent = ({
                     </select>
                 )}
             </div>
+            {!isModel && !isVideo && (
+                <div className="space-y-2">
+                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">Rahmen</Label>
+                    <div className="flex gap-1">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onFrameToggle(true)}
+                            className={cn("flex-1 h-8 text-xs", framed ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                        >
+                            Gerahmt
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onFrameToggle(false)}
+                            className={cn("flex-1 h-8 text-xs", !framed ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                        >
+                            Ohne Rahmen
+                        </Button>
+                    </div>
+                    {framed ? (
+                        <select
+                            value={frameStyle}
+                            onChange={(e) => onFrameStyleChange(e.target.value as FrameStyleId)}
+                            className="w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                            {FRAME_STYLE_GROUPS.map(([group, styles]) => (
+                                <optgroup key={group} label={FRAME_STYLE_GROUP_LABELS[group]}>
+                                    {styles.map((style) => (
+                                        <option key={style.id} value={style.id}>{style.label}</option>
+                                    ))}
+                                </optgroup>
+                            ))}
+                        </select>
+                    ) : (
+                        <p className="text-[10px] text-zinc-500 italic">Werk hängt ungerahmt an der Wand.</p>
+                    )}
+                </div>
+            )}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label className="text-xs text-zinc-400 uppercase tracking-wider">{isModel ? 'Größe (m)' : 'Size (cm)'}</Label>

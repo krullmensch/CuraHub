@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, requireAdmin, requireCurator, exhibitionAccessFilter } from '../lib/middleware';
+import { DEFAULT_FRAME_STYLE, frameStyleSchema } from '../lib/frameStyles';
 
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
@@ -16,6 +17,7 @@ const createVersionSchema = z.object({
         wallId: z.number().nullable().optional(),
         wallIndex: z.number().nullable().optional(), // Index into walls[] array for ID remapping
         medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat']).optional(),
+        frameStyle: frameStyleSchema.optional(),
         position_x: z.number(),
         position_y: z.number(),
         position_z: z.number(),
@@ -228,6 +230,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                     instancesToCreate.push({
                         artworkId,
                         medium: inst.medium ?? 'frame',
+                        frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
                         position_x: inst.position_x,
                         position_y: inst.position_y,
                         position_z: inst.position_z,
@@ -255,6 +258,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
             instancesToCreate = sourceInstances.map(inst => ({
                 artworkId: inst.artworkId,
                 medium: inst.medium ?? 'frame',
+                frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
                 _wallIndex: inst.wallId ? (oldWallIdToIndex.get(inst.wallId) ?? null) : null,
                 position_x: inst.position_x,
                 position_y: inst.position_y,
@@ -551,6 +555,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
         const instancesToCreate = sourceVersion.instances.map(inst => ({
             artworkId: inst.artworkId,
             medium: inst.medium ?? 'frame',
+            frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
             _wallIndex: inst.wallId ? (oldWallIdToIndex.get(inst.wallId) ?? null) : null,
             position_x: inst.position_x,
             position_y: inst.position_y,
