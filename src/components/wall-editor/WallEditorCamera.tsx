@@ -4,7 +4,8 @@ import { OrthographicCamera } from '@react-three/drei';
 import * as THREE from 'three';
 import { useEditorStore } from '@/store/editorStore';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
-import { getWallFrame, wallToWorld } from '@/lib/wallEditor/geometry';
+import { wallToWorld } from '@/lib/wallEditor/geometry';
+import { openFaceOf } from '@/lib/wallEditor/faces';
 import { WALL_CAMERA_DISTANCE, wallEditorBridge } from '@/lib/wallEditor/bridge';
 
 /**
@@ -15,8 +16,7 @@ import { WALL_CAMERA_DISTANCE, wallEditorBridge } from '@/lib/wallEditor/bridge'
  */
 export const WallEditorCamera = () => {
     const phase = useWallEditorView((s) => s.phase);
-    const wallEditor = useEditorStore((s) => s.wallEditor);
-    const wall = useEditorStore((s) => (s.wallEditor ? s.localWalls.find((w) => w.id === s.wallEditor!.wallId) : undefined));
+    const face = useEditorStore(openFaceOf);
     const invalidate = useThree((s) => s.invalidate);
     const get = useThree((s) => s.get);
     const cameraRef = useRef<THREE.OrthographicCamera>(null);
@@ -24,15 +24,34 @@ export const WallEditorCamera = () => {
     useEffect(() => {
         wallEditorBridge.invalidate = invalidate;
         wallEditorBridge.getCameraPosition = () => get().camera.position;
+        const raycaster = new THREE.Raycaster();
+        const ndc = new THREE.Vector2();
+        wallEditorBridge.pick = (clientX, clientY) => {
+            const { camera, scene, gl } = get();
+            const rect = gl.domElement.getBoundingClientRect();
+            ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+            raycaster.setFromCamera(ndc, camera);
+            for (const hit of raycaster.intersectObjects(scene.children, true)) {
+                let visible = true;
+                for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) {
+                    if (!o.visible || o.name === '__ghost__') { visible = false; break; }
+                }
+                if (!visible) continue;
+                const normal = hit.face ? hit.face.normal.clone().transformDirection(hit.object.matrixWorld) : null;
+                return { object: hit.object, point: hit.point, normal };
+            }
+            return null;
+        };
         return () => {
             wallEditorBridge.invalidate = () => {};
             wallEditorBridge.getCameraPosition = () => null;
+            wallEditorBridge.pick = () => null;
         };
     }, [invalidate, get]);
 
     useEffect(() => {
-        if (!wall || !wallEditor) return;
-        const frame = getWallFrame(wall, wallEditor.side);
+        if (!face) return;
+        const { frame } = face;
         const lookAt = new THREE.Vector3();
         const apply = () => {
             const camera = cameraRef.current;
@@ -53,7 +72,7 @@ export const WallEditorCamera = () => {
                 apply();
             }
         });
-    }, [wall, wallEditor, invalidate]);
+    }, [face, invalidate]);
 
     return (
         <OrthographicCamera

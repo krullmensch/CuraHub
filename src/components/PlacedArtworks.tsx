@@ -7,6 +7,7 @@ import { VideoInstance } from './VideoInstance';
 import { ModelInstance } from './ModelInstance';
 import { SplatInstance } from './SplatInstance';
 import { InstanceTransformControls } from './InstanceTransformControls';
+import { instanceOnFace, openFaceOf } from '../lib/wallEditor/faces';
 
 interface PlacedArtworksProps {
     viewerInstances?: ArtworkInstanceData[];
@@ -34,8 +35,12 @@ interface InstanceSlotProps {
 // a new callback on every render made React detach/re-attach all refs on each list render.
 const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProps) => {
     const selected = useEditorStore((state) => isEditor && state.selectedInstanceId === instance.id);
-    // 2D wall editor: only the artworks of the open wall stay visible
-    const hidden = useEditorStore((state) => isEditor && !!state.wallEditor && state.wallEditor.wallId !== instance.wallId);
+    // 2D wall editor: only the artworks of the open face stay visible
+    const hidden = useEditorStore((state) => {
+        if (!isEditor || !state.wallEditor) return false;
+        const face = openFaceOf(state);
+        return !face || !instanceOnFace(instance, face);
+    });
     const refCallback = useCallback((el: THREE.Group | null) => registerRef(instance.id, el), [registerRef, instance.id]);
     const assetType = instance.artwork?.asset?.type || 'image';
     const Component =

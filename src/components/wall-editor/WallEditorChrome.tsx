@@ -4,12 +4,14 @@ import {
     ArrowLeft,
     BetweenHorizontalStart,
     Check,
+    ChevronDown,
     Eraser,
     Hand,
     Lock,
     Magnet,
     Minus,
     MousePointer2,
+    Pencil,
     Plus,
     Ruler,
     RulerDimensionLine,
@@ -26,6 +28,16 @@ import { useWallFace } from '@/hooks/use-wall-face';
 import { formatCm } from '@/lib/wallEditor/format';
 import { fitWallEditorView } from '@/lib/wallEditor/view';
 import type { WallFace } from '@/lib/wallEditor/wallArtworks';
+import { WALL_SIDE_LABELS, type WallSide } from '@/lib/wallEditor/geometry';
+import { useFaceDirectory, type FaceEntry } from '@/hooks/use-face-directory';
+import {
+    DropdownMenu,
+    DropdownMenuContent,
+    DropdownMenuItem,
+    DropdownMenuLabel,
+    DropdownMenuSeparator,
+    DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { WallEditorOverlay } from './WallEditorOverlay';
 
 /** CSS px per metre on a 96 dpi screen — for the "1:x" scale readout. */
@@ -67,7 +79,7 @@ const ChromeButton = ({ icon, label, shortcut, active, disabled, onClick, showLa
         )}
     >
         {icon}
-        {showLabel && <span>{label}</span>}
+        {showLabel && <span className="whitespace-nowrap">{label}</span>}
     </button>
 );
 
@@ -77,18 +89,72 @@ const barClass = 'flex items-center gap-0.5 p-1 rounded-xl border border-white/1
 
 // ── Top bar ──────────────────────────────────────────────────────────────
 
+const SIDE_TABS: { side: WallSide; short: string }[] = [
+    { side: 'front', short: 'Vorne' },
+    { side: 'back', short: 'Hinten' },
+    { side: 'left', short: 'Links' },
+    { side: 'right', short: 'Rechts' },
+];
+
+/** Dropdown to jump to any other wall (room walls and modular walls). */
+const FaceSwitcher = ({ face }: { face: WallFace }) => {
+    const entries = useFaceDirectory();
+    const openWallEditor = useEditorStore((s) => s.openWallEditor);
+    const currentKey = face.wall ? `wall:${face.wall.id}` : face.key;
+    const title = face.wall ? (face.wall.label || 'Stellwand') : face.label;
+    const groups: { group: FaceEntry['group']; title: string }[] = [
+        { group: 'room', title: 'Raumwände' },
+        { group: 'wall', title: 'Stellwände' },
+    ];
+    return (
+        <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+                <button
+                    type="button"
+                    className="h-8 px-2 flex items-center gap-1 rounded-lg text-sm font-semibold text-white hover:bg-white/10 transition-colors max-w-[14rem]"
+                    title="Andere Wand öffnen"
+                >
+                    <span className="truncate">{title}</span>
+                    <ChevronDown className="h-3.5 w-3.5 shrink-0 text-white/60" />
+                </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-80 max-h-[60vh] overflow-y-auto bg-zinc-950 border-zinc-800 text-zinc-100 z-[60]">
+                {groups.map(({ group, title: groupTitle }, gi) => {
+                    const list = entries.filter((e) => e.group === group);
+                    if (list.length === 0) return null;
+                    return (
+                        <div key={group}>
+                            {gi > 0 && <DropdownMenuSeparator className="bg-zinc-800" />}
+                            <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-zinc-500">{groupTitle}</DropdownMenuLabel>
+                            {list.map((entry) => (
+                                <DropdownMenuItem
+                                    key={entry.key}
+                                    onSelect={() => { if (entry.key !== currentKey) openWallEditor(entry.target); }}
+                                    className={cn('flex items-center gap-2 text-xs cursor-pointer focus:bg-zinc-800 focus:text-white', entry.key === currentKey && 'bg-zinc-800/60')}
+                                >
+                                    <span className="flex-1 truncate">{entry.label}</span>
+                                    <span className="text-[10px] text-zinc-500 whitespace-nowrap">{entry.detail}</span>
+                                    <span className="w-5 text-right text-[10px] tabular-nums text-zinc-400">{entry.count}</span>
+                                </DropdownMenuItem>
+                            ))}
+                        </div>
+                    );
+                })}
+            </DropdownMenuContent>
+        </DropdownMenu>
+    );
+};
+
 const WallEditorTopBar = ({ face }: { face: WallFace }) => {
-    const side = face.side;
     const setSide = useEditorStore((s) => s.setWallEditorSide);
     const closeWallEditor = useEditorStore((s) => s.closeWallEditor);
     const updateWall = useEditorStore((s) => s.updateWall);
     const toggleWallLock = useEditorStore((s) => s.toggleWallLock);
     const pxPerM = useWallEditorView((s) => s.pxPerM);
     const [editingName, setEditingName] = useState(false);
-    const [name, setName] = useState(face.wall.label ?? '');
+    const [name, setName] = useState(face.wall?.label ?? '');
+    const { wall } = face;
 
-    const frontCount = side === 'front' ? face.items.length : face.otherSideCount;
-    const backCount = side === 'back' ? face.items.length : face.otherSideCount;
     const zoomBy = (factor: number) => {
         const v = useWallEditorView.getState();
         v.zoomAt(v.viewportW / 2, v.viewportH / 2, factor);
@@ -97,8 +163,8 @@ const WallEditorTopBar = ({ face }: { face: WallFace }) => {
     const commitName = () => {
         setEditingName(false);
         const trimmed = name.trim();
-        if (trimmed && trimmed !== face.wall.label) updateWall(face.wall.id, { label: trimmed });
-        else setName(face.wall.label ?? '');
+        if (wall && trimmed && trimmed !== wall.label) updateWall(wall.id, { label: trimmed });
+        else setName(wall?.label ?? '');
     };
 
     return (
@@ -106,8 +172,8 @@ const WallEditorTopBar = ({ face }: { face: WallFace }) => {
             <div className={cn(barClass, 'pointer-events-auto')}>
                 <ChromeButton icon={<ArrowLeft className="h-4 w-4" />} label="3D-Ansicht" shortcut="Esc" onClick={closeWallEditor} showLabel />
                 <Separator />
-                <div className="px-2 flex items-baseline gap-2 text-white">
-                    {editingName ? (
+                <div className="pl-1 pr-2 flex items-center gap-1 text-white">
+                    {editingName && wall ? (
                         <input
                             autoFocus
                             value={name}
@@ -115,62 +181,83 @@ const WallEditorTopBar = ({ face }: { face: WallFace }) => {
                             onBlur={commitName}
                             onKeyDown={(e) => {
                                 if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
-                                if (e.key === 'Escape') { setName(face.wall.label ?? ''); setEditingName(false); }
+                                if (e.key === 'Escape') { setName(wall.label ?? ''); setEditingName(false); }
                             }}
                             className="w-28 bg-zinc-900 border border-zinc-600 rounded px-1.5 py-0.5 text-sm font-semibold outline-none focus:border-blue-500"
                         />
                     ) : (
+                        <FaceSwitcher face={face} />
+                    )}
+                    {wall && !editingName && (
                         <button
                             type="button"
-                            className="text-sm font-semibold hover:text-blue-300 transition-colors"
+                            className="h-6 w-6 flex items-center justify-center rounded text-white/40 hover:text-white hover:bg-white/10"
                             title="Wand umbenennen"
-                            onClick={() => { setName(face.wall.label ?? ''); setEditingName(true); }}
+                            aria-label="Wand umbenennen"
+                            onClick={() => { setName(wall.label ?? ''); setEditingName(true); }}
                         >
-                            {face.wall.label || 'Wand'}
+                            <Pencil className="h-3 w-3" />
                         </button>
                     )}
                     <span className="text-[11px] text-white/50 whitespace-nowrap">
-                        {formatCm(face.wall.width, false)} × {formatCm(face.wall.height)}
+                        {formatCm(face.wallRect.w, false)} × {formatCm(face.wallRect.h)}
                     </span>
                 </div>
-                <Separator />
-                <div className="flex rounded-lg bg-white/5 p-0.5" role="tablist" aria-label="Wandseite">
-                    {(['front', 'back'] as const).map((s) => (
-                        <button
-                            key={s}
-                            type="button"
-                            role="tab"
-                            aria-selected={side === s}
-                            onClick={() => setSide(s)}
-                            className={cn(
-                                'h-7 px-2.5 rounded-md text-xs font-medium transition-colors whitespace-nowrap',
-                                side === s ? 'bg-white text-zinc-900' : 'text-white/60 hover:text-white',
-                            )}
-                        >
-                            {s === 'front' ? 'Vorderseite' : 'Rückseite'}
-                            <span className={cn('ml-1.5 tabular-nums', side === s ? 'text-zinc-500' : 'text-white/40')}>
-                                {s === 'front' ? frontCount : backCount}
+                {wall && face.sideCounts && (
+                    <>
+                        <Separator />
+                        <div className="flex rounded-lg bg-white/5 p-0.5" role="tablist" aria-label="Wandseite">
+                            {SIDE_TABS.map(({ side, short }) => (
+                                <button
+                                    key={side}
+                                    type="button"
+                                    role="tab"
+                                    aria-selected={face.side === side}
+                                    aria-label={WALL_SIDE_LABELS[side]}
+                                    title={side === 'left' || side === 'right' ? `${WALL_SIDE_LABELS[side]} (schmales Seitenteil)` : WALL_SIDE_LABELS[side]}
+                                    onClick={() => setSide(side)}
+                                    className={cn(
+                                        'h-7 px-2 rounded-md text-xs font-medium transition-colors whitespace-nowrap',
+                                        face.side === side ? 'bg-white text-zinc-900' : 'text-white/60 hover:text-white',
+                                    )}
+                                >
+                                    {short}
+                                    <span className={cn('ml-1 tabular-nums', face.side === side ? 'text-zinc-500' : 'text-white/40')}>
+                                        {face.sideCounts![side]}
+                                    </span>
+                                </button>
+                            ))}
+                        </div>
+                        <Separator />
+                        {wall.isLocked ? (
+                            <span className="px-2 flex items-center gap-1 text-[11px] text-amber-300/90 whitespace-nowrap" title="Wand ist gesperrt – Werke können platziert werden">
+                                <Lock className="h-3.5 w-3.5" /> Gesperrt
                             </span>
-                        </button>
-                    ))}
-                </div>
-                <Separator />
-                {face.wall.isLocked ? (
-                    <span className="px-2 flex items-center gap-1 text-[11px] text-amber-300/90 whitespace-nowrap" title="Wand ist gesperrt – Werke können platziert werden">
-                        <Lock className="h-3.5 w-3.5" /> Gesperrt
-                    </span>
-                ) : (
-                    <button
-                        type="button"
-                        onClick={() => {
-                            toggleWallLock(face.wall.id);
-                            gooeyToast.success('Wand gesperrt', { description: 'Jetzt kannst du Werke aus der Bibliothek auf die Wand ziehen.' });
-                        }}
-                        className="px-2 h-7 flex items-center gap-1 rounded-md text-[11px] text-orange-300 hover:bg-orange-400/15 whitespace-nowrap"
-                        title="Nur gesperrte Wände nehmen Werke auf"
-                    >
-                        <Unlock className="h-3.5 w-3.5" /> Sperren zum Platzieren
-                    </button>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    toggleWallLock(wall.id);
+                                    gooeyToast.success('Wand gesperrt', { description: 'Jetzt kannst du Werke aus der Bibliothek auf die Wand ziehen.' });
+                                }}
+                                className="px-2 h-7 flex items-center gap-1 rounded-md text-[11px] text-orange-300 hover:bg-orange-400/15 whitespace-nowrap"
+                                title="Nur gesperrte Wände nehmen Werke auf"
+                            >
+                                <Unlock className="h-3.5 w-3.5" /> Sperren zum Platzieren
+                            </button>
+                        )}
+                    </>
+                )}
+                {face.room && face.openings.length > 0 && (
+                    <>
+                        <Separator />
+                        <span className="px-2 text-[11px] text-white/50 whitespace-nowrap">
+                            {[
+                                countLabel(face.openings.filter((o) => o.kind === 'window').length, 'Fenster', 'Fenster'),
+                                countLabel(face.openings.filter((o) => o.kind === 'door').length, 'Tür', 'Türen'),
+                            ].filter(Boolean).join(' · ')}
+                        </span>
+                    </>
                 )}
                 <Separator />
                 <ChromeButton icon={<Minus className="h-4 w-4" />} label="Verkleinern" shortcut="−" onClick={() => zoomBy(0.8)} />
@@ -183,6 +270,8 @@ const WallEditorTopBar = ({ face }: { face: WallFace }) => {
         </div>
     );
 };
+
+const countLabel = (n: number, one: string, many: string) => (n === 0 ? '' : `${n} ${n === 1 ? one : many}`);
 
 // ── Bottom toolbar ───────────────────────────────────────────────────────
 
@@ -205,9 +294,10 @@ const WallEditorToolbar = ({ face }: { face: WallFace }) => {
     const clearMeasurements = useWallEditorView((s) => s.clearMeasurements);
     const closeWallEditor = useEditorStore((s) => s.closeWallEditor);
 
+    const r = face.wallRect;
     const hasProblems = face.items.some((i) => (
-        i.rect.x < -0.0005 || i.rect.x + i.rect.w > face.wall.width + 0.0005
-        || i.rect.y < face.wallRect.y - 0.0005 || i.rect.y + i.rect.h > face.wallRect.y + face.wall.height + 0.0005
+        i.rect.x < r.x - 0.0005 || i.rect.x + i.rect.w > r.x + r.w + 0.0005
+        || i.rect.y < r.y - 0.0005 || i.rect.y + i.rect.h > r.y + r.h + 0.0005
     ));
 
     return (
@@ -266,7 +356,7 @@ export const WallEditor = () => {
     return (
         <>
             {phase === 'active' && <WallEditorOverlay face={face} />}
-            <WallEditorTopBar key={face.wall.id} face={face} />
+            <WallEditorTopBar key={face.wall ? `wall:${face.wall.id}` : face.key} face={face} />
             <WallEditorToolbar face={face} />
         </>
     );

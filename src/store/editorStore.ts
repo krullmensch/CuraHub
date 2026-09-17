@@ -4,6 +4,7 @@ import { useAuthStore } from './authStore';
 import { gooeyToast } from 'goey-toast';
 import { readStoredRenderQualitySetting, storeRenderQualitySetting, type RenderQualitySetting } from '../lib/renderQuality';
 import type { WallSide } from '../lib/wallEditor/geometry';
+import type { WallEditorTarget } from '../lib/wallEditor/faces';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -142,11 +143,7 @@ interface DragState {
   } | null;
 }
 
-/** 2D wall editor: the wall face being edited (see src/components/wall-editor). */
-export interface WallEditorTarget {
-  wallId: number;
-  side: WallSide;
-}
+export type { WallEditorTarget };
 
 interface EditorState {
   isPlacing: boolean;
@@ -270,7 +267,8 @@ interface EditorState {
   setRenderQualitySetting: (setting: RenderQualitySetting) => void;
 
   // 2D wall editor actions
-  openWallEditor: (wallId: number, side?: WallSide, selection?: number[]) => void;
+  /** Opens a face of a modular wall or a room wall (see lib/wallEditor/faces.ts). */
+  openWallEditor: (target: WallEditorTarget, selection?: number[]) => void;
   closeWallEditor: () => void;
   setWallEditorSide: (side: WallSide) => void;
   setWallEditorSelection: (ids: number[]) => void;
@@ -560,7 +558,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         inst.wallId === id ? { ...inst, wallId: null } : inst
       ),
       selectedWallId: state.selectedWallId === id ? null : state.selectedWallId,
-      ...(state.wallEditor?.wallId === id ? { wallEditor: null, wallEditorSelection: [] } : {}),
+      ...(state.wallEditor?.kind === 'wall' && state.wallEditor.wallId === id ? { wallEditor: null, wallEditorSelection: [] } : {}),
       hasUnsavedChanges: true,
     }));
   },
@@ -583,11 +581,11 @@ export const useEditorStore = create<EditorState>((set) => ({
   },
 
   // 2D wall editor actions
-  openWallEditor: (wallId, side = 'front', selection = []) => set((state) => {
+  openWallEditor: (target, selection = []) => set((state) => {
     if (state.plannerViewMode === 'firstPerson') return state;
-    if (!state.localWalls.some(w => w.id === wallId)) return state;
+    if (target.kind === 'wall' && !state.localWalls.some(w => w.id === target.wallId)) return state;
     return {
-      wallEditor: { wallId, side },
+      wallEditor: target,
       wallEditorSelection: selection,
       // The 3D selection (gizmos, halos) stays out of the 2D view.
       selectedInstanceId: null,
@@ -600,18 +598,19 @@ export const useEditorStore = create<EditorState>((set) => ({
     };
   }),
   closeWallEditor: () => set((state) => {
-    if (!state.wallEditor) return state;
-    const wallStillExists = state.localWalls.some(w => w.id === state.wallEditor!.wallId);
+    const target = state.wallEditor;
+    if (!target) return state;
+    const wallId = target.kind === 'wall' && state.localWalls.some(w => w.id === target.wallId) ? target.wallId : null;
     return {
       wallEditor: null,
       wallEditorSelection: [],
-      // Back in 3D the edited wall stays selected.
-      selectedWallId: wallStillExists ? state.wallEditor.wallId : null,
+      // Back in 3D an edited modular wall stays selected.
+      selectedWallId: wallId,
       selectedInstanceId: null,
     };
   }),
-  setWallEditorSide: (side) => set((state) => (
-    state.wallEditor && state.wallEditor.side !== side
+  setWallEditorSide: (side: WallSide) => set((state) => (
+    state.wallEditor?.kind === 'wall' && state.wallEditor.side !== side
       ? { wallEditor: { ...state.wallEditor, side }, wallEditorSelection: [] }
       : state
   )),
@@ -993,7 +992,9 @@ const syncToBackend = async () => {
               i.wallId === wall.id ? { ...i, wallId: created.id } : i
             ),
             selectedWallId: current.selectedWallId === wall.id ? created.id : current.selectedWallId,
-            wallEditor: current.wallEditor?.wallId === wall.id ? { ...current.wallEditor, wallId: created.id } : current.wallEditor,
+            wallEditor: current.wallEditor?.kind === 'wall' && current.wallEditor.wallId === wall.id
+              ? { ...current.wallEditor, wallId: created.id }
+              : current.wallEditor,
           });
           nextWallsMap.set(created.id, { ...created });
           createIdempotencyKeys.delete(`wall:${wall.id}`);

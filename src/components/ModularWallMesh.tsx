@@ -4,7 +4,7 @@ import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Lock } from 'lucide-react';
 import { useEditorStore, type ModularWallData } from '@/store/editorStore';
-import { sideOfPoint } from '@/lib/wallEditor/geometry';
+import { sideFromDirection, sideSeenFrom } from '@/lib/wallEditor/geometry';
 
 interface ModularWallMeshProps {
     wall: ModularWallData;
@@ -17,6 +17,7 @@ interface ModularWallMeshProps {
 }
 
 const _cameraPos = new THREE.Vector3();
+const _faceNormal = new THREE.Vector3();
 
 export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
     ({ wall, selected, isEditor = true, hidden = false, flat = false }, ref) => {
@@ -29,11 +30,18 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
             selectWall(wall.id);
         } : undefined;
 
-        // Double-click opens the 2D wall editor on the face the camera looks at.
+        // Double-click opens the 2D wall editor on the face that was clicked (incl. the narrow ends).
         const handleDoubleClick = isEditor ? (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
-            e.camera.getWorldPosition(_cameraPos);
-            openWallEditor(wall.id, sideOfPoint(wall, _cameraPos));
+            let side;
+            if (e.face) {
+                _faceNormal.copy(e.face.normal).transformDirection(e.object.matrixWorld);
+                side = sideFromDirection(wall, _faceNormal.x, _faceNormal.z);
+            } else {
+                e.camera.getWorldPosition(_cameraPos);
+                side = sideSeenFrom(wall, _cameraPos);
+            }
+            openWallEditor({ kind: 'wall', wallId: wall.id, side });
         } : undefined;
 
         // Wall color — slightly tinted when selected

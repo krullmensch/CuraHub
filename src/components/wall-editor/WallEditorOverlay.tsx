@@ -185,6 +185,8 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         [view.centerU, view.centerV, view.pxPerM, view.viewportW, view.viewportH], // eslint-disable-line react-hooks/exhaustive-deps
     );
     const { items, wallRect } = face;
+    // Windows and doors of room walls: snap targets, measuring obstacles, no-go areas.
+    const openings: Rect[] = face.openings;
     const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
     const selectedIds = useMemo(() => selection.filter((id) => itemsById.has(id)), [selection, itemsById]);
     const selectedSet = useMemo(() => new Set(selectedIds), [selectedIds]);
@@ -270,7 +272,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
 
         if (effectiveTool === 'measure') {
             const p = view.snapping
-                ? snapPoint(u, v, items.map((i) => i.rect), wallRect, SNAP_PX / vt.pxPerM)
+                ? snapPoint(u, v, [...items.map((i) => i.rect), ...openings], wallRect, SNAP_PX / vt.pxPerM)
                 : { x: u, y: v };
             setInter({ kind: 'measure', pointerId: e.pointerId, x1: p.x, y1: p.y, x2: p.x, y2: p.y });
             return;
@@ -359,7 +361,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             }
             case 'measure': {
                 const p = view.snapping !== (e.metaKey || e.ctrlKey)
-                    ? snapPoint(u, v, items.map((i) => i.rect), wallRect, SNAP_PX / vt.pxPerM)
+                    ? snapPoint(u, v, [...items.map((i) => i.rect), ...openings], wallRect, SNAP_PX / vt.pxPerM)
                     : { x: u, y: v };
                 let x2 = p.x;
                 let y2 = p.y;
@@ -400,7 +402,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 if (view.snapping !== (e.metaKey || e.ctrlKey)) {
                     const moving = new Set(it.ids);
                     snap = snapRect(translate(it.bbox, dx, dy), {
-                        statics: items.filter((i) => !moving.has(i.id)).map((i) => i.rect),
+                        statics: [...items.filter((i) => !moving.has(i.id)).map((i) => i.rect), ...openings],
                         wall: wallRect,
                         guidesX,
                         guidesY,
@@ -622,7 +624,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     const selectionRects = selectedIds.map((id) => rectOf(itemsById.get(id)!));
     const selectionBox = unionRect(selectionRects);
     const hovered = hoverId !== null ? itemsById.get(hoverId) ?? null : null;
-    const staticsForSelection = items.filter((i) => !selectedSet.has(i.id)).map((i) => rectOf(i));
+    const staticsForSelection = [...items.filter((i) => !selectedSet.has(i.id)).map((i) => rectOf(i)), ...openings];
 
     const warnings = useMemo(() => {
         const outside = new Set<number>();
@@ -636,9 +638,10 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 const shrink = (q: Rect): Rect => ({ x: q.x + eps, y: q.y + eps, w: q.w - 2 * eps, h: q.h - 2 * eps });
                 if (rectsIntersect(shrink(r), shrink(b.rect))) { overlapping.add(a.id); overlapping.add(b.id); }
             }
+            if (openings.some((o) => rectsIntersect(r, o))) overlapping.add(a.id);
         }
         return { outside, overlapping };
-    }, [items, wallRect]);
+    }, [items, wallRect, openings]);
 
     const annotations: ReactNode[] = [];
     const measureColor = WE_COLORS.measure;
@@ -673,7 +676,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             liveMeasurements = distancesBetween(selectionBox, hovered.rect);
         } else {
             // Horizontal distances above the centre so they don't cross the floor chain's labels.
-            liveMeasurements = neighbourDistances(hovered.rect, items.filter((i) => i.id !== hovered.id).map((i) => i.rect), wallRect, { y: 0.78 })
+            liveMeasurements = neighbourDistances(hovered.rect, [...items.filter((i) => i.id !== hovered.id).map((i) => i.rect), ...openings], wallRect, { y: 0.78 })
                 .filter((m) => m.kind !== 'floor');
             annotations.push(<FloorChain key="fhover" rect={hovered.rect} vt={vt} viewportW={W} floorY={wallRect.y} />);
         }
@@ -760,6 +763,11 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     }
 
     const floorY = sy(wallRect.y);
+    let outlinePath = '';
+    if (face.room) {
+        const o = face.room.outline;
+        for (let i = 0; i < o.length; i += 4) outlinePath += `M${sx(o[i])} ${sy(o[i + 1])}L${sx(o[i + 2])} ${sy(o[i + 3])}`;
+    }
     // Hanging height label left of the wall when there is room, otherwise just inside it.
     const hangingLabel = `Hängehöhe ${formatCm(view.hangingHeight)}`;
     const hangingLabelOutside = sx(wallRect.x) - (rulerLeft + RULER_SIZE) > textWidth(hangingLabel) + 30;
@@ -790,6 +798,9 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                     <pattern id="we-floor-hatch" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
                         <line x1="0" y1="0" x2="0" y2="8" stroke="rgba(255,255,255,0.12)" strokeWidth="1" />
                     </pattern>
+                    <pattern id="we-opening-hatch" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(-45)">
+                        <line x1="0" y1="0" x2="0" y2="6" stroke="rgba(255,255,255,0.14)" strokeWidth="1" />
+                    </pattern>
                 </defs>
 
                 {/* Floor */}
@@ -797,7 +808,27 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 <line x1={0} x2={W} y1={floorY} y2={floorY} stroke={WE_COLORS.floor} strokeWidth={1} pointerEvents="none" />
 
                 {/* Wall outline + overall dimensions */}
-                <rect {...wallScreen} fill="none" stroke={WE_COLORS.wallEdge} strokeWidth={1} pointerEvents="none" />
+                {face.room ? (
+                    <g pointerEvents="none">
+                        <rect {...wallScreen} fill="none" stroke={WE_COLORS.wallEdge} strokeWidth={1} strokeDasharray="2 4" opacity={0.5} />
+                        <path d={outlinePath} stroke={WE_COLORS.wallEdge} strokeWidth={1} fill="none" />
+                        {face.openings.map((o, i) => {
+                            const r = screenRect(o);
+                            return (
+                                <g key={`op${i}`}>
+                                    <rect {...r} fill="url(#we-opening-hatch)" stroke="rgba(255,255,255,0.35)" strokeWidth={1} />
+                                    {r.width > 40 && r.height > 24 && (
+                                        <text x={r.x + r.width / 2} y={r.y + 14} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={10} fontFamily={WE_FONT}>
+                                            {o.kind === 'door' ? 'Tür' : 'Fenster'}
+                                        </text>
+                                    )}
+                                </g>
+                            );
+                        })}
+                    </g>
+                ) : (
+                    <rect {...wallScreen} fill="none" stroke={WE_COLORS.wallEdge} strokeWidth={1} pointerEvents="none" />
+                )}
                 <MeasureLine
                     m={{ x1: wallRect.x, y1: top(wallRect), x2: right(wallRect), y2: top(wallRect), value: wallRect.w }}
                     vt={{ ...vt, toScreenY: (v) => sy(v) - 14 }}

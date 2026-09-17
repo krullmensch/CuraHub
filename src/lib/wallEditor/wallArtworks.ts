@@ -1,7 +1,9 @@
 import type { ArtworkInstanceData, ModularWallData } from '@/store/editorStore';
 import { useEditorStore } from '@/store/editorStore';
-import { getWallFrame, sideOfPoint, worldToWall, wallToWorld, type WallFrame, type WallPoint, type WallSide } from './geometry';
+import { sideOfInstance, worldToWall, wallToWorld, WALL_SIDES, type WallFrame, type WallPoint, type WallSide } from './geometry';
 import { computeFootprint, footprintRect, type Footprint } from './footprint';
+import { instanceOnFace, openFaceOf, type ResolvedFace } from './faces';
+import type { RoomFace, RoomOpening } from './roomFaces';
 import type { LayoutItem, Offset, Rect } from './layout';
 
 /** An artwork on the open wall face, in wall coordinates. */
@@ -14,14 +16,22 @@ export interface WallArtwork extends LayoutItem {
 }
 
 export interface WallFace {
-    wall: ModularWallData;
-    side: WallSide;
+    resolved: ResolvedFace;
+    key: string;
+    label: string;
+    /** The modular wall and which of its faces is open (null for room walls). */
+    wall: ModularWallData | null;
+    side: WallSide | null;
+    /** The room wall that is open (null for modular walls). */
+    room: RoomFace | null;
     frame: WallFrame;
     /** The face itself: (0, bottom) … (width, top). */
     wallRect: Rect;
     items: WallArtwork[];
-    /** Artworks hanging on the other face of the same wall. */
-    otherSideCount: number;
+    /** Modular walls: number of artworks on each of the wall's faces. */
+    sideCounts: Record<WallSide, number> | null;
+    /** Room walls: windows and doors. */
+    openings: RoomOpening[];
 }
 
 const labelOf = (inst: ArtworkInstanceData) =>
@@ -29,18 +39,14 @@ const labelOf = (inst: ArtworkInstanceData) =>
     || inst.artwork.asset.path.split('/').pop()?.replace(/\.[a-z0-9]+$/i, '')
     || `Werk ${inst.id}`;
 
-export function collectWallFace(wall: ModularWallData, side: WallSide, instances: ArtworkInstanceData[]): WallFace {
-    const frame = getWallFrame(wall, side);
+export function collectWallFace(resolved: ResolvedFace, instances: ArtworkInstanceData[]): WallFace {
+    const { frame, wall } = resolved;
     const items: WallArtwork[] = [];
-    let otherSideCount = 0;
+    const sideCounts = wall ? Object.fromEntries(WALL_SIDES.map((s) => [s, 0])) as Record<WallSide, number> : null;
     for (const inst of instances) {
-        if (inst.wallId !== wall.id) continue;
-        const p = { x: inst.position_x, y: inst.position_y, z: inst.position_z };
-        if (sideOfPoint(wall, p) !== side) {
-            otherSideCount++;
-            continue;
-        }
-        const anchor = worldToWall(frame, p);
+        if (wall && sideCounts && inst.wallId === wall.id) sideCounts[sideOfInstance(wall, inst)]++;
+        if (!instanceOnFace(inst, resolved)) continue;
+        const anchor = worldToWall(frame, { x: inst.position_x, y: inst.position_y, z: inst.position_z });
         const footprint = computeFootprint(inst, frame);
         items.push({
             id: inst.id,
@@ -52,23 +58,25 @@ export function collectWallFace(wall: ModularWallData, side: WallSide, instances
         });
     }
     return {
+        resolved,
+        key: resolved.key,
+        label: resolved.label,
         wall,
-        side,
+        side: resolved.side,
+        room: resolved.room,
         frame,
-        wallRect: { x: 0, y: frame.bottom, w: wall.width, h: wall.height },
+        wallRect: { x: 0, y: frame.bottom, w: frame.width, h: frame.height },
         items,
-        otherSideCount,
+        sideCounts,
+        openings: resolved.room?.openings ?? [],
     };
 }
 
 /** The open face, read straight from the store (for event handlers). */
 export function getOpenWallFace(): WallFace | null {
     const state = useEditorStore.getState();
-    const target = state.wallEditor;
-    if (!target) return null;
-    const wall = state.localWalls.find((w) => w.id === target.wallId);
-    if (!wall) return null;
-    return collectWallFace(wall, target.side, state.localInstances);
+    const resolved = openFaceOf(state);
+    return resolved ? collectWallFace(resolved, state.localInstances) : null;
 }
 
 /**
@@ -79,9 +87,10 @@ export function commitWallOffsets(face: WallFace, offsets: Map<number, Offset>):
     const store = useEditorStore.getState();
     let changed = false;
     const round = (v: number) => Math.round(v * 10000) / 10000;
+    const onFace = new Set(face.items.map((i) => i.id));
     const next = store.localInstances.map((inst) => {
         const offset = offsets.get(inst.id);
-        if (!offset || inst.wallId !== face.wall.id) return inst;
+        if (!offset || !onFace.has(inst.id)) return inst;
         if (Math.abs(offset.dx) < 1e-6 && Math.abs(offset.dy) < 1e-6) return inst;
         const anchor = worldToWall(face.frame, { x: inst.position_x, y: inst.position_y, z: inst.position_z });
         const p = wallToWorld(face.frame, round(anchor.u + offset.dx), round(anchor.v + offset.dy), anchor.d);

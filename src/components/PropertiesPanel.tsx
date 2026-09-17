@@ -28,7 +28,10 @@ import {
     PanelsTopLeft,
 } from 'lucide-react';
 import { WallEditorPanel } from './wall-editor/WallEditorPanel';
-import { sideOfPoint, type WallSide } from '@/lib/wallEditor/geometry';
+import { sideOfInstance, WALL_SIDES, WALL_SIDE_LABELS, type WallSide } from '@/lib/wallEditor/geometry';
+import { targetForInstance, type WallEditorTarget } from '@/lib/wallEditor/faces';
+import { useWallEditorView } from '@/store/wallEditorViewStore';
+import { useFaceDirectory } from '@/hooks/use-face-directory';
 import type { LucideIcon } from 'lucide-react';
 
 // Numeric input that holds local string state while focused, only committing on blur/Enter.
@@ -379,6 +382,8 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 const ControlsTabContent = () => {
     const showTraverses = useEditorStore((state) => state.showTraverses);
     const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
+    const openWallEditor = useEditorStore((state) => state.openWallEditor);
+    const faces = useFaceDirectory();
 
     return (
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -394,6 +399,29 @@ const ControlsTabContent = () => {
                         {showTraverses ? "Visible" : "Hidden"}
                     </Button>
                 </div>
+                {faces.length > 0 && (
+                    <>
+                        <Separator className="bg-zinc-800" />
+                        <div className="space-y-1.5">
+                            <Label className="text-xs text-zinc-400 uppercase tracking-wider">2D-Wandeditor</Label>
+                            <p className="text-[11px] text-zinc-500">Wand frontal öffnen – auch per Doppelklick auf eine Wand.</p>
+                            {faces.map((face) => (
+                                <button
+                                    key={face.key}
+                                    type="button"
+                                    onClick={() => openWallEditor(face.target)}
+                                    className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 transition-colors"
+                                    title={`${face.label} im 2D-Wandeditor öffnen`}
+                                >
+                                    <PanelsTopLeft className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                                    <span className="flex-1 truncate">{face.label}</span>
+                                    <span className="text-[10px] text-zinc-500">{face.group === 'room' ? 'Raum' : 'Stellwand'}</span>
+                                    <span className="w-4 text-right text-[10px] tabular-nums text-zinc-400">{face.count}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );
@@ -614,21 +642,22 @@ const ArtworkPropertiesContent = ({
     );
 };
 
-/** Opens the wall a wall-mounted artwork hangs on in the 2D wall editor. */
+/** Opens the wall (modular or room wall) an artwork hangs on in the 2D wall editor. */
 const OpenArtworkWallButton = ({ instanceId }: { instanceId: number | null }) => {
-    const target = useEditorStore((state) => {
+    const roomFaces = useWallEditorView((state) => state.roomFaces);
+    // Selector returns a string key so the component only re-renders when the target changes.
+    const key = useEditorStore((state) => {
         const inst = instanceId !== null ? state.localInstances.find(i => i.id === instanceId) : undefined;
-        const wall = inst?.wallId != null ? state.localWalls.find(w => w.id === inst.wallId) : undefined;
-        if (!inst || !wall) return null;
-        return `${wall.id}:${sideOfPoint(wall, { x: inst.position_x, z: inst.position_z })}`;
+        const target = inst ? targetForInstance(inst, state.localWalls, roomFaces) : null;
+        return target ? JSON.stringify(target) : null;
     });
     const openWallEditor = useEditorStore((state) => state.openWallEditor);
-    if (!target || instanceId === null) return null;
-    const [wallId, side] = target.split(':');
+    if (!key || instanceId === null) return null;
+    const target = JSON.parse(key) as WallEditorTarget;
     return (
         <Button
             size="sm"
-            onClick={() => openWallEditor(Number(wallId), side as WallSide, [instanceId])}
+            onClick={() => openWallEditor(target, [instanceId])}
             className="w-full h-9 text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white"
             title="Die Wand dieses Werks frontal bearbeiten (E)"
         >
@@ -651,23 +680,26 @@ const WallPropertiesContent = () => {
     const hasArtworks = artworksOnWall.length > 0;
     const toDeg = (rad: number) => ((rad * 180) / Math.PI).toFixed(1);
     const toFixed = (v: number, d = 3) => v.toFixed(d);
-    const countOn = (side: WallSide) => artworksOnWall.filter(i => sideOfPoint(wall, { x: i.position_x, z: i.position_z }) === side).length;
+    const countOn = (side: WallSide) => artworksOnWall.filter(i => sideOfInstance(wall, i) === side).length;
     return (
         <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
             <div className="text-xs text-zinc-500 italic">{wall.label || 'Modular Wall'} — {wall.width}m × {wall.height}m</div>
             <div className="space-y-2">
                 <Label className="text-xs text-zinc-400 uppercase tracking-wider">2D-Wandeditor</Label>
                 <div className="grid grid-cols-2 gap-2">
-                    {(['front', 'back'] as const).map((side) => (
+                    {WALL_SIDES.map((side) => (
                         <Button
                             key={side}
                             size="sm"
-                            onClick={() => openWallEditor(wall.id, side)}
-                            className="h-9 text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white"
-                            title={`${side === 'front' ? 'Vorderseite' : 'Rückseite'} frontal bearbeiten (E / Doppelklick auf die Wand)`}
+                            onClick={() => openWallEditor({ kind: 'wall', wallId: wall.id, side })}
+                            className={cn(
+                                "h-9 text-xs gap-1.5 text-white",
+                                side === 'front' || side === 'back' ? "bg-blue-600 hover:bg-blue-500" : "bg-blue-600/60 hover:bg-blue-500",
+                            )}
+                            title={`${WALL_SIDE_LABELS[side]} frontal bearbeiten (E / Doppelklick auf die Wand)`}
                         >
                             <PanelsTopLeft className="h-3.5 w-3.5" />
-                            {side === 'front' ? 'Vorderseite' : 'Rückseite'}
+                            {WALL_SIDE_LABELS[side]}
                             <span className="text-white/60 tabular-nums">{countOn(side)}</span>
                         </Button>
                     ))}

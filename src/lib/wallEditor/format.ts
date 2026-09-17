@@ -1,6 +1,6 @@
 /** Length formatting for the wall editor: metres in, German centimetre strings out. */
 
-const cmFormat = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 0 });
+const cmFormat = new Intl.NumberFormat('de-DE', { maximumFractionDigits: 1, minimumFractionDigits: 0, useGrouping: false });
 
 /** 1.525 → "152,5 cm" */
 export function formatCm(metres: number, withUnit = true): string {

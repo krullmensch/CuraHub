@@ -3,10 +3,11 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera, OrbitControls, PointerLockControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
-import { useEditorStore, type WallEditorTarget } from '../store/editorStore';
+import { useEditorStore } from '../store/editorStore';
 import { firstPersonTransition } from '../lib/cameraTransition';
 import { measureViewportInsets, useWallEditorView } from '../store/wallEditorViewStore';
-import { getWallFrame, wallToWorld } from '../lib/wallEditor/geometry';
+import { wallToWorld, type WallFrame } from '../lib/wallEditor/geometry';
+import { openFaceOf, type ResolvedFace } from '../lib/wallEditor/faces';
 import { WallEditorCamera } from './wall-editor/WallEditorCamera';
 
 // --- CONFIGURATION ---
@@ -46,9 +47,8 @@ interface OrbitTransition {
  * Perspective pose that shows the wall face exactly like the 2D editor's orthographic view
  * (same centre, same scale in the wall plane).
  */
-function wallViewPose(wall: Parameters<typeof getWallFrame>[0], target: WallEditorTarget, fov: number) {
+function wallViewPose(frame: WallFrame, fov: number) {
     const view = useWallEditorView.getState();
-    const frame = getWallFrame(wall, target.side);
     const distance = Math.max(
         CAMERA_LIMITS.PERSPECTIVE.minDistance,
         view.viewportH / (2 * view.pxPerM * Math.tan(THREE.MathUtils.degToRad(fov) / 2)),
@@ -58,6 +58,9 @@ function wallViewPose(wall: Parameters<typeof getWallFrame>[0], target: WallEdit
         position: wallToWorld(frame, view.centerU, view.centerV, distance),
     };
 }
+
+const sameFrame = (a: WallFrame, b: WallFrame) =>
+    a.origin.distanceTo(b.origin) < 1e-4 && a.normal.distanceTo(b.normal) < 1e-4 && Math.abs(a.width - b.width) < 1e-4;
 
 interface FirstPersonTransitionState {
     fromPos: THREE.Vector3;
@@ -103,7 +106,7 @@ export const PlannerCameraSystem = () => {
     const orbitTransition = useRef<OrbitTransition | null>(null);
     const fpTransition = useRef<FirstPersonTransitionState | null>(null);
     // 2D wall editor: the face that is open and the orbit pose to return to
-    const openWall = useRef<WallEditorTarget | null>(null);
+    const openWall = useRef<ResolvedFace | null>(null);
     const orbitPoseBeforeWall = useRef<{ position: THREE.Vector3; target: THREE.Vector3 } | null>(null);
     
     // Imperative Camera State Initialization
@@ -178,16 +181,18 @@ export const PlannerCameraSystem = () => {
         const previous = openWall.current;
 
         if (wallEditor) {
-            const wall = useEditorStore.getState().localWalls.find(w => w.id === wallEditor.wallId);
-            if (!wall) return;
-            const sameFace = previous && previous.wallId === wallEditor.wallId && previous.side === wallEditor.side;
+            const face = openFaceOf(useEditorStore.getState());
+            if (!face) return;
+            // Same face — also when only the wall's temporary id was replaced by the saved one.
+            const sameFace = !!previous && (previous.key === face.key || sameFrame(previous.frame, face.frame));
+            openWall.current = face;
             if (sameFace) return;
-            openWall.current = wallEditor;
-            if (!previous || previous.wallId !== wallEditor.wallId) view.resetForWall();
+            view.resetForWall();
 
             const container = gl.domElement.parentElement ?? gl.domElement;
+            const { frame } = face;
             view.fitRect(
-                { x: 0, y: Math.min(0, wall.position_y - wall.height / 2), w: wall.width, h: wall.height },
+                { x: 0, y: Math.min(0, frame.bottom), w: frame.width, h: frame.height - Math.min(0, frame.bottom) },
                 measureViewportInsets(container),
                 { w: container.clientWidth, h: container.clientHeight },
             );
@@ -206,7 +211,7 @@ export const PlannerCameraSystem = () => {
                     ? { position: flyingBack.toPos.clone(), target: flyingBack.toTarget.clone() }
                     : { position: persp.position.clone(), target: controls.target.clone() };
             }
-            const pose = wallViewPose(wall, wallEditor, ORBIT_FOV);
+            const pose = wallViewPose(frame, ORBIT_FOV);
             controls.enabled = false;
             orbitTransition.current = {
                 fromPos: persp.position.clone(),
@@ -235,9 +240,8 @@ export const PlannerCameraSystem = () => {
             return;
         }
         // Start where the 2D view was (it may have been panned/zoomed) …
-        const wall = useEditorStore.getState().localWalls.find(w => w.id === previous.wallId);
-        if (wall && view.phase === 'active') {
-            const pose = wallViewPose(wall, previous, ORBIT_FOV);
+        if (view.phase === 'active') {
+            const pose = wallViewPose(previous.frame, ORBIT_FOV);
             persp.position.copy(pose.position);
             persp.fov = ORBIT_FOV;
             persp.updateProjectionMatrix();

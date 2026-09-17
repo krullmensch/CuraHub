@@ -13,6 +13,8 @@ import { useEditorStore } from '../store/editorStore'
 import { SATELLIT_MODEL_URL } from '../lib/modelUrls'
 import { getWebGPUSupport, isWebGPURenderer } from '../lib/rendererBackend'
 import { hideSplats } from '../lib/splats'
+import { extractRoomFaces, geometryTriangles } from '../lib/wallEditor/roomFaces'
+import { useWallEditorView } from '../store/wallEditorViewStore'
 
 // Required once for RectAreaLight to work with MeshStandardMaterial on WebGLRenderer
 // (WebGPU: RectAreaLightNode.setLTC in webgpuSupport.createWebGPURenderer).
@@ -51,6 +53,8 @@ type SatellitProps = React.JSX.IntrinsicElements['group'] & {
   clearGlass?: boolean;
   /** 2D wall editor: hide the room's meshes (its lights stay on). */
   hideGeometry?: boolean;
+  /** Editor: derive the room's wall faces for the 2D wall editor. */
+  publishWallFaces?: boolean;
 }
 
 /** Resolution of the room capture the window glass reflects. */
@@ -105,7 +109,7 @@ function createClearGlassMaterial(modelledGlass: THREE.MeshStandardMaterial) {
   return { material, reflection };
 }
 
-export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clearGlass = false, hideGeometry = false, ...props }: SatellitProps) {
+export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clearGlass = false, hideGeometry = false, publishWallFaces = false, ...props }: SatellitProps) {
   const { nodes, materials } = useGLTF(SATELLIT_MODEL_URL) as unknown as GLTFResult
   const showTraverses = useEditorStore((state) => state.showTraverses);
   const gl = useThree((state) => state.gl);
@@ -124,6 +128,19 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
     clearGlassMaterial?.material.dispose();
     clearGlassMaterial?.reflection.dispose();
   }, [clearGlassMaterial]);
+
+  // 2D wall editor: the room's walls as openable faces (geometry is static, so once per model).
+  useEffect(() => {
+    if (!publishWallFaces) return;
+    const group = groupRef.current
+    if (!group) return
+    group.updateWorldMatrix(true, false)
+    const faces = extractRoomFaces(
+      geometryTriangles(nodes.Grundriss002.geometry, group.matrixWorld),
+      geometryTriangles(nodes.Boden001.geometry, group.matrixWorld),
+    )
+    useWallEditorView.getState().setRoomFaces(faces)
+  }, [publishWallFaces, nodes.Grundriss002.geometry, nodes.Boden001.geometry])
 
   // Ensure wall material is visible from both sides (inside the room in first-person)
   useEffect(() => {

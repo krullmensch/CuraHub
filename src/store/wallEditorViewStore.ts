@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Rect } from '../lib/wallEditor/layout';
+import type { RoomFace } from '../lib/wallEditor/roomFaces';
 
 /**
  * View + tool state of the 2D wall editor (editorStore holds which wall is open and the selection).
@@ -82,6 +83,10 @@ interface WallEditorViewState {
     measurements: PinnedMeasurement[];
     guides: RulerGuide[];
 
+    /** Wall faces of the room model (published by Satellit in the editor). */
+    roomFaces: RoomFace[];
+    setRoomFaces: (faces: RoomFace[]) => void;
+
     setPhase: (phase: WallEditorPhase) => void;
     setViewport: (w: number, h: number) => void;
     setView: (view: { centerU: number; centerV: number; pxPerM: number }) => void;
@@ -124,6 +129,9 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
 
     measurements: [],
     guides: [],
+
+    roomFaces: [],
+    setRoomFaces: (roomFaces) => set({ roomFaces }),
 
     setPhase: (phase) => set({ phase }),
     setViewport: (w, h) => {
@@ -218,14 +226,16 @@ export function makeViewTransform(view: Pick<WallEditorViewState, 'centerU' | 'c
  */
 export function measureViewportInsets(container: HTMLElement): ViewportInsets {
     const box = container.getBoundingClientRect();
-    const insets: ViewportInsets = { left: RULER_SIZE + 24, right: 24, top: RULER_SIZE + 72, bottom: 88 };
+    // Room for the rulers, the top/tool bars and the wall's dimension labels (right of the wall).
+    const insets: ViewportInsets = { left: RULER_SIZE + 24, right: 64, top: RULER_SIZE + 72, bottom: 88 };
     document.querySelectorAll<HTMLElement>('[data-wall-editor-inset]').forEach((el) => {
         const r = el.getBoundingClientRect();
         const visible = r.width > 0 && r.right > box.left + 4 && r.left < box.right - 4;
         if (!visible) return;
         const side = el.dataset.wallEditorInset;
-        if (side === 'left') insets.left = Math.max(insets.left, r.right - box.left + 24);
-        if (side === 'right') insets.right = Math.max(insets.right, box.right - r.left + 24);
+        // The vertical ruler sits right of a left panel (WallEditorOverlay).
+        if (side === 'left') insets.left = Math.max(insets.left, r.right - box.left + 8 + RULER_SIZE + 24);
+        if (side === 'right') insets.right = Math.max(insets.right, box.right - r.left + 64);
     });
     return insets;
 }

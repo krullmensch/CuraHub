@@ -28,12 +28,16 @@ Für exakte Einstellungen (z.B. "Zentrum des Bildes genau auf 1,45m Höhe") nutz
 ## 2D-Wandeditor
 Im 2D-Wandeditor hängst du die Werke einer Wand millimetergenau, so als ständest du frontal davor. Die Kamera fliegt vor die Wand, schaltet auf eine verzerrungsfreie Frontalansicht, und alle anderen Wände mit ihren Werken werden ausgeblendet.
 
-**Öffnen**
-- Doppelklick auf eine Wand (die Seite, auf die du gerade schaust, wird geöffnet)
-- Wand auswählen und **E** drücken, oder im Properties-Panel **Vorderseite** / **Rückseite** wählen
-- Werk an einer Wand auswählen und **Wand im 2D-Editor öffnen** klicken
+Das geht mit jeder Wand:
+- **Stellwände** mit allen vier Seiten: Vorderseite, Rückseite und die beiden schmalen Seitenteile (**Links** / **Rechts**, von der Vorderseite aus gesehen).
+- **Raumwände** des Satellit: Fensterwand, Seitenwand rechts, Rückwand und Seitenwand links. Fenster und Türen sind schraffiert eingezeichnet; Werke rasten an ihren Kanten ein, und beim Messen siehst du den Abstand zu ihnen. Überlappt ein Werk ein Fenster oder eine Tür, wird es rot markiert.
 
-Oben wechselst du zwischen **Vorderseite** und **Rückseite**, benennst die Wand um und zoomst. **Fertig** oder **Esc** bringt dich zurück in die 3D-Ansicht. Werke ziehst du wie gewohnt aus der Bibliothek direkt auf die Wand (die Wand muss gesperrt sein).
+**Öffnen**
+- Doppelklick auf eine Wand oder ein Seitenteil – geöffnet wird genau die Fläche, die du anklickst. Ein Doppelklick auf ein Bild öffnet seine Wand und wählt das Bild aus.
+- Wand oder Werk auswählen und **E** drücken
+- Im Properties-Panel: bei einer Stellwand eine der vier Seiten wählen, bei einem Werk **Wand im 2D-Editor öffnen**; unter **Controls** stehen alle Wände zur Auswahl.
+
+Oben öffnest du über den Wandnamen jede andere Wand, wechselst bei Stellwänden die Seite (die Zahl zeigt, wie viele Werke dort hängen), benennst Stellwände über den Stift um und zoomst. **Fertig** oder **Esc** bringt dich zurück in die 3D-Ansicht. Werke ziehst du wie gewohnt aus der Bibliothek direkt auf die Wand (Stellwände müssen dafür gesperrt sein).
 
 **Auswählen und verschieben**
 - Klick wählt ein Werk, **⇧ + Klick** fügt weitere hinzu, ein aufgezogener Rahmen wählt alle darin. **⌘/Strg + A** wählt alle Werke dieser Seite.
