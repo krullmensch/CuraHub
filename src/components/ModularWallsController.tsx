@@ -188,6 +188,8 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
     const activeVersionId = useEditorStore((state) => state.activeVersionId);
     const transformMode = useEditorStore((state) => state.transformMode);
     const setIsTransforming = useEditorStore((state) => state.setIsTransforming);
+    // 2D wall editor: only the open wall stays visible
+    const wallEditorWallId = useEditorStore((state) => (isEditor ? state.wallEditor?.wallId ?? null : null));
 
     const { scene } = useThree();
 
@@ -446,6 +448,8 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
                             wall={wall}
                             selected={isEditor ? wall.id === selectedWallId : false}
                             isEditor={isEditor}
+                            hidden={wallEditorWallId !== null && wall.id !== wallEditorWallId}
+                            flat={wall.id === wallEditorWallId}
                         />
                         {/* First-person collider: physics/PhysicsWorld.tsx (RND-08) */}
                     </Fragment>
@@ -453,9 +457,9 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
             </Suspense>
 
             {/* Editor-only: bounding box + transform controls */}
-            {isEditor && selectedWallRef && <WallBoundingBox wallRef={selectedWallRef} />}
+            {isEditor && wallEditorWallId === null && selectedWallRef && <WallBoundingBox wallRef={selectedWallRef} />}
 
-            {isEditor && selectedWall && selectedWallRef && !selectedWall.isLocked && (
+            {isEditor && wallEditorWallId === null && selectedWall && selectedWallRef && !selectedWall.isLocked && (
                 <TransformControls
                     ref={transformControlsRef}
                     object={selectedWallRef}

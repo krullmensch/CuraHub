@@ -34,6 +34,8 @@ interface InstanceSlotProps {
 // a new callback on every render made React detach/re-attach all refs on each list render.
 const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProps) => {
     const selected = useEditorStore((state) => isEditor && state.selectedInstanceId === instance.id);
+    // 2D wall editor: only the artworks of the open wall stay visible
+    const hidden = useEditorStore((state) => isEditor && !!state.wallEditor && state.wallEditor.wallId !== instance.wallId);
     const refCallback = useCallback((el: THREE.Group | null) => registerRef(instance.id, el), [registerRef, instance.id]);
     const assetType = instance.artwork?.asset?.type || 'image';
     const Component =
@@ -43,9 +45,11 @@ const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProp
         SelectableInstance;
 
     return (
-        <Suspense fallback={null}>
-            <Component ref={refCallback} instance={instance} selected={selected} isEditor={isEditor} />
-        </Suspense>
+        <group visible={!hidden}>
+            <Suspense fallback={null}>
+                <Component ref={refCallback} instance={instance} selected={selected} isEditor={isEditor} />
+            </Suspense>
+        </group>
     );
 });
 InstanceSlot.displayName = 'InstanceSlot';
@@ -55,6 +59,7 @@ export const PlacedArtworks = ({ viewerInstances, isEditor = true }: PlacedArtwo
     const setLocalInstances = useEditorStore((state) => state.setLocalInstances);
     const version = useEditorStore((state) => state.instancesVersion);
     const plannerViewMode = useEditorStore((state) => state.plannerViewMode);
+    const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
     // API-01: depend on "logged in", not on the token string — refreshAuth() issues a fresh
     // token on every mount/focus, which used to refetch all instances.
     const hasToken = useAuthStore((state) => !!state.token);
@@ -136,7 +141,7 @@ export const PlacedArtworks = ({ viewerInstances, isEditor = true }: PlacedArtwo
                 <InstanceSlot key={instance.id} instance={instance} isEditor={isEditor} registerRef={registerRef} />
             ))}
             {/* No transform gizmo while walking through the room in first-person preview */}
-            {isEditor && plannerViewMode !== 'firstPerson' && <InstanceTransformControls instanceRefs={instanceRefs} />}
+            {isEditor && plannerViewMode !== 'firstPerson' && !wallEditorOpen && <InstanceTransformControls instanceRefs={instanceRefs} />}
         </group>
     );
 };

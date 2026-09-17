@@ -128,6 +128,19 @@ The editor layout is structured as follows:
 
 Keyboard shortcuts: `G` grab, `R` rotate, `S` scale, `X/Y/Z` axis lock, `Shift` fine-tune, `Esc` cancel. Implemented via Three.js TransformControls + custom `ModalTransformSystem`.
 
+### 2D Wall Editor
+
+Frontal, Figma-like editing of one face of a modular wall (`src/components/wall-editor/`, `src/lib/wallEditor/`).
+
+- State: `editorStore.wallEditor` (`{ wallId, side: 'front' | 'back' }`) and `wallEditorSelection` (its own multi-selection; `selectedInstanceId` stays null while the editor is open). View, tools and toggles live in `src/store/wallEditorViewStore.ts` (`phase`: idle → entering → active → leaving).
+- Wall coordinates (`lib/wallEditor/geometry.ts`): `u` metres from the face's left edge as seen from that side, `v` world height above the floor, `d` distance in front of the face. The back face runs along the wall's local −X. An artwork's side comes from its position (`sideOfPoint`), never from its Euler angles.
+- Camera: `PlannerCameraSystem` flies the perspective camera to the frontal pose, then `WallEditorCamera` (orthographic, `zoom = pxPerM`) becomes the default camera. The DOM/SVG `WallEditorOverlay` uses the same wall ↔ screen mapping (`makeViewTransform`), so overlay and render line up pixel-perfectly.
+- Hiding: other walls/artworks get `visible={false}` (not unmounted), the room meshes are hidden via `Satellit hideGeometry` (its lights stay on). `FrameInstancerRegistry` collapses frames whose anchor has a hidden ancestor.
+- Drags move the Three.js groups directly (`applyDraft`, `wallEditorBridge.invalidate()`) and commit once on pointer-up via `commitWallOffsets` (one undo step, auto-sync PATCHes the positions). Footprints: framed pictures are computed (frame reaches 9 mm beyond the picture), everything else is measured from its meshes (`lib/wallEditor/footprint.ts`).
+- Layout math (align, distribute, spacing, snapping, measuring) is pure and lives in `lib/wallEditor/layout.ts`; commands on the selection in `lib/wallEditor/operations.ts`.
+- `artworkTextureManager` also sizes textures for orthographic cameras (on-screen size = `sizeM × pxPerM`).
+- EditorPage's keyboard handler ignores everything but undo/redo while the editor is open; the overlay handles its own keys.
+
 ### Render Backends (WebGPU + WebGL fallback)
 
 - `src/lib/rendererBackend.ts` decides per Canvas: WebGPU (`WebGPURenderer`) when a hardware adapter exists, otherwise the **classic `WebGLRenderer`** (never WebGPURenderer's WebGL2 backend). Override: `?renderer=webgl|webgpu` or the "Renderer" select in `RenderQualityControl` (localStorage `curahub-renderer`).

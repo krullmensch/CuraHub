@@ -25,7 +25,10 @@ import {
     Pause,
     Volume2,
     VolumeX,
+    PanelsTopLeft,
 } from 'lucide-react';
+import { WallEditorPanel } from './wall-editor/WallEditorPanel';
+import { sideOfPoint, type WallSide } from '@/lib/wallEditor/geometry';
 import type { LucideIcon } from 'lucide-react';
 
 // Numeric input that holds local string state while focused, only committing on blur/Enter.
@@ -93,6 +96,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const liveTransform = useEditorStore((state) => state.liveTransform);
     const token = useAuthStore((state) => state.token);
     const activeVersionId = useEditorStore((state) => state.activeVersionId);
+    const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
 
     // Sync active tab to properties when something is selected
     useEffect(() => {
@@ -309,10 +313,11 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
     return (
         <>
-            <Card className={cn(
+            <Card data-wall-editor-inset="right" className={cn(
                 "absolute right-4 top-6 bottom-8 w-72 bg-zinc-950/80 backdrop-blur-md border-zinc-800 shadow-xl flex flex-col z-20 rounded-xl overflow-hidden transition-transform duration-300 ease-in-out",
                 !isOpen && "translate-x-[calc(100%+2rem)]"
             )}>
+                {wallEditorOpen ? <WallEditorPanel onToggle={onToggle} /> : <>
                 <div className={cn("flex items-center border-b border-zinc-800", headerAccent)}>
                     <button onClick={() => setActiveTab('controls')} className={cn(
                         "flex-1 py-2.5 text-xs font-medium transition-colors",
@@ -357,6 +362,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                         </div>
                     )
                 )}
+                </>}
             </Card>
 
             <div className={cn("absolute right-0 top-[2.625rem] -translate-y-1/2 z-10 transition-transform duration-300 ease-in-out", isOpen && "translate-x-full")}>
@@ -592,6 +598,7 @@ const ArtworkPropertiesContent = ({
                     </div>
                 </>
             )}
+            <OpenArtworkWallButton instanceId={selectedInstanceId} />
             <Separator className="bg-zinc-800" />
             <div className="flex gap-2">
                 <Button variant="secondary" size="sm" onClick={handleFocus} className="flex-1 bg-zinc-800 text-zinc-100 hover:bg-zinc-700">
@@ -607,21 +614,65 @@ const ArtworkPropertiesContent = ({
     );
 };
 
+/** Opens the wall a wall-mounted artwork hangs on in the 2D wall editor. */
+const OpenArtworkWallButton = ({ instanceId }: { instanceId: number | null }) => {
+    const target = useEditorStore((state) => {
+        const inst = instanceId !== null ? state.localInstances.find(i => i.id === instanceId) : undefined;
+        const wall = inst?.wallId != null ? state.localWalls.find(w => w.id === inst.wallId) : undefined;
+        if (!inst || !wall) return null;
+        return `${wall.id}:${sideOfPoint(wall, { x: inst.position_x, z: inst.position_z })}`;
+    });
+    const openWallEditor = useEditorStore((state) => state.openWallEditor);
+    if (!target || instanceId === null) return null;
+    const [wallId, side] = target.split(':');
+    return (
+        <Button
+            size="sm"
+            onClick={() => openWallEditor(Number(wallId), side as WallSide, [instanceId])}
+            className="w-full h-9 text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white"
+            title="Die Wand dieses Werks frontal bearbeiten (E)"
+        >
+            <PanelsTopLeft className="h-3.5 w-3.5" />
+            Wand im 2D-Editor öffnen
+        </Button>
+    );
+};
+
 const WallPropertiesContent = () => {
     const selectedWallId = useEditorStore((state) => state.selectedWallId);
     const localWalls = useEditorStore((state) => state.localWalls);
     const localInstances = useEditorStore((state) => state.localInstances);
     const updateWall = useEditorStore((state) => state.updateWall);
     const toggleWallLock = useEditorStore((state) => state.toggleWallLock);
+    const openWallEditor = useEditorStore((state) => state.openWallEditor);
     const wall = localWalls.find(w => w.id === selectedWallId);
     if (!wall) return null;
     const artworksOnWall = localInstances.filter(i => i.wallId === wall.id);
     const hasArtworks = artworksOnWall.length > 0;
     const toDeg = (rad: number) => ((rad * 180) / Math.PI).toFixed(1);
     const toFixed = (v: number, d = 3) => v.toFixed(d);
+    const countOn = (side: WallSide) => artworksOnWall.filter(i => sideOfPoint(wall, { x: i.position_x, z: i.position_z }) === side).length;
     return (
         <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
             <div className="text-xs text-zinc-500 italic">{wall.label || 'Modular Wall'} — {wall.width}m × {wall.height}m</div>
+            <div className="space-y-2">
+                <Label className="text-xs text-zinc-400 uppercase tracking-wider">2D-Wandeditor</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    {(['front', 'back'] as const).map((side) => (
+                        <Button
+                            key={side}
+                            size="sm"
+                            onClick={() => openWallEditor(wall.id, side)}
+                            className="h-9 text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white"
+                            title={`${side === 'front' ? 'Vorderseite' : 'Rückseite'} frontal bearbeiten (E / Doppelklick auf die Wand)`}
+                        >
+                            <PanelsTopLeft className="h-3.5 w-3.5" />
+                            {side === 'front' ? 'Vorderseite' : 'Rückseite'}
+                            <span className="text-white/60 tabular-nums">{countOn(side)}</span>
+                        </Button>
+                    ))}
+                </div>
+            </div>
             <Separator className="bg-zinc-800" />
             <div className="space-y-2">
                 <Label className="text-xs text-zinc-400 uppercase tracking-wider">Position</Label>

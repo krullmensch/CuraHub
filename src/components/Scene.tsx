@@ -22,6 +22,8 @@ interface SceneProps {
 
 export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShadersReady }: SceneProps) => {
     const plannerViewMode = useEditorStore(state => state.plannerViewMode);
+    // 2D wall editor: the room and the floor grid make way for the open wall
+    const wallEditorOpen = useEditorStore(state => isEditor && !!state.wallEditor);
     const { rectAreaLights } = useRenderQualitySettings();
     const [windowViewReady, setWindowViewReady] = useState(false);
 
@@ -67,7 +69,7 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShaders
                     </>
                 )}
 
-                {isEditor && viewMode !== 'firstPerson' && (
+                {isEditor && viewMode !== 'firstPerson' && !wallEditorOpen && (
                     <EditorGrid />
                 )}
 
@@ -76,6 +78,7 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShaders
                     viewMode={viewMode}
                     rectAreaLights={rectAreaLights}
                     clearGlass={showWindowView && windowViewReady}
+                    hideGeometry={wallEditorOpen}
                 />
 
                 {/* Street outside the windows — first person only; loads when entering it. */}

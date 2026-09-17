@@ -49,6 +49,8 @@ type SatellitProps = React.JSX.IntrinsicElements['group'] & {
    * metal) was made for an empty void outside and looks frosted in front of the street view.
    */
   clearGlass?: boolean;
+  /** 2D wall editor: hide the room's meshes (its lights stay on). */
+  hideGeometry?: boolean;
 }
 
 /** Resolution of the room capture the window glass reflects. */
@@ -103,7 +105,7 @@ function createClearGlassMaterial(modelledGlass: THREE.MeshStandardMaterial) {
   return { material, reflection };
 }
 
-export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clearGlass = false, ...props }: SatellitProps) {
+export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clearGlass = false, hideGeometry = false, ...props }: SatellitProps) {
   const { nodes, materials } = useGLTF(SATELLIT_MODEL_URL) as unknown as GLTFResult
   const showTraverses = useEditorStore((state) => state.showTraverses);
   const gl = useThree((state) => state.gl);
@@ -189,13 +191,15 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
         </>
       )}
       <mesh geometry={nodes.Decke001.geometry} material={materials['Material.005']} visible={viewMode === 'firstPerson'} />
-      <mesh name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} />
-      <mesh geometry={nodes.Boden001.geometry} material={materials['Material.005']} />
-      <mesh ref={glassRef} geometry={nodes.Fenster001.geometry} material={clearGlassMaterial?.material ?? materials.Glass} />
-      <mesh geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />
-      <mesh geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={[6.33, 1, 0.12]} />
-      <mesh geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={[-6.33, 1, 2.372]} />
-      <mesh geometry={nodes.Fensterbank.geometry} material={materials['Black marble.001']} />
+      <group visible={!hideGeometry}>
+        <mesh name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} />
+        <mesh geometry={nodes.Boden001.geometry} material={materials['Material.005']} />
+        <mesh ref={glassRef} geometry={nodes.Fenster001.geometry} material={clearGlassMaterial?.material ?? materials.Glass} />
+        <mesh geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />
+        <mesh geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={[6.33, 1, 0.12]} />
+        <mesh geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={[-6.33, 1, 2.372]} />
+        <mesh geometry={nodes.Fensterbank.geometry} material={materials['Black marble.001']} />
+      </group>
     </group>
   )
 }

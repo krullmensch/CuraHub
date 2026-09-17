@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { useAuthStore } from './authStore';
 import { gooeyToast } from 'goey-toast';
 import { readStoredRenderQualitySetting, storeRenderQualitySetting, type RenderQualitySetting } from '../lib/renderQuality';
+import type { WallSide } from '../lib/wallEditor/geometry';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -141,6 +142,12 @@ interface DragState {
   } | null;
 }
 
+/** 2D wall editor: the wall face being edited (see src/components/wall-editor). */
+export interface WallEditorTarget {
+  wallId: number;
+  side: WallSide;
+}
+
 interface EditorState {
   isPlacing: boolean;
   pendingArtwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string } | null;
@@ -205,6 +212,11 @@ interface EditorState {
   // RND-11: 'auto' resolves via hardware detection (see src/lib/renderQuality.ts)
   renderQualitySetting: RenderQualitySetting;
 
+  // 2D wall editor — null while the normal 3D editor is shown
+  wallEditor: WallEditorTarget | null;
+  /** Artworks selected inside the 2D wall editor (multi-selection, independent of selectedInstanceId). */
+  wallEditorSelection: number[];
+
   // Actions
   setDialogOpen: (isOpen: boolean) => void;
   startPlacement: (artwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string }) => void;
@@ -256,6 +268,12 @@ interface EditorState {
   setFpvHoveredInfo: (info: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null) => void;
 
   setRenderQualitySetting: (setting: RenderQualitySetting) => void;
+
+  // 2D wall editor actions
+  openWallEditor: (wallId: number, side?: WallSide, selection?: number[]) => void;
+  closeWallEditor: () => void;
+  setWallEditorSide: (side: WallSide) => void;
+  setWallEditorSelection: (ids: number[]) => void;
 }
 
 // STATE-02 / FUNC-04: monotonically incremented by every store action below that marks the
@@ -331,6 +349,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   fpvHoveredInfo: null,
 
   renderQualitySetting: readStoredRenderQualitySetting(),
+
+  wallEditor: null,
+  wallEditorSelection: [],
 
   setDialogOpen: (isOpen) => set({ isDialogOpen: isOpen }),
   startPlacement: (artwork) => set({ isPlacing: true, pendingArtwork: artwork }),
@@ -442,7 +463,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   }),
 
   // Phase 5 actions
-  setActiveProject: (id, name, slug, exhibitionId, versionId, exhibitionSlug = null) => set({
+  setActiveProject: (id, name, slug, exhibitionId, versionId, exhibitionSlug = null) => set((state) => ({
     activeProjectId: id,
     activeProjectName: name,
     activeProjectSlug: slug,
@@ -450,8 +471,10 @@ export const useEditorStore = create<EditorState>((set) => ({
     activeExhibitionSlug: exhibitionSlug,
     activeVersionId: versionId,
     selectedInstanceId: null, // Clear selection on project switch
-  }),
-  setActiveVersion: (id) => set({ activeVersionId: id, selectedInstanceId: null }),
+    // The 2D wall editor only survives a re-activation of the same version.
+    ...(versionId !== state.activeVersionId ? { wallEditor: null, wallEditorSelection: [] } : {}),
+  })),
+  setActiveVersion: (id) => set({ activeVersionId: id, selectedInstanceId: null, wallEditor: null, wallEditorSelection: [] }),
 
   // Phase 6 actions
   setLocalInstances: (instances) => {
@@ -537,6 +560,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         inst.wallId === id ? { ...inst, wallId: null } : inst
       ),
       selectedWallId: state.selectedWallId === id ? null : state.selectedWallId,
+      ...(state.wallEditor?.wallId === id ? { wallEditor: null, wallEditorSelection: [] } : {}),
       hasUnsavedChanges: true,
     }));
   },
@@ -557,6 +581,41 @@ export const useEditorStore = create<EditorState>((set) => ({
     storeRenderQualitySetting(setting);
     set({ renderQualitySetting: setting });
   },
+
+  // 2D wall editor actions
+  openWallEditor: (wallId, side = 'front', selection = []) => set((state) => {
+    if (state.plannerViewMode === 'firstPerson') return state;
+    if (!state.localWalls.some(w => w.id === wallId)) return state;
+    return {
+      wallEditor: { wallId, side },
+      wallEditorSelection: selection,
+      // The 3D selection (gizmos, halos) stays out of the 2D view.
+      selectedInstanceId: null,
+      selectedWallId: null,
+      selectedZoneId: null,
+      transformAxisLock: 'none',
+      modalTransformActive: false,
+      isTransforming: false,
+      liveTransform: null,
+    };
+  }),
+  closeWallEditor: () => set((state) => {
+    if (!state.wallEditor) return state;
+    const wallStillExists = state.localWalls.some(w => w.id === state.wallEditor!.wallId);
+    return {
+      wallEditor: null,
+      wallEditorSelection: [],
+      // Back in 3D the edited wall stays selected.
+      selectedWallId: wallStillExists ? state.wallEditor.wallId : null,
+      selectedInstanceId: null,
+    };
+  }),
+  setWallEditorSide: (side) => set((state) => (
+    state.wallEditor && state.wallEditor.side !== side
+      ? { wallEditor: { ...state.wallEditor, side }, wallEditorSelection: [] }
+      : state
+  )),
+  setWallEditorSelection: (ids) => set({ wallEditorSelection: ids }),
 }));
 
 // ─── Auto-sync: persist every local change to backend immediately ────────────
@@ -830,6 +889,9 @@ const syncToBackend = async () => {
               snapshot.map(i => i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i)
             ),
             selectedInstanceId: current.selectedInstanceId === inst.id ? created.id : current.selectedInstanceId,
+            wallEditorSelection: current.wallEditorSelection.includes(inst.id)
+              ? current.wallEditorSelection.map(id => id === inst.id ? created.id : id)
+              : current.wallEditorSelection,
           });
           nextInstancesMap.set(created.id, { ...inst, id: created.id, artworkId: created.artworkId });
           remapInstanceRefs(inst.id, created.id);
@@ -931,6 +993,7 @@ const syncToBackend = async () => {
               i.wallId === wall.id ? { ...i, wallId: created.id } : i
             ),
             selectedWallId: current.selectedWallId === wall.id ? created.id : current.selectedWallId,
+            wallEditor: current.wallEditor?.wallId === wall.id ? { ...current.wallEditor, wallId: created.id } : current.wallEditor,
           });
           nextWallsMap.set(created.id, { ...created });
           createIdempotencyKeys.delete(`wall:${wall.id}`);
