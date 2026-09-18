@@ -15,6 +15,7 @@ const ROLE_HIERARCHY: Record<AppRole, number> = {
 
 // Augment Express Request so downstream handlers get typed req.user
 declare global {
+  // eslint-disable-next-line @typescript-eslint/no-namespace -- Express request augmentation lives in the global Express namespace
   namespace Express {
     interface Request {
       user?: { userId: number; role: AppRole };

@@ -12,7 +12,7 @@ import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { useEditorStore, nextTempId, isFloorAssetType, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
-import { useEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
@@ -203,8 +203,10 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
     return newInstanceId;
   };
-  // Keep ref in sync every render
-  placeInstanceRef.current = placeInstance;
+  // Keep ref in sync after every render (drop handlers read it later)
+  useLayoutEffect(() => {
+    placeInstanceRef.current = placeInstance;
+  });
 
   // Preload the room model and the models used by placed artworks (Monitor GLB + picture frame
   // GLB) once the editor actually mounts — moved off module scope so the home page no longer

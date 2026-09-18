@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import multer from 'multer';
@@ -63,12 +63,12 @@ const updateExhibitionSchema = z.object({
 // --- Routes ---
 
 // GET /exhibitions/:id — get exhibition details (owner or admin)
-exhibitionsRouter.get('/:id', authenticate, async (req: any, res) => {
+exhibitionsRouter.get('/:id', authenticate, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.id, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Ungültige Ausstellungs-ID' });
 
-        const exhibition = await verifyOwnership(exhibitionId, req.user.userId, req.user.role);
+        const exhibition = await verifyOwnership(exhibitionId, req.user!.userId, req.user!.role);
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         res.json(exhibition);
@@ -78,13 +78,13 @@ exhibitionsRouter.get('/:id', authenticate, async (req: any, res) => {
 });
 
 // PUT /exhibitions/:id — update exhibition metadata (prof/admin only)
-exhibitionsRouter.put('/:id', authenticate, requireProf, async (req: any, res) => {
+exhibitionsRouter.put('/:id', authenticate, requireProf, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.id, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Ungültige Ausstellungs-ID' });
 
         const data = updateExhibitionSchema.parse(req.body);
-        const exhibition = await verifyOwnership(exhibitionId, req.user.userId, req.user.role);
+        const exhibition = await verifyOwnership(exhibitionId, req.user!.userId, req.user!.role);
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         const updateData: Record<string, unknown> = {};
@@ -112,7 +112,7 @@ exhibitionsRouter.put('/:id', authenticate, requireProf, async (req: any, res) =
         res.json(updated);
     } catch (error) {
         if (error instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Ungültige Eingabedaten', details: (error as any).errors });
+            return res.status(400).json({ error: 'Ungültige Eingabedaten', details: error.issues });
         }
         console.error(error);
         res.status(500).json({ error: 'Ausstellung konnte nicht aktualisiert werden' });
@@ -120,12 +120,12 @@ exhibitionsRouter.put('/:id', authenticate, requireProf, async (req: any, res) =
 });
 
 // POST /exhibitions/:id/poster — upload poster image (prof/admin only)
-exhibitionsRouter.post('/:id/poster', authenticate, requireProf, posterUpload.single('poster'), async (req: any, res) => {
+exhibitionsRouter.post('/:id/poster', authenticate, requireProf, posterUpload.single('poster'), async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.id, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Ungültige Ausstellungs-ID' });
 
-        const exhibition = await verifyOwnership(exhibitionId, req.user.userId, req.user.role);
+        const exhibition = await verifyOwnership(exhibitionId, req.user!.userId, req.user!.role);
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         if (!req.file) return res.status(400).json({ error: 'Keine Datei hochgeladen' });
@@ -165,12 +165,12 @@ exhibitionsRouter.post('/:id/poster', authenticate, requireProf, posterUpload.si
 });
 
 // DELETE /exhibitions/:id/poster — remove poster (prof/admin only)
-exhibitionsRouter.delete('/:id/poster', authenticate, requireProf, async (req: any, res) => {
+exhibitionsRouter.delete('/:id/poster', authenticate, requireProf, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.id, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Ungültige Ausstellungs-ID' });
 
-        const exhibition = await verifyOwnership(exhibitionId, req.user.userId, req.user.role);
+        const exhibition = await verifyOwnership(exhibitionId, req.user!.userId, req.user!.role);
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         if (exhibition.poster_path) {
@@ -192,12 +192,12 @@ exhibitionsRouter.delete('/:id/poster', authenticate, requireProf, async (req: a
 });
 
 // GET /exhibitions/:id/eligible-collaborators — list curator/prof users not yet added (prof/admin only)
-exhibitionsRouter.get('/:id/eligible-collaborators', authenticate, requireProf, async (req: any, res) => {
+exhibitionsRouter.get('/:id/eligible-collaborators', authenticate, requireProf, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.id, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Ungültige Ausstellungs-ID' });
 
-        const exhibition = await verifyOwnership(exhibitionId, req.user.userId, req.user.role);
+        const exhibition = await verifyOwnership(exhibitionId, req.user!.userId, req.user!.role);
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         // Get existing collaborator user IDs
@@ -207,7 +207,7 @@ exhibitionsRouter.get('/:id/eligible-collaborators', authenticate, requireProf, 
         });
         const existingIds = existing.map((c) => c.userId);
         // Exclude the requesting user as well
-        existingIds.push(req.user.userId);
+        existingIds.push(req.user!.userId);
 
         const users = await prisma.user.findMany({
             where: {
@@ -225,16 +225,16 @@ exhibitionsRouter.get('/:id/eligible-collaborators', authenticate, requireProf, 
 });
 
 // POST /exhibitions/:id/collaborators — invite a user to collaborate (prof/admin only)
-exhibitionsRouter.post('/:id/collaborators', authenticate, requireProf, async (req: any, res) => {
+exhibitionsRouter.post('/:id/collaborators', authenticate, requireProf, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.id, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Ungültige Ausstellungs-ID' });
 
         const { email } = addCollaboratorSchema.parse(req.body);
-        const inviterId = req.user.userId;
+        const inviterId = req.user!.userId;
 
         // Verify inviter has access to this exhibition (must own it)
-        const exhibition = await verifyOwnership(exhibitionId, inviterId, req.user.role);
+        const exhibition = await verifyOwnership(exhibitionId, inviterId, req.user!.role);
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         // Find the user to invite
@@ -268,7 +268,7 @@ exhibitionsRouter.post('/:id/collaborators', authenticate, requireProf, async (r
 });
 
 // DELETE /exhibitions/:id/collaborators/:userId — remove a collaborator (prof/admin only)
-exhibitionsRouter.delete('/:id/collaborators/:userId', authenticate, requireProf, async (req: any, res) => {
+exhibitionsRouter.delete('/:id/collaborators/:userId', authenticate, requireProf, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.id, 10);
         const userId = parseInt(req.params.userId, 10);
@@ -276,7 +276,7 @@ exhibitionsRouter.delete('/:id/collaborators/:userId', authenticate, requireProf
             return res.status(400).json({ error: 'Ungültige ID' });
         }
 
-        const exhibition = await verifyOwnership(exhibitionId, req.user.userId, req.user.role);
+        const exhibition = await verifyOwnership(exhibitionId, req.user!.userId, req.user!.role);
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         const existing = await prisma.exhibitionCollaborator.findUnique({
@@ -295,12 +295,12 @@ exhibitionsRouter.delete('/:id/collaborators/:userId', authenticate, requireProf
 });
 
 // GET /exhibitions/:id/collaborators — list collaborators (owner or admin)
-exhibitionsRouter.get('/:id/collaborators', authenticate, async (req: any, res) => {
+exhibitionsRouter.get('/:id/collaborators', authenticate, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.id, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Ungültige Ausstellungs-ID' });
 
-        const exhibition = await verifyOwnership(exhibitionId, req.user.userId, req.user.role);
+        const exhibition = await verifyOwnership(exhibitionId, req.user!.userId, req.user!.role);
         if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
         const collaborators = await prisma.exhibitionCollaborator.findMany({

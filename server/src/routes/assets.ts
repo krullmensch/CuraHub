@@ -1,5 +1,5 @@
 import { Router, type Request } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
@@ -28,7 +28,7 @@ assetsRouter.get('/', authenticate, async (req: Request, res) => {
             }
         }
 
-        const where: any = {};
+        const where: Prisma.AssetWhereInput = {};
         if (projectId && !isNaN(projectId)) {
             where.projectId = projectId;
         }
@@ -104,7 +104,7 @@ assetsRouter.patch('/:id', authenticate, async (req: Request, res) => {
         res.json(updated);
     } catch (e) {
         if (e instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Validation error', details: (e as any).errors });
+            return res.status(400).json({ error: 'Validation error', details: e.issues });
         }
         console.error('Error updating asset:', e);
         res.status(500).json({ error: 'Failed to update asset' });

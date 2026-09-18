@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, lazy, Suspense } from 'react';
+import type { AssetData } from './MetadataDialog';
 import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { UploadDropzone } from './UploadDropzone';
@@ -33,7 +34,7 @@ export const EditorLayout = () => {
   const activeExhibitionId = useEditorStore((state) => state.activeExhibitionId);
   const activeExhibitionSlug = useEditorStore((state) => state.activeExhibitionSlug);
   const token = useAuthStore((state) => state.token);
-  const [uploadedAsset, setUploadedAsset] = useState<any | null>(null);
+  const [uploadedAsset, setUploadedAsset] = useState<AssetData | null>(null);
   const [viewerPopoverOpen, setViewerPopoverOpen] = useState(false);
   const [publishedVersionExists, setPublishedVersionExists] = useState<boolean | null>(null);
   const [publishing, setPublishing] = useState(false);
@@ -113,9 +114,9 @@ export const EditorLayout = () => {
 
   const setDialogOpen = useEditorStore((state) => state.setDialogOpen);
 
-  const onUploadComplete = (asset: any) => {
+  const onUploadComplete = (asset: unknown) => {
       console.log('Upload complete:', asset);
-      setUploadedAsset(asset);
+      setUploadedAsset(asset as AssetData);
       setDialogOpen(true);
   };
 
@@ -130,7 +131,7 @@ export const EditorLayout = () => {
           type: 'artwork', // Newly created/edited artwork
           width: data.width, 
           height: data.height, 
-          url: uploadedAsset.path 
+          url: uploadedAsset?.path ?? ''
       });
   };
 

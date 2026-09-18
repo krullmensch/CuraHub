@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
 import {
   ReactFlow,
   Background,
@@ -81,8 +81,11 @@ export const VersionPanelContent = ({
   const canCurate = isCurator;
 
   // Keep refs in sync so effects can read latest values without re-triggering
-  activeVersionIdRef.current = activeVersionId ?? null;
-  versionsRef.current = versions;
+  // (layout effects run before the passive effects below)
+  useLayoutEffect(() => {
+    activeVersionIdRef.current = activeVersionId ?? null;
+    versionsRef.current = versions;
+  });
 
   // --- Graph state ---
   const { nodes: initialNodes, edges: initialEdges } = useMemo(
@@ -116,7 +119,6 @@ export const VersionPanelContent = ({
       });
       setEdges(e);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [versions, setNodes, setEdges]);
 
   // When only activeVersionId changes → update isActive + isOnActiveBranch without touching positions

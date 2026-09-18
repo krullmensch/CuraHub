@@ -43,6 +43,9 @@ export const VersionPanel = ({
   }, [token, activeExhibitionId]);
 
   useEffect(() => {
+    // fetchVersions is shared with the panel's manual refresh and flips the loading flag
+    // before its request; that synchronous update is intended here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeExhibitionId) fetchVersions();
     else setVersions([]);
   }, [activeExhibitionId, fetchVersions]);
@@ -69,8 +72,10 @@ export const VersionPanel = ({
   useEffect(() => {
     const textEl = toggleTextRef.current;
     const containerEl = toggleContainerRef.current;
-    if (!textEl || !containerEl) { setNeedsMarquee(false); return; }
-    setNeedsMarquee(textEl.scrollWidth > containerEl.clientWidth);
+    // The toggle button is always mounted, so both refs are set after commit
+    if (!textEl || !containerEl) return;
+    const overflows = textEl.scrollWidth > containerEl.clientWidth;
+    setNeedsMarquee(overflows);
   }, [toggleText, isOpen]);
 
   const toggleButton = (

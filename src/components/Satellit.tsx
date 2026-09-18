@@ -123,11 +123,6 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
     clearGlassMaterial?.reflection.dispose();
   }, [clearGlassMaterial]);
 
-  // Ensure wall material is visible from both sides (inside the room in first-person)
-  useEffect(() => {
-    materials['Wall Paint (White Wall Paint)'].side = THREE.DoubleSide;
-  }, [materials]);
-
   // Compute ceiling bounding box to size and position the area light
   const ceilingLight = useMemo(() => {
     const box = new THREE.Box3().setFromObject(
@@ -189,7 +184,8 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
         </>
       )}
       <mesh geometry={nodes.Decke001.geometry} material={materials['Material.005']} visible={viewMode === 'firstPerson'} />
-      <mesh name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} />
+      {/* material-side: wall paint must be visible from both sides (inside the room in first-person) */}
+      <mesh name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} material-side={THREE.DoubleSide} />
       <mesh geometry={nodes.Boden001.geometry} material={materials['Material.005']} />
       <mesh ref={glassRef} geometry={nodes.Fenster001.geometry} material={clearGlassMaterial?.material ?? materials.Glass} />
       <mesh geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />

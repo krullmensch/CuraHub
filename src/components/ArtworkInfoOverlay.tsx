@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useEditorStore, videoRefMap } from '../store/editorStore';
 import { Volume2, VolumeX } from 'lucide-react';
 
@@ -21,6 +21,21 @@ const MouseLeftIcon = ({ size = 20, color = "white" }: { size?: number, color?: 
     </svg>
 );
 
+// Keyboard hint badge
+const Kbd = ({ children }: { children: React.ReactNode }) => (
+    <span style={{
+        display: 'inline-block',
+        background: 'rgba(255, 255, 255, 0.12)',
+        borderRadius: 3,
+        padding: '2px 6px',
+        marginRight: 6,
+        fontSize: 10,
+        fontWeight: 600,
+        color: 'rgba(255, 255, 255, 0.75)',
+        letterSpacing: '0.02em',
+    }}>{children}</span>
+);
+
 /**
  * FPV Artwork Info Overlay
 ...
@@ -40,15 +55,17 @@ export const ArtworkInfoOverlay = () => {
     const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const enterFrame = useRef<number | null>(null);
     const descRef = useRef<HTMLDivElement>(null);
-    const dismissedForId = useRef<number | null>(null);
+    const [dismissedForId, setDismissedForId] = useState<number | null>(null);
 
     // Refs for mousedown handler
     const fpvHoveredInfoRef = useRef(fpvHoveredInfo);
     const dismissedRef = useRef(dismissed);
     const isLockedRef = useRef(isLocked);
-    fpvHoveredInfoRef.current = fpvHoveredInfo;
-    dismissedRef.current = dismissed;
-    isLockedRef.current = isLocked;
+    useLayoutEffect(() => {
+        fpvHoveredInfoRef.current = fpvHoveredInfo;
+        dismissedRef.current = dismissed;
+        isLockedRef.current = isLocked;
+    });
 
     // Track pointer lock state
     useEffect(() => {
@@ -57,18 +74,28 @@ export const ArtworkInfoOverlay = () => {
         return () => document.removeEventListener('pointerlockchange', handler);
     }, []);
 
-    // Track displayInfo for fade-out
-    useEffect(() => {
+    // Track displayInfo for fade-out (state adjusted during render instead of in an effect)
+    const [prevHoveredInfo, setPrevHoveredInfo] = useState<typeof fpvHoveredInfo>(null);
+    if (fpvHoveredInfo !== prevHoveredInfo) {
+        setPrevHoveredInfo(fpvHoveredInfo);
         if (fpvHoveredInfo) {
             setDisplayInfo(fpvHoveredInfo);
 
             // Reset dismissed when looking at a new artwork
-            if (fpvHoveredInfo.instanceId !== dismissedForId.current) {
+            if (fpvHoveredInfo.instanceId !== dismissedForId) {
                 setDismissed(false);
-                dismissedForId.current = null;
+                setDismissedForId(null);
             }
         }
-    }, [fpvHoveredInfo]);
+    }
+
+    // Start the exit transition as soon as the panel should hide
+    const panelShouldShow = !!fpvHoveredInfo && !dismissed;
+    const [prevPanelShouldShow, setPrevPanelShouldShow] = useState(panelShouldShow);
+    if (panelShouldShow !== prevPanelShouldShow) {
+        setPrevPanelShouldShow(panelShouldShow);
+        if (!panelShouldShow) setIsActive(false);
+    }
 
     // Control panel visibility
     useEffect(() => {
@@ -83,10 +110,10 @@ export const ArtworkInfoOverlay = () => {
                     const vid = videoRefMap.get(displayInfo.instanceId);
                     if (vid) setIsMuted(vid.muted);
                 }
-                requestAnimationFrame(() => setIsActive(true));
+                // Tracked so the cleanup can cancel it if the panel hides again in between
+                enterFrame.current = requestAnimationFrame(() => setIsActive(true));
             });
         } else {
-            setIsActive(false);
             exitTimer.current = setTimeout(() => {
                 if (!fpvHoveredInfoRef.current) setDisplayInfo(null);
             }, 500);
@@ -108,11 +135,11 @@ export const ArtworkInfoOverlay = () => {
             if (dismissedRef.current) {
                 // Currently hidden → show it
                 setDismissed(false);
-                dismissedForId.current = null;
+                setDismissedForId(null);
             } else {
                 // Currently showing → hide it
                 setDismissed(true);
-                dismissedForId.current = hovered.instanceId;
+                setDismissedForId(hovered.instanceId);
             }
         };
         window.addEventListener('mousedown', onMouseDown);
@@ -173,20 +200,6 @@ export const ArtworkInfoOverlay = () => {
     const extensionLen = 56;
     const panelLeft = extensionStart + extensionLen;
     const isVideo = displayInfo?.assetType === 'video';
-
-    const Kbd = ({ children }: { children: React.ReactNode }) => (
-        <span style={{
-            display: 'inline-block',
-            background: 'rgba(255, 255, 255, 0.12)',
-            borderRadius: 3,
-            padding: '2px 6px',
-            marginRight: 6,
-            fontSize: 10,
-            fontWeight: 600,
-            color: 'rgba(255, 255, 255, 0.75)',
-            letterSpacing: '0.02em',
-        }}>{children}</span>
-    );
 
     return (
         <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', zIndex: 10, overflow: 'hidden' }}>

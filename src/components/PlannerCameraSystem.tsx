@@ -128,7 +128,7 @@ export const PlannerCameraSystem = () => {
                 firstPersonTransition.active = true;
             } else {
                 fp.position.fromArray(fpState.position);
-                fp.rotation.fromArray(fpState.rotation as any);
+                fp.rotation.set(fpState.rotation[0], fpState.rotation[1], fpState.rotation[2]);
             }
         }
         prevViewMode.current = viewMode;

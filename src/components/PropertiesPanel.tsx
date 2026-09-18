@@ -38,12 +38,14 @@ interface NumericInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
 
 const NumericInput = ({ value, onChange, className, ...props }: NumericInputProps) => {
     const [local, setLocal] = useState(String(value));
-    const focused = useRef(false);
+    const [focused, setFocused] = useState(false);
+    const [syncedValue, setSyncedValue] = useState(value);
 
-    // Sync from outside only when not focused
-    useEffect(() => {
-        if (!focused.current) setLocal(String(value));
-    }, [value]);
+    // Sync from outside only when not focused (state adjusted during render instead of in an effect)
+    if (!focused && !Object.is(value, syncedValue)) {
+        setSyncedValue(value);
+        setLocal(String(value));
+    }
 
     return (
         <Input
@@ -51,10 +53,10 @@ const NumericInput = ({ value, onChange, className, ...props }: NumericInputProp
             type="number"
             value={local}
             className={className}
-            onFocus={() => { focused.current = true; }}
+            onFocus={() => setFocused(true)}
             onChange={(e) => setLocal(e.target.value)}
             onBlur={() => {
-                focused.current = false;
+                setFocused(false);
                 onChange(local);
                 // Reset to external value if input is invalid
                 const n = parseFloat(local);
@@ -139,11 +141,15 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         prevLive.current = liveTransform;
     }, [liveTransform]);
 
-    useEffect(() => {
-        if (!selectedId) return;
-
-        // First, read from local store (works for temp IDs and already-loaded instances)
-        const localInst = useEditorStore.getState().localInstances.find(i => i.id === selectedId);
+    // First, read from local store whenever the selection changes (works for temp IDs and
+    // already-loaded instances). Done during render so the panel never shows the previous
+    // selection's values for a frame.
+    const [loadedForId, setLoadedForId] = useState<number | null>(null);
+    if (selectedId !== loadedForId) {
+        setLoadedForId(selectedId);
+        const localInst = selectedId
+            ? useEditorStore.getState().localInstances.find(i => i.id === selectedId)
+            : undefined;
         if (localInst) {
             setTransform({
                 position: { x: localInst.position_x, y: localInst.position_y, z: localInst.position_z },
@@ -162,41 +168,47 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                 });
             }
         }
+    }
 
-        // Also fetch from API for authoritative data (enriches with server-side fields)
-        if (!token || !activeVersionId) return;
+    // Also fetch from API for authoritative data (enriches with server-side fields)
+    useEffect(() => {
+        if (!selectedId || !token || !activeVersionId) return;
+        // Ignore responses that arrive after the selection changed
+        let stale = false;
         const fetchInstance = async () => {
-            try {
-                const res = await fetch(`/api/instances?versionId=${activeVersionId}`, {
-                    headers: { 'Authorization': `Bearer ${token}` },
-                });
-                if (!res.ok) return;
-                const instances = await res.json();
-                const inst = instances.find((i: { id: number }) => i.id === selectedId);
-                if (inst) {
-                    setTransform({
-                        position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
-                        rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
-                        scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
-                    });
-                    setInstanceMedium(inst.medium || 'frame');
-                    if (inst.artwork?.asset) {
-                        setAssetMeta({
-                            widthPx: inst.artwork.asset.width,
-                            heightPx: inst.artwork.asset.height,
-                            dpi: inst.artwork.asset.dpi || 72,
-                            type: inst.artwork.asset.type,
-                            physicalWidth: inst.artwork.width,
-                            physicalHeight: inst.artwork.height,
-                        });
-                    }
-                }
-            } catch (err) {
-                console.error('Failed to fetch instance data:', err);
-            }
+            const res = await fetch(`/api/instances?versionId=${activeVersionId}`, {
+                headers: { 'Authorization': `Bearer ${token}` },
+            });
+            if (!res.ok) return null;
+            const instances = await res.json();
+            return instances.find((i: { id: number }) => i.id === selectedId) ?? null;
         };
 
-        fetchInstance();
+        fetchInstance()
+            .then((inst) => {
+                if (stale || !inst) return;
+                setTransform({
+                    position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
+                    rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
+                    scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
+                });
+                setInstanceMedium(inst.medium || 'frame');
+                if (inst.artwork?.asset) {
+                    setAssetMeta({
+                        widthPx: inst.artwork.asset.width,
+                        heightPx: inst.artwork.asset.height,
+                        dpi: inst.artwork.asset.dpi || 72,
+                        type: inst.artwork.asset.type,
+                        physicalWidth: inst.artwork.width,
+                        physicalHeight: inst.artwork.height,
+                    });
+                }
+            })
+            .catch((err) => {
+                console.error('Failed to fetch instance data:', err);
+            });
+
+        return () => { stale = true; };
     }, [selectedId, token, activeVersionId]);
 
     const saveTransform = useCallback((data: Partial<TransformData>) => {
@@ -285,7 +297,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     useEffect(() => {
         if (assetMeta?.type !== 'video') return;
         if (instanceMedium === 'monitor' || instanceMedium === 'beamer') return;
-        handleMediumChange('monitor');
+        // Deferred like the tab sync above: this updates local state and the store
+        const timer = setTimeout(() => handleMediumChange('monitor'), 0);
+        return () => clearTimeout(timer);
     }, [assetMeta?.type, instanceMedium, handleMediumChange]);
 
     const handleFocus = () => {
@@ -445,20 +459,20 @@ const ArtworkPropertiesContent = ({
 
     useEffect(() => {
         if (!isVideo || !selectedInstanceId) return;
-        const poll = setInterval(() => {
+        const readVideoState = () => {
             const el = videoRefMap.get(selectedInstanceId);
             if (el) {
                 setVideoPaused(el.paused);
                 setVideoMuted(el.muted);
             }
-        }, 250);
-        // Immediate read
-        const el = videoRefMap.get(selectedInstanceId);
-        if (el) {
-            setVideoPaused(el.paused);
-            setVideoMuted(el.muted);
-        }
-        return () => clearInterval(poll);
+        };
+        const poll = setInterval(readVideoState, 250);
+        // Immediate read (next tick)
+        const initialRead = setTimeout(readVideoState, 0);
+        return () => {
+            clearInterval(poll);
+            clearTimeout(initialRead);
+        };
     }, [isVideo, selectedInstanceId]);
 
     const togglePlayPause = () => {

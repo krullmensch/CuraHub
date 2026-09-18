@@ -35,7 +35,6 @@ const GhostPreview = ({ url, width, height, dpi, artworkWidth, artworkHeight, po
         if (texture) {
             // eslint-disable-next-line react-hooks/immutability
             texture.anisotropy = getMaxAnisotropy(gl);
-            // eslint-disable-next-line react-hooks/immutability
             texture.needsUpdate = true;
         }
     }, [texture, gl]);

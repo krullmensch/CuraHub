@@ -82,8 +82,8 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
       useEditorStore.getState().markSaved();
       triggerRefresh();
       onSave();
-    } catch (e: any) {
-      setError(e.message || 'Something went wrong');
+    } catch (e) {
+      setError((e instanceof Error && e.message) || 'Something went wrong');
     }
     setLoading(false);
   };

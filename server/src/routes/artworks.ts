@@ -1,5 +1,5 @@
 import { Router, type Request } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, requireCurator, userCanAccessProject } from '../lib/middleware';
 
@@ -34,7 +34,7 @@ artworksRouter.post('/', authenticate, requireCurator, async (req: Request, res)
       const data = artworkSchema.parse(req.body);
       const isAdmin = req.user!.role === 'admin';
 
-      let artworkData: any = {
+      const artworkData: Prisma.ArtworkCreateInput = {
           title: data.title,
           artist: data.artist,
           year: data.year,
@@ -118,6 +118,7 @@ artworksRouter.get('/', authenticate, requireCurator, async (req: Request, res) 
         });
         res.json(artworks);
     } catch (e) {
+        console.error('Failed to fetch artworks:', e);
         res.status(500).json({ error: 'Failed to fetch artworks' });
     }
 });

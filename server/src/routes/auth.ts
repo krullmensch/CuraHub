@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 import jwt from 'jsonwebtoken';
 import { z } from 'zod';
@@ -126,13 +126,13 @@ const elevateRoleSchema = z.object({
 
 // PATCH /auth/users/:id/role — elevate a user's role
 // Prof can promote user → curator. Admin can set any role.
-authRouter.patch('/users/:id/role', authenticate, requireProf, async (req: any, res) => {
+authRouter.patch('/users/:id/role', authenticate, requireProf, async (req: Request, res) => {
     try {
         const targetId = parseInt(req.params.id, 10);
         if (isNaN(targetId)) return res.status(400).json({ error: 'Ungültige Benutzer-ID' });
 
         const { role: newRole } = elevateRoleSchema.parse(req.body);
-        const callerRole = req.user.role as AppRole;
+        const callerRole = req.user!.role as AppRole;
 
         // Prof can only elevate to curator or lower
         if (callerRole === 'prof' && !roleAtLeast('curator', newRole as AppRole)) {

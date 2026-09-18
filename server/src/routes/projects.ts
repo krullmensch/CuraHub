@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import fs from 'fs';
@@ -46,10 +46,10 @@ const updateProjectSchema = z.object({
 // --- Routes ---
 
 // GET /projects — list all projects for the authenticated user (admin sees all)
-projectsRouter.get('/', authenticate, async (req: any, res) => {
+projectsRouter.get('/', authenticate, async (req: Request, res) => {
     try {
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
         const projects = await prisma.project.findMany({
             where: isAdmin ? {} : { ownerId: userId },
             orderBy: { updatedAt: 'desc' },
@@ -68,10 +68,10 @@ projectsRouter.get('/', authenticate, async (req: any, res) => {
 });
 
 // GET /projects/:id — get a single project by ID or slug (admin sees all)
-projectsRouter.get('/:id', authenticate, async (req: any, res) => {
+projectsRouter.get('/:id', authenticate, async (req: Request, res) => {
     try {
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
         const where = resolveProjectWhere(req.params.id, userId, isAdmin);
         const project = await prisma.project.findFirst({
             where,
@@ -98,10 +98,10 @@ projectsRouter.get('/:id', authenticate, async (req: any, res) => {
 });
 
 // POST /projects — create a new project (auto-creates exhibition + initial version)
-projectsRouter.post('/', authenticate, requireCurator, async (req: any, res) => {
+projectsRouter.post('/', authenticate, requireCurator, async (req: Request, res) => {
     try {
         const data = createProjectSchema.parse(req.body);
-        const userId = req.user.userId;
+        const userId = req.user!.userId;
 
         // Generate project slug
         const baseSlug = generateBaseSlug(data.name);
@@ -158,18 +158,18 @@ projectsRouter.post('/', authenticate, requireCurator, async (req: any, res) => 
     } catch (e) {
         console.error(e);
         if (e instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Validation Error', details: (e as any).errors });
+            return res.status(400).json({ error: 'Validation Error', details: e.issues });
         }
         res.status(500).json({ error: 'Failed to create project', details: e instanceof Error ? e.message : String(e) });
     }
 });
 
 // PUT /projects/:id — update project name/description (admin can update any)
-projectsRouter.put('/:id', authenticate, requireCurator, async (req: any, res) => {
+projectsRouter.put('/:id', authenticate, requireCurator, async (req: Request, res) => {
     try {
         const data = updateProjectSchema.parse(req.body);
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
 
         // Verify ownership (admins bypass ownership check)
         const where = resolveProjectWhere(req.params.id, userId, isAdmin);
@@ -188,17 +188,17 @@ projectsRouter.put('/:id', authenticate, requireCurator, async (req: any, res) =
     } catch (e) {
         console.error(e);
         if (e instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Validation Error', details: (e as any).errors });
+            return res.status(400).json({ error: 'Validation Error', details: e.issues });
         }
         res.status(500).json({ error: 'Failed to update project' });
     }
 });
 
 // DELETE /projects/:id — delete project (cascades to exhibitions, versions, instances)
-projectsRouter.delete('/:id', authenticate, requireCurator, async (req: any, res) => {
+projectsRouter.delete('/:id', authenticate, requireCurator, async (req: Request, res) => {
     try {
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
 
         // Verify ownership (admins bypass ownership check)
         const where = resolveProjectWhere(req.params.id, userId, isAdmin);

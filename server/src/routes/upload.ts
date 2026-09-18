@@ -650,8 +650,8 @@ async function convertWithAssimp(inputPath: string, outputPath: string): Promise
             timeout: 120_000,
         });
         console.log(`[Model] Assimp converted → ${outputPath}`);
-    } catch (error: any) {
-        throw new Error(`Assimp conversion failed: ${error.message}`);
+    } catch (error) {
+        throw new Error(`Assimp conversion failed: ${(error as Error).message}`);
     }
 }
 
@@ -684,8 +684,8 @@ bpy.ops.export_scene.gltf(filepath="${outputPath.replace(/\\/g, '/')}", export_f
             timeout: 180_000,
         });
         console.log(`[Model] Blender converted → ${outputPath}`);
-    } catch (error: any) {
-        throw new Error(`Blender conversion failed: ${error.message}`);
+    } catch (error) {
+        throw new Error(`Blender conversion failed: ${(error as Error).message}`);
     }
 }
 
@@ -758,6 +758,7 @@ async function processModel(file: StoredFile, projectId: string | undefined, fol
                 await convertWithBlender(file.path, rawGlbPath);
                 converted = true;
             } catch (err) {
+                console.warn(`[Model] Blender fallback failed for ${ext}:`, (err as Error).message);
                 // Clean up
                 if (fs.existsSync(rawGlbPath)) fs.unlinkSync(rawGlbPath);
                 throw new Error(

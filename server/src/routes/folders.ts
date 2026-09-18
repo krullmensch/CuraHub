@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { PrismaClient, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, requireCurator } from '../lib/middleware';
@@ -40,15 +40,15 @@ function isUniqueViolation(e: unknown): boolean {
 // --- Routes ---
 
 // GET /folders?projectId=X — list folders for a project, including asset counts
-foldersRouter.get('/', authenticate, async (req: any, res) => {
+foldersRouter.get('/', authenticate, async (req: Request, res) => {
     try {
         const projectId = req.query.projectId ? parseInt(req.query.projectId as string, 10) : NaN;
         if (isNaN(projectId)) {
             return res.status(400).json({ error: 'projectId is required' });
         }
 
-        const isAdmin = req.user.role === 'admin';
-        const ok = await assertProjectAccess(projectId, req.user.userId, isAdmin);
+        const isAdmin = req.user!.role === 'admin';
+        const ok = await assertProjectAccess(projectId, req.user!.userId, isAdmin);
         if (!ok) return res.status(404).json({ error: 'Project not found' });
 
         const [folders, unsortedCount] = await Promise.all([
@@ -68,12 +68,12 @@ foldersRouter.get('/', authenticate, async (req: any, res) => {
 });
 
 // POST /folders — create a folder in a project
-foldersRouter.post('/', authenticate, requireCurator, async (req: any, res) => {
+foldersRouter.post('/', authenticate, requireCurator, async (req: Request, res) => {
     try {
         const data = createFolderSchema.parse(req.body);
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = req.user!.role === 'admin';
 
-        const ok = await assertProjectAccess(data.projectId, req.user.userId, isAdmin);
+        const ok = await assertProjectAccess(data.projectId, req.user!.userId, isAdmin);
         if (!ok) return res.status(404).json({ error: 'Project not found' });
 
         const folder = await prisma.folder.create({
@@ -88,7 +88,7 @@ foldersRouter.post('/', authenticate, requireCurator, async (req: any, res) => {
         res.status(201).json(folder);
     } catch (e) {
         if (e instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Validation error', details: (e as any).errors });
+            return res.status(400).json({ error: 'Validation error', details: e.issues });
         }
         if (isUniqueViolation(e)) {
             return res.status(409).json({ error: 'Folder name already exists in this project' });
@@ -99,7 +99,7 @@ foldersRouter.post('/', authenticate, requireCurator, async (req: any, res) => {
 });
 
 // PATCH /folders/:id — rename or recolor
-foldersRouter.patch('/:id', authenticate, requireCurator, async (req: any, res) => {
+foldersRouter.patch('/:id', authenticate, requireCurator, async (req: Request, res) => {
     try {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
@@ -109,7 +109,7 @@ foldersRouter.patch('/:id', authenticate, requireCurator, async (req: any, res) 
             return res.status(400).json({ error: 'No fields to update' });
         }
 
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = req.user!.role === 'admin';
 
         // Verify access via parent project ownership
         const existing = await prisma.folder.findUnique({
@@ -117,7 +117,7 @@ foldersRouter.patch('/:id', authenticate, requireCurator, async (req: any, res) 
             include: { project: { select: { ownerId: true } } },
         });
         if (!existing) return res.status(404).json({ error: 'Folder not found' });
-        if (!isAdmin && existing.project.ownerId !== req.user.userId) {
+        if (!isAdmin && existing.project.ownerId !== req.user!.userId) {
             return res.status(404).json({ error: 'Folder not found' });
         }
 
@@ -133,7 +133,7 @@ foldersRouter.patch('/:id', authenticate, requireCurator, async (req: any, res) 
         res.json(updated);
     } catch (e) {
         if (e instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Validation error', details: (e as any).errors });
+            return res.status(400).json({ error: 'Validation error', details: e.issues });
         }
         if (isUniqueViolation(e)) {
             return res.status(409).json({ error: 'Folder name already exists in this project' });
@@ -144,19 +144,19 @@ foldersRouter.patch('/:id', authenticate, requireCurator, async (req: any, res) 
 });
 
 // DELETE /folders/:id — delete folder; assets fall back to folderId=null via SetNull
-foldersRouter.delete('/:id', authenticate, requireCurator, async (req: any, res) => {
+foldersRouter.delete('/:id', authenticate, requireCurator, async (req: Request, res) => {
     try {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ error: 'Invalid ID' });
 
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = req.user!.role === 'admin';
 
         const existing = await prisma.folder.findUnique({
             where: { id },
             include: { project: { select: { ownerId: true, id: true } } },
         });
         if (!existing) return res.status(404).json({ error: 'Folder not found' });
-        if (!isAdmin && existing.project.ownerId !== req.user.userId) {
+        if (!isAdmin && existing.project.ownerId !== req.user!.userId) {
             return res.status(404).json({ error: 'Folder not found' });
         }
 

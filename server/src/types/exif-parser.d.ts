@@ -5,7 +5,7 @@ declare module 'exif-parser' {
                 XResolution?: number;
                 YResolution?: number;
                 ResolutionUnit?: number;
-                [key: string]: any;
+                [key: string]: unknown;
             };
             imageSize: {
                 width: number;

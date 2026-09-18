@@ -17,7 +17,7 @@ import { SplatPreviewTile } from './SplatPreviewTile';
 import { VideoProcessingStatus, VideoProxiesProgress } from './VideoProcessingStatus';
 import type { VideoProcessingState } from '../hooks/use-video-processing';
 
-interface AssetData {
+export interface AssetData {
     id: number;
     path: string;
     filename: string;

@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
+import type { ThreeEvent } from '@react-three/fiber';
 import { Lock } from 'lucide-react';
 import { useEditorStore, type ModularWallData } from '@/store/editorStore';
 
@@ -14,7 +15,7 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
     ({ wall, selected, isEditor = true }, ref) => {
         const selectWall = useEditorStore((state) => state.selectWall);
 
-        const handleClick = isEditor ? (e: any) => {
+        const handleClick = isEditor ? (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
             selectWall(wall.id);
         } : undefined;

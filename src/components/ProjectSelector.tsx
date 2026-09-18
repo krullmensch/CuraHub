@@ -69,6 +69,8 @@ export const ProjectSelector = () => {
 
   // Fetch projects on mount
   useEffect(() => {
+    // setProjects only runs after the awaited request; the rule can't see the async boundary.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProjects();
     return () => projectsAbortRef.current?.abort();
   }, [fetchProjects]);
@@ -241,7 +243,10 @@ export const ProjectSelector = () => {
       } else {
         const errData = await res.json().catch(() => ({}));
         console.error('Failed to create project HTTP error:', res.status, errData);
-        alert(`Failed to create project:\n${errData.details || errData.error || res.status}`);
+        const details = Array.isArray(errData.details)
+          ? errData.details.map((issue: { message?: string }) => issue.message).join('\n')
+          : errData.details;
+        alert(`Failed to create project:\n${details || errData.error || res.status}`);
       }
     } catch (e) {
       console.error('Failed to create project:', e);

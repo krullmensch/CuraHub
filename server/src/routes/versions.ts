@@ -1,5 +1,5 @@
-import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Router, type Request } from 'express';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, requireAdmin, requireCurator, exhibitionAccessFilter } from '../lib/middleware';
 
@@ -42,18 +42,24 @@ const createVersionSchema = z.object({
     })).optional()
 });
 
+// Instance snapshot used when creating/merging versions. `_wallIndex` points into the
+// walls array of the new version and is replaced by the real wallId after the walls exist.
+type InstanceToCreate = Omit<Prisma.ArtworkInstanceCreateManyInput, 'versionId' | 'wallId'> & {
+    _wallIndex: number | null;
+};
+
 // GET /exhibitions/:exhibitionId/versions — list all versions for an exhibition
-versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (req: any, res) => {
+versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.exhibitionId, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Invalid exhibition ID' });
 
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = req.user!.role === 'admin';
         // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                ...exhibitionAccessFilter(req.user.userId, isAdmin)
+                ...exhibitionAccessFilter(req.user!.userId, isAdmin)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -84,7 +90,7 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (r
 });
 
 // GET /exhibitions/:exhibitionId/versions/:versionId — get a specific version with its instances
-versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticate, async (req: any, res) => {
+versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticate, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.exhibitionId, 10);
         const versionId = parseInt(req.params.versionId, 10);
@@ -92,12 +98,12 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticat
             return res.status(400).json({ error: 'Invalid ID' });
         }
 
-        const isAdmin = req.user.role === 'admin';
+        const isAdmin = req.user!.role === 'admin';
         // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
             where: {
                 id: exhibitionId,
-                ...exhibitionAccessFilter(req.user.userId, isAdmin)
+                ...exhibitionAccessFilter(req.user!.userId, isAdmin)
             }
         });
         if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
@@ -128,15 +134,15 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticat
 });
 
 // POST /exhibitions/:exhibitionId/versions — create a new version (snapshot current instances)
-versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (req: any, res) => {
+versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.exhibitionId, 10);
         if (isNaN(exhibitionId)) return res.status(400).json({ error: 'Invalid exhibition ID' });
 
         const data = createVersionSchema.parse(req.body);
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
-        const userRole = req.user.role;
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
+        const userRole = req.user!.role;
 
         // Branching (non-main) requires curator+ role
         if (data.branch_name !== 'main') {
@@ -173,7 +179,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
         }
 
         // Use frontend instances, or fallback to deep-copying if not provided (backwards compat)
-        let instancesToCreate: any[] = [];
+        let instancesToCreate: InstanceToCreate[] = [];
         if (data.instances) {
             // STATE-04: batch-resolve assetIds -> artworkIds instead of a
             // findUnique/findFirst/create sequence per instance.
@@ -228,6 +234,9 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                     instancesToCreate.push({
                         artworkId,
                         medium: inst.medium ?? 'frame',
+                        // Keep the wall index on the instance itself: skipped instances
+                        // (missing assets) would otherwise shift a positional lookup.
+                        _wallIndex: inst.wallIndex ?? null,
                         position_x: inst.position_x,
                         position_y: inst.position_y,
                         position_z: inst.position_z,
@@ -269,7 +278,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
         }
 
         // Prepare walls to create
-        let wallsToCreate: any[] = [];
+        let wallsToCreate: Prisma.ModularWallCreateWithoutVersionInput[] = [];
         if (data.walls) {
             wallsToCreate = data.walls.map(w => ({
                 label: w.label,
@@ -286,8 +295,10 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                 isLocked: w.isLocked,
             }));
         } else if (sourceVersionId) {
+            // Same order as oldWallIdToIndex in the deep-copy branch above
             const sourceWalls = await prisma.modularWall.findMany({
-                where: { versionId: sourceVersionId }
+                where: { versionId: sourceVersionId },
+                orderBy: { id: 'asc' }
             });
             wallsToCreate = sourceWalls.map(w => ({
                 label: w.label,
@@ -320,31 +331,24 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                         create: wallsToCreate
                     }
                 },
-                include: { walls: true }
+                include: { walls: { orderBy: { id: 'asc' } } }
             });
 
             // 2. Build wall index → new wall ID mapping
             const newWallIds = version.walls.map(w => w.id); // walls created in order
 
-            // 3. Remap wallId on instances using wallIndex (from frontend) or _wallIndex (from deep-copy)
-            const instancesWithWallIds = instancesToCreate.map((inst: any, i: number) => {
-                const srcInst = data.instances?.[i];
-                let wallId: number | null = null;
-
-                // Frontend-provided wallIndex takes priority
-                const wallIndex = srcInst?.wallIndex ?? inst._wallIndex ?? null;
-                if (wallIndex != null && wallIndex >= 0 && wallIndex < newWallIds.length) {
-                    wallId = newWallIds[wallIndex];
-                }
-
-                const { _wallIndex, ...cleanInst } = inst;
+            // 3. Remap wallId on instances via _wallIndex (from the frontend's wallIndex or the deep-copy)
+            const instancesWithWallIds = instancesToCreate.map(({ _wallIndex, ...cleanInst }) => {
+                const wallId = (_wallIndex != null && _wallIndex >= 0 && _wallIndex < newWallIds.length)
+                    ? newWallIds[_wallIndex]
+                    : null;
                 return { ...cleanInst, wallId };
             });
 
             // 4. Create instances with correct wallIds
             if (instancesWithWallIds.length > 0) {
                 await tx.artworkInstance.createMany({
-                    data: instancesWithWallIds.map((inst: any) => ({
+                    data: instancesWithWallIds.map((inst) => ({
                         ...inst,
                         versionId: version.id,
                     }))
@@ -372,14 +376,14 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
     } catch (e) {
         console.error(e);
         if (e instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Validation Error', details: (e as any).errors });
+            return res.status(400).json({ error: 'Validation Error', details: e.issues });
         }
         res.status(500).json({ error: 'Failed to create version' });
     }
 });
 
 // DELETE /exhibitions/:exhibitionId/versions/:versionId — delete a specific version
-versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenticate, async (req: any, res) => {
+versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenticate, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.exhibitionId, 10);
         const versionId = parseInt(req.params.versionId, 10);
@@ -387,8 +391,8 @@ versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenti
             return res.status(400).json({ error: 'Invalid ID' });
         }
 
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
 
         // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
@@ -423,7 +427,7 @@ versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenti
 });
 
 // PATCH /exhibitions/:exhibitionId/versions/:versionId/publish — publish a version
-versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', authenticate, async (req: any, res) => {
+versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', authenticate, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.exhibitionId, 10);
         const versionId = parseInt(req.params.versionId, 10);
@@ -431,8 +435,8 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', a
             return res.status(400).json({ error: 'Invalid ID' });
         }
 
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
 
         // Verify user has access (owner or collaborator, or admin)
         const exhibition = await prisma.exhibition.findFirst({
@@ -469,7 +473,7 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', a
 });
 
 // PATCH /exhibitions/:exhibitionId/versions/:versionId/feature — set as featured (admin only)
-versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/feature', authenticate, requireAdmin, async (req: any, res) => {
+versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/feature', authenticate, requireAdmin, async (req: Request, res) => {
     try {
         const versionId = parseInt(req.params.versionId, 10);
         if (isNaN(versionId)) return res.status(400).json({ error: 'Invalid ID' });
@@ -500,7 +504,7 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/feature', a
 });
 
 // POST /exhibitions/:exhibitionId/versions/:versionId/merge — overwrite-merge a branch into main
-versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', authenticate, requireCurator, async (req: any, res) => {
+versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', authenticate, requireCurator, async (req: Request, res) => {
     try {
         const exhibitionId = parseInt(req.params.exhibitionId, 10);
         const versionId = parseInt(req.params.versionId, 10);
@@ -508,8 +512,8 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
             return res.status(400).json({ error: 'Invalid ID' });
         }
 
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
 
         // Verify user has exhibition access
         const exhibition = await prisma.exhibition.findFirst({
@@ -574,16 +578,14 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
                     is_published: false,
                     walls: { create: wallsToCreate }
                 },
-                include: { walls: true }
+                include: { walls: { orderBy: { id: 'asc' } } }
             });
 
             const newWallIds = version.walls.map(w => w.id);
-            const instancesWithWallIds = instancesToCreate.map((inst: any) => {
-                const wallIndex = inst._wallIndex;
-                const wallId = (wallIndex != null && wallIndex >= 0 && wallIndex < newWallIds.length)
-                    ? newWallIds[wallIndex]
+            const instancesWithWallIds = instancesToCreate.map(({ _wallIndex, ...cleanInst }) => {
+                const wallId = (_wallIndex != null && _wallIndex >= 0 && _wallIndex < newWallIds.length)
+                    ? newWallIds[_wallIndex]
                     : null;
-                const { _wallIndex, ...cleanInst } = inst;
                 return { ...cleanInst, wallId, versionId: version.id };
             });
 

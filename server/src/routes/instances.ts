@@ -1,4 +1,4 @@
-import { Router } from 'express';
+import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
@@ -18,11 +18,11 @@ const instanceSchema = z.object({
   scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional()
 });
 
-instancesRouter.post('/', authenticate, idempotency, async (req: any, res) => {
+instancesRouter.post('/', authenticate, idempotency, async (req: Request, res) => {
     try {
         const data = instanceSchema.parse(req.body);
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
 
         // 1. Verify version exists and user has access (owner or collaborator, or admin)
         const version = await prisma.exhibitionVersion.findFirst({
@@ -95,7 +95,7 @@ instancesRouter.post('/', authenticate, idempotency, async (req: any, res) => {
         console.error(e);
         
         if (e instanceof z.ZodError) {
-             return res.status(400).json({ error: 'Validation Error', details: (e as any).errors });
+             return res.status(400).json({ error: 'Validation Error', details: e.issues });
         }
         
         res.status(500).json({ error: 'Failed to place instance', details: (e as Error).message });
@@ -103,10 +103,10 @@ instancesRouter.post('/', authenticate, idempotency, async (req: any, res) => {
 });
 
 // GET /instances?versionId=123 — get all instances for a specific version
-instancesRouter.get('/', authenticate, async (req: any, res) => {
+instancesRouter.get('/', authenticate, async (req: Request, res) => {
     try {
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
         const versionId = parseInt(req.query.versionId as string, 10);
 
         if (isNaN(versionId)) {
@@ -149,14 +149,14 @@ const patchInstanceSchema = z.object({
     scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
 });
 
-instancesRouter.patch('/:id', authenticate, async (req: any, res) => {
+instancesRouter.patch('/:id', authenticate, async (req: Request, res) => {
     try {
         const instanceId = parseInt(req.params.id, 10);
         if (isNaN(instanceId)) return res.status(400).json({ error: 'Invalid instance ID' });
 
         const data = patchInstanceSchema.parse(req.body);
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
 
         // Verify user has access (owner or collaborator, or admin)
         const existing = await prisma.artworkInstance.findFirst({
@@ -201,19 +201,19 @@ instancesRouter.patch('/:id', authenticate, async (req: any, res) => {
     } catch (e) {
         console.error(e);
         if (e instanceof z.ZodError) {
-            return res.status(400).json({ error: 'Validation Error', details: (e as any).errors });
+            return res.status(400).json({ error: 'Validation Error', details: e.issues });
         }
         res.status(500).json({ error: 'Failed to update instance' });
     }
 });
 
-instancesRouter.delete('/:id', authenticate, async (req: any, res) => {
+instancesRouter.delete('/:id', authenticate, async (req: Request, res) => {
     try {
         const instanceId = parseInt(req.params.id, 10);
         if (isNaN(instanceId)) return res.status(400).json({ error: 'Invalid instance ID' });
 
-        const userId = req.user.userId;
-        const isAdmin = req.user.role === 'admin';
+        const userId = req.user!.userId;
+        const isAdmin = req.user!.role === 'admin';
 
         // Verify user has access (owner or collaborator, or admin)
         const existing = await prisma.artworkInstance.findFirst({

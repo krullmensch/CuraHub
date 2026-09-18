@@ -2,6 +2,7 @@ import { useEffect, useRef, useCallback, useMemo, Suspense, Fragment } from 'rea
 import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { TransformControls } from '@react-three/drei';
+import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import { useEditorStore, instanceRefMap, type ModularWallData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { ModularWallMesh } from './ModularWallMesh';
@@ -17,7 +18,7 @@ const WALL_Y = WALL_HEIGHT / 2; // Center of wall so bottom sits on floor
 const ANGLE_DEFAULT = 0;
 const SPAWN_GAP = WALL_WIDTH / 2 + 0.5; // Half-width + 0.5m breathing room
 
-export const DEFAULT_WALLS: Omit<ModularWallData, 'id' | 'versionId'>[] = [
+const DEFAULT_WALLS: Omit<ModularWallData, 'id' | 'versionId'>[] = [
     {
         label: 'Wall A',
         position_x: -SPAWN_GAP,
@@ -245,7 +246,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
 
     // Refs for wall groups
     const wallRefs = useRef<Map<number, THREE.Group>>(new Map());
-    const transformControlsRef = useRef<any>(null);
+    const transformControlsRef = useRef<TransformControlsImpl>(null);
 
     const setWallRef = useCallback((id: number) => (el: THREE.Group | null) => {
         if (el) {
@@ -432,7 +433,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
             });
             store.commitLocalChange(updatedInstances);
         }
-    }, [selectedWallId, selectedWallRef, updateWall, setIsTransforming, hasToken, activeVersionId, localWalls]);
+    }, [selectedWallId, selectedWallRef, updateWall, setIsTransforming]);
 
     const walls = viewerWalls ?? localWalls;
 
