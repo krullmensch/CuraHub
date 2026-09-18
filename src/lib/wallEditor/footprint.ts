@@ -1,18 +1,8 @@
 import * as THREE from 'three';
 import { instanceRefMap, type ArtworkInstanceData } from '@/store/editorStore';
 import { worldToWall, worldToWallMatrix, type WallFrame } from './geometry';
-import { frameProfile, frameStyleOf } from '@/lib/frameStyles';
+import { framedArtworkLayout, type FramedArtworkLayout } from '@/lib/frameStyles';
 import type { Rect } from './layout';
-
-/**
- * How far the chosen frame profile reaches beyond the picture on every side — 9 mm for the
- * Halbe Classic Alu 8, up to ~20 mm for the wide wooden profiles, 0 for an unframed work.
- * Alignment, spacing and collision in the 2D wall editor all measure the frame, not the picture.
- */
-export function frameOuterMargin(inst: ArtworkInstanceData): number {
-    const styleId = frameStyleOf(inst.frameStyle);
-    return styleId === 'none' ? 0 : frameProfile(styleId).faceWidth;
-}
 
 /** 65" monitor (Monitor65.glb) — only used until the model has loaded. */
 const MONITOR_FALLBACK_SIZE = { w: 1.463, h: 0.837 };
@@ -32,6 +22,23 @@ export interface Footprint {
 
 const EPS = 1e-4;
 const safeScale = (s: number) => (Math.abs(s) > EPS ? Math.abs(s) : 1);
+
+/**
+ * Frame and passepartout of a picture at its current scale. Alignment, spacing and collision in
+ * the 2D wall editor all measure the frame's outer edge, not the picture — 7.5 mm (Alu 7) to
+ * 21 mm (Holz 20/22) beyond it, plus the passepartout, more below than above for the optical
+ * centre and the golden ratio.
+ */
+export function artworkFrameLayout(inst: ArtworkInstanceData): FramedArtworkLayout {
+    const base = baseArtworkSize(inst);
+    return framedArtworkLayout({
+        width: base.w * safeScale(inst.scale_x),
+        height: base.h * safeScale(inst.scale_y),
+        frameStyle: inst.frameStyle,
+        passepartoutWidth: inst.passepartoutWidth,
+        passepartoutPlacement: inst.passepartoutPlacement,
+    });
+}
 
 /** Physical picture size (without frame) at scale 1, in metres. */
 export function baseArtworkSize(inst: ArtworkInstanceData): { w: number; h: number } {
@@ -89,11 +96,8 @@ export function computeFootprint(inst: ArtworkInstanceData, frame: WallFrame): F
     const type = inst.artwork.asset.type ?? 'image';
 
     if (type === 'image') {
-        const base = baseArtworkSize(inst);
-        const margin = frameOuterMargin(inst);
-        const w = base.w * safeScale(inst.scale_x) + 2 * margin;
-        const h = base.h * safeScale(inst.scale_y) + 2 * margin;
-        return symmetric(w, h, true);
+        const { left, right, bottom, top } = artworkFrameLayout(inst);
+        return { left, right, bottom, top, exact: true };
     }
 
     const group = instanceRefMap.get(inst.id);

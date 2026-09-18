@@ -5,7 +5,7 @@ import { gooeyToast } from 'goey-toast';
 import { readStoredRenderQualitySetting, storeRenderQualitySetting, type RenderQualitySetting } from '../lib/renderQuality';
 import type { WallSide } from '../lib/wallEditor/geometry';
 import type { WallEditorTarget } from '../lib/wallEditor/faces';
-import { DEFAULT_FRAME_STYLE, type FrameStyleId } from '../lib/frameStyles';
+import { DEFAULT_FRAME_STYLE, frameStyleOf, type FrameStyleId, type PassepartoutPlacement } from '../lib/frameStyles';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -76,6 +76,10 @@ export interface ArtworkInstanceData {
   medium?: MediumType;
   /** Picture frame profile, 'none' for an unframed work. See lib/frameStyles.ts. */
   frameStyle?: FrameStyleId;
+  /** Passepartout width at the sides in cm, 0 = none (only drawn inside a frame). */
+  passepartoutWidth?: number;
+  /** Where the window sits in the passepartout. */
+  passepartoutPlacement?: PassepartoutPlacement;
   artwork: {
     id?: number;
     title?: string;
@@ -214,6 +218,8 @@ interface EditorState {
 
   /** Frame style newly dropped artworks get — the last one the curator picked in the panel. */
   defaultFrameStyle: FrameStyleId;
+  /** Passepartout newly dropped artworks get (width in cm, 0 = none) — last one picked. */
+  defaultPassepartout: { width: number; placement: PassepartoutPlacement };
 
   // 2D wall editor — null while the normal 3D editor is shown
   wallEditor: WallEditorTarget | null;
@@ -273,6 +279,7 @@ interface EditorState {
   setRenderQualitySetting: (setting: RenderQualitySetting) => void;
 
   setDefaultFrameStyle: (styleId: FrameStyleId) => void;
+  setDefaultPassepartout: (passepartout: { width: number; placement: PassepartoutPlacement }) => void;
 
   // 2D wall editor actions
   /** Opens a face of a modular wall or a room wall (see lib/wallEditor/faces.ts). */
@@ -349,6 +356,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   syncStatus: 'idle',
 
   defaultFrameStyle: DEFAULT_FRAME_STYLE,
+  defaultPassepartout: { width: 0, placement: 'center' },
 
   // Modular Walls defaults
   localWalls: [],
@@ -591,6 +599,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   },
 
   setDefaultFrameStyle: (styleId) => set({ defaultFrameStyle: styleId }),
+  setDefaultPassepartout: (passepartout) => set({ defaultPassepartout: passepartout }),
 
   // 2D wall editor actions
   openWallEditor: (target, selection = []) => set((state) => {
@@ -875,7 +884,9 @@ const syncToBackend = async () => {
               assetId: assetId || undefined,
               wallId: inst.wallId ?? null,
               medium: inst.medium ?? 'frame',
-              frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
+              frameStyle: frameStyleOf(inst.frameStyle ?? DEFAULT_FRAME_STYLE),
+              passepartoutWidth: inst.passepartoutWidth ?? 0,
+              passepartoutPlacement: inst.passepartoutPlacement ?? 'center',
               position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
               rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
               scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
@@ -940,7 +951,9 @@ const syncToBackend = async () => {
       const wallChanged = curr.wallId !== prev.wallId;
       const mediumChanged = curr.medium !== prev.medium;
       const frameStyleChanged = curr.frameStyle !== prev.frameStyle;
-      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged || frameStyleChanged)) {
+      const passepartoutChanged = (curr.passepartoutWidth ?? 0) !== (prev.passepartoutWidth ?? 0)
+        || (curr.passepartoutPlacement ?? 'center') !== (prev.passepartoutPlacement ?? 'center');
+      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged || frameStyleChanged || passepartoutChanged)) {
         nextInstancesMap.set(curr.id, curr); // no pending op — keep the snapshot in sync
         continue;
       }
@@ -951,7 +964,11 @@ const syncToBackend = async () => {
       if (scaleChanged) body.scale = { x: curr.scale_x, y: curr.scale_y, z: curr.scale_z };
       if (wallChanged) body.wallId = curr.wallId ?? null;
       if (mediumChanged) body.medium = curr.medium;
-      if (frameStyleChanged) body.frameStyle = curr.frameStyle;
+      if (frameStyleChanged) body.frameStyle = frameStyleOf(curr.frameStyle);
+      if (passepartoutChanged) {
+        body.passepartoutWidth = curr.passepartoutWidth ?? 0;
+        body.passepartoutPlacement = curr.passepartoutPlacement ?? 'center';
+      }
 
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });

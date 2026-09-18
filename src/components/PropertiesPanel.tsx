@@ -34,11 +34,25 @@ import { useWallEditorView } from '@/store/wallEditorViewStore';
 import { useFaceDirectory } from '@/hooks/use-face-directory';
 import {
     DEFAULT_FRAME_STYLE,
-    FRAME_STYLE_GROUP_LABELS,
-    SELECTABLE_FRAME_STYLES,
+    DEFAULT_PASSEPARTOUT_WIDTH_CM,
+    FRAME_FINISHES,
+    FRAME_GROUP_LABELS,
+    FRAME_PROFILES,
+    MAX_PASSEPARTOUT_WIDTH_CM,
+    PASSEPARTOUT_PLACEMENTS,
+    PROFILE_FINISHES,
+    PROFILE_GROUPS,
+    frameStyle as frameStyleSpec,
     frameStyleOf,
-    type FrameStyleGroup,
+    framedArtworkLayout,
+    isPassepartoutPlacement,
+    styleForProfile,
+    styleIdOf,
+    type FrameFinishId,
+    type FrameMaterialGroup,
+    type FrameProfileId,
     type FrameStyleId,
+    type PassepartoutPlacement,
 } from '@/lib/frameStyles';
 import type { LucideIcon } from 'lucide-react';
 
@@ -131,9 +145,12 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const [assetMeta, setAssetMeta] = useState<{ widthPx: number; heightPx: number; dpi: number; type?: string; physicalWidth?: number | null; physicalHeight?: number | null } | null>(null);
     const [instanceMedium, setInstanceMedium] = useState<MediumType>('frame');
     const [instanceFrameStyle, setInstanceFrameStyle] = useState<FrameStyleId>(DEFAULT_FRAME_STYLE);
+    const [instancePassepartout, setInstancePassepartout] = useState<PassepartoutValue>(NO_PASSEPARTOUT);
     const setDefaultFrameStyle = useEditorStore((state) => state.setDefaultFrameStyle);
-    // Remembers what to go back to when the curator switches framing back on.
+    const setDefaultPassepartout = useEditorStore((state) => state.setDefaultPassepartout);
+    // Remember what to go back to when the curator switches framing / the passepartout back on.
     const lastFramedStyle = useRef<FrameStyleId>(DEFAULT_FRAME_STYLE);
+    const lastPassepartoutWidth = useRef(DEFAULT_PASSEPARTOUT_WIDTH_CM);
 
     // For 3D models: use the natural bounding box size (in meters) from the scene as the base.
     // Falls back to { 1, 1, 1 } until the model renders and populates modelBBoxMap.
@@ -179,6 +196,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
             const style = frameStyleOf(localInst.frameStyle);
             setInstanceFrameStyle(style);
             if (style !== 'none') lastFramedStyle.current = style;
+            const passepartout = passepartoutOf(localInst);
+            setInstancePassepartout(passepartout);
+            if (passepartout.width > 0) lastPassepartoutWidth.current = passepartout.width;
             if (localInst.artwork?.asset) {
                 setAssetMeta({
                     widthPx: localInst.artwork.asset.width,
@@ -218,6 +238,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                 const style = frameStyleOf(inst.frameStyle);
                 setInstanceFrameStyle(style);
                 if (style !== 'none') lastFramedStyle.current = style;
+                const passepartout = passepartoutOf(inst);
+                setInstancePassepartout(passepartout);
+                if (passepartout.width > 0) lastPassepartoutWidth.current = passepartout.width;
                 if (inst.artwork?.asset) {
                     setAssetMeta({
                         widthPx: inst.artwork.asset.width,
@@ -267,9 +290,21 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
             if (isFloorAssetType(instanceMedium)) {
                 value = Math.max(0, value);
             } else {
-                // Center is at position_y; bottom edge = position_y - halfHeight
-                const halfH = (baseCm.y / 100 * Math.abs(transform.scale.y)) / 2;
-                value = Math.max(halfH, value);
+                // Center is at position_y; the lowest edge is the frame (and passepartout) below
+                // a picture, the picture's own edge for everything else.
+                const pictureW = baseCm.x / 100 * Math.abs(transform.scale.x);
+                const pictureH = baseCm.y / 100 * Math.abs(transform.scale.y);
+                const isPicture = !assetMeta?.type || assetMeta.type === 'image';
+                const below = isPicture
+                    ? -framedArtworkLayout({
+                        width: pictureW,
+                        height: pictureH,
+                        frameStyle: instanceFrameStyle,
+                        passepartoutWidth: instancePassepartout.width,
+                        passepartoutPlacement: instancePassepartout.placement,
+                    }).bottom
+                    : pictureH / 2;
+                value = Math.max(below, value);
             }
         }
         const storeValue = group === 'rotation' ? (value * Math.PI) / 180 : value;
@@ -337,6 +372,24 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         const previous = lastFramedStyle.current;
         handleFrameStyleChange(!framed ? 'none' : previous === 'none' ? DEFAULT_FRAME_STYLE : previous);
     }, [handleFrameStyleChange]);
+
+    const handlePassepartoutChange = useCallback((next: PassepartoutValue) => {
+        if (!selectedId) return;
+        const width = Math.min(Math.max(next.width, 0), MAX_PASSEPARTOUT_WIDTH_CM);
+        const value = { width, placement: next.placement };
+        setInstancePassepartout(value);
+        if (width > 0) lastPassepartoutWidth.current = width;
+        // New drops follow the passepartout last set here.
+        setDefaultPassepartout(value);
+        const store = useEditorStore.getState();
+        store.commitLocalChange(store.localInstances.map(inst =>
+            inst.id === selectedId ? { ...inst, passepartoutWidth: width, passepartoutPlacement: value.placement } : inst
+        ));
+    }, [selectedId, setDefaultPassepartout]);
+
+    const handlePassepartoutToggle = useCallback((on: boolean) => {
+        handlePassepartoutChange({ width: on ? lastPassepartoutWidth.current : 0, placement: instancePassepartout.placement });
+    }, [handlePassepartoutChange, instancePassepartout.placement]);
 
     // Auto-promote legacy video media (display/projector/frame/wallpaper) to 'monitor' so the
     // restricted Monitor/Beamer dropdown stays in sync with the underlying instance value.
@@ -413,6 +466,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                             frameStyle={instanceFrameStyle}
                             onFrameToggle={handleFrameToggle}
                             onFrameStyleChange={handleFrameStyleChange}
+                            passepartout={instancePassepartout}
+                            onPassepartoutToggle={handlePassepartoutToggle}
+                            onPassepartoutChange={handlePassepartoutChange}
                             selectedInstanceId={selectedId}
                         />
                     ) : (
@@ -503,6 +559,9 @@ interface ArtworkPropertiesContentProps {
     frameStyle: FrameStyleId;
     onFrameToggle: (framed: boolean) => void;
     onFrameStyleChange: (frameStyle: FrameStyleId) => void;
+    passepartout: PassepartoutValue;
+    onPassepartoutToggle: (on: boolean) => void;
+    onPassepartoutChange: (passepartout: PassepartoutValue) => void;
     selectedInstanceId: number | null;
 }
 
@@ -514,10 +573,6 @@ const MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
     { value: 'model3d', label: '3D Model' },
 ];
 
-/** Frame styles for the panel's dropdown, grouped by material. */
-const FRAME_STYLE_GROUPS = (['metall', 'holz', 'lack'] as FrameStyleGroup[])
-    .map((group) => [group, SELECTABLE_FRAME_STYLES.filter((style) => style.group === group)] as const);
-
 const VIDEO_MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
     { value: 'monitor', label: 'Monitor' },
     { value: 'beamer',  label: 'Beamer'  },
@@ -527,13 +582,13 @@ const ArtworkPropertiesContent = ({
     transform, transformMode, setTransformMode, modeButtons,
     toDeg, toFixed, baseCm, aspectLocked, setAspectLocked,
     handleInputChange, handleScaleChange, handleFocus, handleDelete,
-    medium, assetType, onMediumChange, frameStyle, onFrameToggle, onFrameStyleChange, selectedInstanceId,
+    medium, assetType, onMediumChange, frameStyle, onFrameToggle, onFrameStyleChange,
+    passepartout, onPassepartoutToggle, onPassepartoutChange, selectedInstanceId,
 }: ArtworkPropertiesContentProps) => {
     // Splats get the same floor-object controls as 3D models.
     const isModel = isFloorAssetType(assetType);
     const isVideo = assetType === 'video';
     const sizeLocked  = isVideo && medium === 'monitor';
-    const framed = frameStyle !== 'none';
     const sizeIsBeamer = isVideo && medium === 'beamer';
     const hideAspectToggle = sizeLocked || sizeIsBeamer;
 
@@ -639,44 +694,15 @@ const ArtworkPropertiesContent = ({
                 )}
             </div>
             {!isModel && !isVideo && (
-                <div className="space-y-2">
-                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">Rahmen</Label>
-                    <div className="flex gap-1">
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onFrameToggle(true)}
-                            className={cn("flex-1 h-8 text-xs", framed ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
-                        >
-                            Gerahmt
-                        </Button>
-                        <Button
-                            variant="secondary"
-                            size="sm"
-                            onClick={() => onFrameToggle(false)}
-                            className={cn("flex-1 h-8 text-xs", !framed ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
-                        >
-                            Ohne Rahmen
-                        </Button>
-                    </div>
-                    {framed ? (
-                        <select
-                            value={frameStyle}
-                            onChange={(e) => onFrameStyleChange(e.target.value as FrameStyleId)}
-                            className="w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                        >
-                            {FRAME_STYLE_GROUPS.map(([group, styles]) => (
-                                <optgroup key={group} label={FRAME_STYLE_GROUP_LABELS[group]}>
-                                    {styles.map((style) => (
-                                        <option key={style.id} value={style.id}>{style.label}</option>
-                                    ))}
-                                </optgroup>
-                            ))}
-                        </select>
-                    ) : (
-                        <p className="text-[10px] text-zinc-500 italic">Werk hängt ungerahmt an der Wand.</p>
-                    )}
-                </div>
+                <FrameControls
+                    frameStyle={frameStyle}
+                    onFrameToggle={onFrameToggle}
+                    onFrameStyleChange={onFrameStyleChange}
+                    passepartout={passepartout}
+                    onPassepartoutToggle={onPassepartoutToggle}
+                    onPassepartoutChange={onPassepartoutChange}
+                    pictureCm={{ w: baseCm.x * Math.abs(transform.scale.x), h: baseCm.y * Math.abs(transform.scale.y) }}
+                />
             )}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
@@ -743,6 +769,186 @@ const ArtworkPropertiesContent = ({
                 </Button>
             </div>
         </div>
+    );
+};
+
+interface PassepartoutValue {
+    /** Width at the sides in cm, 0 = none. */
+    width: number;
+    placement: PassepartoutPlacement;
+}
+
+const NO_PASSEPARTOUT: PassepartoutValue = { width: 0, placement: 'center' };
+
+function passepartoutOf(inst: { passepartoutWidth?: number | null; passepartoutPlacement?: unknown }): PassepartoutValue {
+    return {
+        width: Math.max(0, inst.passepartoutWidth ?? 0),
+        placement: isPassepartoutPlacement(inst.passepartoutPlacement) ? inst.passepartoutPlacement : 'center',
+    };
+}
+
+const formatCm = (value: number) => value.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+const formatMm = (value: number) => value.toLocaleString('de-DE', { maximumFractionDigits: 1 });
+
+/** CSS swatch of a finish: flat colour for metal, the grain's light-to-dark range for wood. */
+function finishSwatch(id: FrameFinishId): string {
+    const surface = FRAME_FINISHES[id].surface;
+    if (surface.kind === 'wood') {
+        return `repeating-linear-gradient(100deg, ${surface.light} 0 3px, ${surface.dark} 3px 4px, ${surface.light} 4px 6px)`;
+    }
+    return `linear-gradient(135deg, #ffffff66 0%, transparent 45%), ${surface.color}`;
+}
+
+interface FrameControlsProps {
+    frameStyle: FrameStyleId;
+    onFrameToggle: (framed: boolean) => void;
+    onFrameStyleChange: (frameStyle: FrameStyleId) => void;
+    passepartout: PassepartoutValue;
+    onPassepartoutToggle: (on: boolean) => void;
+    onPassepartoutChange: (passepartout: PassepartoutValue) => void;
+    /** Current picture size in cm (the frame opening without passepartout). */
+    pictureCm: { w: number; h: number };
+}
+
+const selectClass = "w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500";
+const toggleClass = (active: boolean) => cn("flex-1 h-8 text-xs", active ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700");
+
+/** Frame profile and colour (the HALBE range) plus the passepartout of a picture. */
+const FrameControls = ({
+    frameStyle, onFrameToggle, onFrameStyleChange, passepartout, onPassepartoutToggle, onPassepartoutChange, pictureCm,
+}: FrameControlsProps) => {
+    const style = frameStyleSpec(frameStyle);
+    const hasPassepartout = !!style && passepartout.width > 0;
+    // Last colour picked per material, so switching Alu → Holz → Alu comes back to it.
+    const lastFinish = useRef<Partial<Record<FrameMaterialGroup, FrameFinishId>>>({});
+    const pickStyle = (id: FrameStyleId) => {
+        const next = frameStyleSpec(id);
+        if (next) lastFinish.current[next.finish.group] = next.finish.id;
+        onFrameStyleChange(id);
+    };
+    const pickProfile = (profile: FrameProfileId) => {
+        const group = FRAME_PROFILES[profile].group;
+        if (style) lastFinish.current[style.finish.group] = style.finish.id;
+        const preferred = style && style.finish.group === group ? style.finish.id : lastFinish.current[group] ?? null;
+        pickStyle(styleForProfile(profile, preferred));
+    };
+    const layout = framedArtworkLayout({
+        width: pictureCm.w / 100,
+        height: pictureCm.h / 100,
+        frameStyle,
+        passepartoutWidth: passepartout.width,
+        passepartoutPlacement: passepartout.placement,
+    });
+    const outerW = (layout.right - layout.left) * 100;
+    const outerH = (layout.top - layout.bottom) * 100;
+
+    return (
+        <>
+            <div className="space-y-2">
+                <Label className="text-xs text-zinc-400 uppercase tracking-wider">Rahmen</Label>
+                <div className="flex gap-1">
+                    <Button variant="secondary" size="sm" onClick={() => onFrameToggle(true)} className={toggleClass(!!style)}>Gerahmt</Button>
+                    <Button variant="secondary" size="sm" onClick={() => onFrameToggle(false)} className={toggleClass(!style)}>Ohne Rahmen</Button>
+                </div>
+                {style ? (
+                    <>
+                        <div className="space-y-1">
+                            <Label className="text-[10px] text-zinc-500 uppercase">Profil</Label>
+                            <select
+                                value={style.profile.id}
+                                onChange={(e) => pickProfile(e.target.value as FrameProfileId)}
+                                className={selectClass}
+                            >
+                                {PROFILE_GROUPS.map(([group, profiles]) => (
+                                    <optgroup key={group} label={FRAME_GROUP_LABELS[group]}>
+                                        {profiles.map((profile) => (
+                                            <option key={profile.id} value={profile.id}>
+                                                {profile.label} · {formatMm(profile.width)} × {formatMm(profile.depth)} mm
+                                            </option>
+                                        ))}
+                                    </optgroup>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="space-y-1">
+                            <div className="flex items-baseline justify-between">
+                                <Label className="text-[10px] text-zinc-500 uppercase">Farbe</Label>
+                                <span className="text-[11px] text-zinc-300">{style.finish.label}</span>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                                {PROFILE_FINISHES[style.profile.id].map((finish) => (
+                                    <button
+                                        key={finish}
+                                        type="button"
+                                        title={FRAME_FINISHES[finish].label}
+                                        aria-label={FRAME_FINISHES[finish].label}
+                                        aria-pressed={finish === style.finish.id}
+                                        onClick={() => pickStyle(styleIdOf(style.profile.id, finish))}
+                                        className={cn(
+                                            "h-6 w-6 rounded-full border border-zinc-600 transition-shadow",
+                                            finish === style.finish.id ? "ring-2 ring-blue-500 ring-offset-2 ring-offset-zinc-950" : "hover:ring-1 hover:ring-zinc-400",
+                                        )}
+                                        style={{ background: finishSwatch(finish) }}
+                                    />
+                                ))}
+                            </div>
+                        </div>
+                        <p className="text-[10px] text-zinc-500">
+                            Aufsichtsmaß {formatMm(style.profile.width)} mm, Profiltiefe {formatMm(style.profile.depth)} mm
+                        </p>
+                    </>
+                ) : (
+                    <p className="text-[10px] text-zinc-500 italic">Werk hängt ungerahmt an der Wand.</p>
+                )}
+            </div>
+            {style && (
+                <div className="space-y-2">
+                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">Passepartout</Label>
+                    <div className="flex gap-1">
+                        <Button variant="secondary" size="sm" onClick={() => onPassepartoutToggle(false)} className={toggleClass(!hasPassepartout)}>Ohne</Button>
+                        <Button variant="secondary" size="sm" onClick={() => onPassepartoutToggle(true)} className={toggleClass(hasPassepartout)}>Mit Passepartout</Button>
+                    </div>
+                    {hasPassepartout && (
+                        <>
+                            <div className="grid grid-cols-2 gap-2">
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] text-zinc-500 uppercase">Breite (cm)</Label>
+                                    <NumericInput
+                                        step="0.5"
+                                        min="0.5"
+                                        max={String(MAX_PASSEPARTOUT_WIDTH_CM)}
+                                        value={passepartout.width}
+                                        onChange={(raw) => {
+                                            const width = parseFloat(raw.replace(',', '.'));
+                                            if (!isNaN(width) && width > 0) onPassepartoutChange({ ...passepartout, width });
+                                        }}
+                                        className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100"
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <Label className="text-[10px] text-zinc-500 uppercase">Platzierung</Label>
+                                    <select
+                                        value={passepartout.placement}
+                                        onChange={(e) => onPassepartoutChange({ ...passepartout, placement: e.target.value as PassepartoutPlacement })}
+                                        className={selectClass}
+                                    >
+                                        {PASSEPARTOUT_PLACEMENTS.map((placement) => (
+                                            <option key={placement.id} value={placement.id}>{placement.label}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                            <p className="text-[10px] text-zinc-500">
+                                Weiß, 1,5 mm Museumskarton mit Schrägschnitt. Ränder oben {formatCm((layout.passepartout?.top ?? 0) * 100)} cm, unten {formatCm((layout.passepartout?.bottom ?? 0) * 100)} cm.
+                            </p>
+                        </>
+                    )}
+                    <p className="text-[11px] text-zinc-300">
+                        Außenmaß {formatCm(outerW)} × {formatCm(outerH)} cm
+                    </p>
+                </div>
+            )}
+        </>
     );
 };
 

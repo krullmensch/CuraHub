@@ -3,7 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
-import { DEFAULT_FRAME_STYLE, frameStyleSchema } from '../lib/frameStyles';
+import { DEFAULT_FRAME_STYLE, frameStyleSchema, passepartoutPlacementSchema, passepartoutWidthSchema } from '../lib/frameStyles';
 
 export const instancesRouter = Router();
 const prisma = new PrismaClient();
@@ -15,6 +15,8 @@ const instanceSchema = z.object({
   wallId: z.number().nullable().optional(),
   medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat']).optional(),
   frameStyle: frameStyleSchema.optional(),
+  passepartoutWidth: passepartoutWidthSchema.optional(),
+  passepartoutPlacement: passepartoutPlacementSchema.optional(),
   position: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   rotation: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional()
@@ -80,6 +82,8 @@ instancesRouter.post('/', authenticate, idempotency, async (req: Request, res) =
                 wallId: data.wallId ?? null,
                 medium: data.medium ?? 'frame',
                 frameStyle: data.frameStyle ?? DEFAULT_FRAME_STYLE,
+                passepartoutWidth: data.passepartoutWidth ?? 0,
+                passepartoutPlacement: data.passepartoutPlacement ?? 'center',
                 position_x: data.position.x,
                 position_y: data.position.y,
                 position_z: data.position.z,
@@ -148,6 +152,8 @@ const patchInstanceSchema = z.object({
     wallId: z.number().nullable().optional(),
     medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat']).optional(),
     frameStyle: frameStyleSchema.optional(),
+    passepartoutWidth: passepartoutWidthSchema.optional(),
+    passepartoutPlacement: passepartoutPlacementSchema.optional(),
     position: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
     rotation: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
     scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
@@ -182,6 +188,12 @@ instancesRouter.patch('/:id', authenticate, async (req: Request, res) => {
         }
         if (data.frameStyle !== undefined) {
             updateData.frameStyle = data.frameStyle;
+        }
+        if (data.passepartoutWidth !== undefined) {
+            updateData.passepartoutWidth = data.passepartoutWidth;
+        }
+        if (data.passepartoutPlacement !== undefined) {
+            updateData.passepartoutPlacement = data.passepartoutPlacement;
         }
         if (data.position) {
             updateData.position_x = data.position.x;

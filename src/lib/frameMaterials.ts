@@ -1,281 +1,227 @@
 import * as THREE from 'three';
-import { frameStyle, type FrameStyleId, type LacquerSurface, type WoodSurface } from './frameStyles';
+import { FRAME_FINISHES, type FrameFinishId, type MetalSurface, type WoodSurface } from './frameStyles';
+import {
+    TEX_U,
+    TEX_V,
+    TILE_U,
+    TILE_V,
+    finishHasTextures,
+    generateFinishTextures,
+    paperNormalData,
+    rgbOf,
+    woodBaseColor,
+    type FinishTextures,
+} from './frameTextures';
+import type { FrameTextureRequest, FrameTextureResponse } from '../workers/frameTexture.worker';
 
-// Procedural surfaces for the wooden and lacquered frame profiles.
+// Materials for the HALBE frame finishes and the passepartout board.
 //
-// The frame GLB ships a single anodised-aluminium material and its baked UVs are a Blender
-// box unwrap — useless for a directional material like wood. modularFrameParts therefore
-// re-unwraps both meshes so that U runs along the profile and V wraps once around its
-// cross-section; this module paints textures for exactly that layout: the grain varies along
-// V and is near-constant along U, which is why a 2 m edge and a 2 cm corner piece can share
-// one texture and why stretching an edge to the artwork's width leaves the grain intact.
-//
-// Everything here is generated once per style, on first use, and then cached for the lifetime
-// of the tab — a frame style is picked far more often than it is dropped, and the textures are
-// a few hundred KB each.
+// A material is created synchronously in its finish's average colour, so a frame shows up at
+// once; the wood grain / brushing textures are generated in a worker (frameTexture.worker, see
+// frameTextures) and attached when they arrive. Everything is cached per finish for the lifetime
+// of the tab. No canvas, no downloads, no shader patches — the WebGPU path converts these
+// materials to node materials and would drop an onBeforeCompile.
 
-/** Square so the same tile can wrap both around the profile and along its length. */
-const TEX_SIZE = 512;
-/** Length of local UV space (meters) covered by one texture tile along the profile. */
-const TILE_U = 0.35;
+// ── studio environment for reflections ──────────────────────────────────────
 
-// ── seamless value noise ────────────────────────────────────────────────────
-
-function randomTable(seed: number): Float32Array {
-    const table = new Float32Array(256);
-    let state = seed >>> 0;
-    for (let i = 0; i < 256; i++) {
-        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-        table[i] = state / 4294967296;
-    }
-    return table;
-}
-
-/** Value noise whose lattice wraps after `period` steps, so sampling x∈[0,period) tiles. */
-function pnoise(table: Float32Array, x: number, period: number): number {
-    const i = Math.floor(x);
-    const f = x - i;
-    const a = table[(((i % period) + period) % period) & 255];
-    const b = table[((((i + 1) % period) + period) % period) & 255];
-    const t = f * f * (3 - 2 * f);
-    return a + (b - a) * t;
-}
-
-const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
-
-// ── grain field ─────────────────────────────────────────────────────────────
-
-interface GrainField {
-    /** 0 = pale early wood, 1 = dark late wood. Also used as the relief height. */
-    height: Float32Array;
-    /** 0..1 open pores and rays, darkening the albedo without changing the relief much. */
-    pore: Float32Array;
-}
+let environment: THREE.DataTexture | null = null;
 
 /**
- * Builds one tileable grain field. `bands` grain lines are laid out across V (one wrap around
- * the profile); along U they only drift, so an edge stretched to any artwork width keeps the
- * same grain spacing — the lines just get longer.
- *
- * Evenly spaced identical lines read as corrugation rather than wood, so every band gets its
- * own offset, width and darkness (irregular spacing, some lines hairline and near-black,
- * others broad and faint) on top of a slow shared drift along the length.
+ * A small equirectangular stand-in for the gallery: white ceiling with two long light fields,
+ * white walls with a few darker openings and a bright window, a darker floor. The scene itself
+ * has no environment map, and without one anodised or polished aluminium only reflects black —
+ * this is what lets a silver frame read as silver and chrome as chrome (its sharp reflection
+ * needs the structure, a uniform surround would make it look like grey paint). Used by the frame
+ * materials only.
  */
-function buildGrainField(bands: number, seed: number): GrainField {
-    const size = TEX_SIZE;
-    const height = new Float32Array(size * size);
-    const pore = new Float32Array(size * size);
-    const slow = randomTable(seed);
-    const fast = randomTable(seed + 101);
-    const fibre = randomTable(seed + 202);
-    const pores = randomTable(seed + 303);
-    const tone = randomTable(seed + 404);
-    const perBand = randomTable(seed + 505);
-
-    // Per-band character. Offsets stay well inside half a band so neighbouring lines never
-    // cross and the band boundary — where the field is flat early wood — keeps tiling in V.
-    const phase = new Float32Array(bands);
-    const sharpness = new Float32Array(bands);
-    const darkness = new Float32Array(bands);
-    for (let k = 0; k < bands; k++) {
-        phase[k] = (perBand[(k * 3) & 255] - 0.5) * 0.34;
-        sharpness[k] = 2 + perBand[(k * 3 + 1) & 255] * 7;
-        darkness[k] = 0.5 + perBand[(k * 3 + 2) & 255] * 0.5;
-    }
-
-    // Precompute the per-column drift and board tone: both only depend on U.
-    const drift = new Float32Array(size);
-    const shade = new Float32Array(size);
-    for (let x = 0; x < size; x++) {
-        const u = x / size;
-        drift[x] = ((pnoise(slow, u * 3, 3) - 0.5) * 0.9 + (pnoise(fast, u * 11, 11) - 0.5) * 0.25) * 0.22;
-        shade[x] = (pnoise(tone, u * 2, 2) - 0.5) * 0.14;
-    }
-
-    for (let y = 0; y < size; y++) {
-        const v = y / size;
-        const row = y * size;
-        const base = v * bands;
-        const k = ((Math.floor(base) % bands) + bands) % bands;
-        const exponent = sharpness[k];
-        const dark = darkness[k];
-        for (let x = 0; x < size; x++) {
-            const t = base + phase[k] + drift[x];
-            const f = t - Math.floor(t);
-            // Dark line through the middle of the band, flat early wood at its borders.
-            const ring = Math.pow(Math.max(0, 1 - Math.abs(f - 0.5) * 2), exponent) * dark;
-            const fibres = (pnoise(fibre, (x / size) * 128 + y * 7, 128) - 0.5) * 0.1;
-            height[row + x] = clamp01(ring + fibres + shade[x] + 0.12);
-            // Pores sit inside the dark bands and streak along the profile.
-            const streak = pnoise(pores, (x / size) * 64 + k * 23, 64);
-            pore[row + x] = ring > 0.3 ? clamp01((streak - 0.78) / 0.22) : 0;
+export function getFrameEnvironment(): THREE.DataTexture {
+    if (environment) return environment;
+    const width = 256;
+    const height = 128;
+    const data = new Uint16Array(width * height * 4);
+    // Darker openings in the walls (doorways, other works) and one window, as azimuth ranges.
+    const openings = [[0.35, 0.75], [1.9, 2.15], [3.3, 3.9], [5.1, 5.35]];
+    const windowRange = [4.3, 4.85];
+    const inRange = (a: number, [lo, hi]: number[]) => a >= lo && a <= hi;
+    for (let y = 0; y < height; y++) {
+        const elevation = (0.5 - (y + 0.5) / height) * Math.PI; // +π/2 up … -π/2 down
+        for (let x = 0; x < width; x++) {
+            const azimuth = ((x + 0.5) / width) * Math.PI * 2;
+            let level: number;
+            let warm = 0.97;
+            if (elevation > 0.42) {
+                // Ceiling with two long light fields, like the room's area lights.
+                const strip = Math.abs(Math.cos(azimuth)) > 0.35 && elevation > 0.75 && elevation < 1.2;
+                level = strip ? 4.2 : 0.95;
+            } else if (elevation > -0.1) {
+                level = 0.8 + elevation * 0.25;
+                if (elevation < 0.3 && openings.some((r) => inRange(azimuth, r))) level = 0.22;
+                if (elevation > 0.02 && elevation < 0.36 && inRange(azimuth, windowRange)) { level = 2.2; warm = 1.02; }
+            } else {
+                // Floor, with a soft dark skirting line where it meets the walls.
+                level = elevation > -0.16 ? 0.12 : 0.26 + (elevation + Math.PI / 2) * 0.03;
+            }
+            const o = (y * width + x) * 4;
+            data[o] = THREE.DataUtils.toHalfFloat(level);
+            data[o + 1] = THREE.DataUtils.toHalfFloat(level * (warm > 1 ? 1 : 0.99));
+            data[o + 2] = THREE.DataUtils.toHalfFloat(level * warm * (warm > 1 ? 1.02 : 0.96));
+            data[o + 3] = THREE.DataUtils.toHalfFloat(1);
         }
     }
-    return { height, pore };
+    environment = new THREE.DataTexture(data, width, height, THREE.RGBAFormat, THREE.HalfFloatType);
+    environment.mapping = THREE.EquirectangularReflectionMapping;
+    environment.colorSpace = THREE.LinearSRGBColorSpace;
+    environment.magFilter = THREE.LinearFilter;
+    environment.minFilter = THREE.LinearFilter;
+    environment.needsUpdate = true;
+    return environment;
 }
 
-// ── canvases ────────────────────────────────────────────────────────────────
+// ── materials ───────────────────────────────────────────────────────────────
 
-function createCanvas(): { canvas: HTMLCanvasElement; ctx: CanvasRenderingContext2D } {
-    const canvas = document.createElement('canvas');
-    canvas.width = TEX_SIZE;
-    canvas.height = TEX_SIZE;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) throw new Error('frameMaterials: 2D canvas context unavailable');
-    return { canvas, ctx };
-}
-
-/** sRGB bytes — the albedo canvas is tagged SRGBColorSpace, so mixing happens in sRGB. */
-function rgbOf(hex: string): [number, number, number] {
-    const c = new THREE.Color(hex);
-    return [Math.round(c.r * 255), Math.round(c.g * 255), Math.round(c.b * 255)];
-}
-
-function woodAlbedoCanvas(field: GrainField, surface: WoodSurface): HTMLCanvasElement {
-    const { canvas, ctx } = createCanvas();
-    const image = ctx.createImageData(TEX_SIZE, TEX_SIZE);
-    const early = rgbOf(surface.early);
-    const late = rgbOf(surface.late);
-    const pore = rgbOf(surface.pore);
-    for (let i = 0; i < field.height.length; i++) {
-        const h = field.height[i];
-        const p = field.pore[i];
-        const o = i * 4;
-        for (let ch = 0; ch < 3; ch++) {
-            const wood = early[ch] + (late[ch] - early[ch]) * h;
-            image.data[o + ch] = wood + (pore[ch] - wood) * p;
-        }
-        image.data[o + 3] = 255;
-    }
-    ctx.putImageData(image, 0, 0);
-    return canvas;
-}
-
-function roughnessCanvas(field: GrainField, range: [number, number]): HTMLCanvasElement {
-    const { canvas, ctx } = createCanvas();
-    const image = ctx.createImageData(TEX_SIZE, TEX_SIZE);
-    const [low, high] = range;
-    for (let i = 0; i < field.height.length; i++) {
-        // Open pores scatter the most, polished early wood the least.
-        const r = low + (high - low) * clamp01(field.height[i] + field.pore[i] * 0.6);
-        const byte = Math.round(clamp01(r) * 255);
-        const o = i * 4;
-        image.data[o] = byte;
-        image.data[o + 1] = byte;
-        image.data[o + 2] = byte;
-        image.data[o + 3] = 255;
-    }
-    ctx.putImageData(image, 0, 0);
-    return canvas;
-}
-
-/** Tangent-space normals from the grain height, wrapping at both borders so the tile is seamless. */
-function normalCanvas(field: GrainField, strength: number): HTMLCanvasElement {
-    const { canvas, ctx } = createCanvas();
-    const image = ctx.createImageData(TEX_SIZE, TEX_SIZE);
-    const size = TEX_SIZE;
-    const h = field.height;
-    const p = field.pore;
-    const at = (x: number, y: number) => {
-        const i = ((y + size) % size) * size + ((x + size) % size);
-        // Pores are little troughs in the surface.
-        return h[i] - p[i] * 0.5;
-    };
-    for (let y = 0; y < size; y++) {
-        for (let x = 0; x < size; x++) {
-            const dx = (at(x - 1, y) - at(x + 1, y)) * strength;
-            const dy = (at(x, y - 1) - at(x, y + 1)) * strength;
-            const len = Math.hypot(dx, dy, 1);
-            const o = (y * size + x) * 4;
-            image.data[o] = Math.round(((dx / len) * 0.5 + 0.5) * 255);
-            image.data[o + 1] = Math.round(((dy / len) * 0.5 + 0.5) * 255);
-            image.data[o + 2] = Math.round(((1 / len) * 0.5 + 0.5) * 255);
-            image.data[o + 3] = 255;
-        }
-    }
-    ctx.putImageData(image, 0, 0);
-    return canvas;
-}
-
-function textureFrom(canvas: HTMLCanvasElement, colorSpace: THREE.ColorSpace): THREE.CanvasTexture {
-    const texture = new THREE.CanvasTexture(canvas);
+function dataTexture(data: Uint8Array, colorSpace: THREE.ColorSpace): THREE.DataTexture {
+    const texture = new THREE.DataTexture(data, TEX_U, TEX_V, THREE.RGBAFormat, THREE.UnsignedByteType);
     texture.colorSpace = colorSpace;
     texture.wrapS = THREE.RepeatWrapping;
     texture.wrapT = THREE.RepeatWrapping;
-    // U is in meters of local geometry, V wraps exactly once around the profile (see
-    // modularFrameParts.applyProfileUVs), so only U needs a repeat factor.
-    texture.repeat.set(1 / TILE_U, 1);
+    texture.repeat.set(1 / TILE_U, 1 / TILE_V);
+    texture.magFilter = THREE.LinearFilter;
+    texture.minFilter = THREE.LinearMipmapLinearFilter;
+    texture.generateMipmaps = true;
     texture.anisotropy = 8;
     texture.needsUpdate = true;
     return texture;
 }
 
-// ── materials ───────────────────────────────────────────────────────────────
+const srgb = ([r, g, b]: [number, number, number]) => new THREE.Color().setRGB(r / 255, g / 255, b / 255, THREE.SRGBColorSpace);
 
-function woodMaterial(surface: WoodSurface, seed: number): THREE.Material {
-    const field = buildGrainField(surface.bands, seed);
+function woodMaterial(surface: WoodSurface): THREE.MeshPhysicalMaterial {
     return new THREE.MeshPhysicalMaterial({
-        map: textureFrom(woodAlbedoCanvas(field, surface), THREE.SRGBColorSpace),
-        roughnessMap: textureFrom(roughnessCanvas(field, surface.roughness), THREE.NoColorSpace),
-        normalMap: textureFrom(normalCanvas(field, surface.relief * 6), THREE.NoColorSpace),
-        normalScale: new THREE.Vector2(1, 1),
-        metalness: 0,
-        roughness: 1,
-        clearcoat: surface.clearcoat,
-        clearcoatRoughness: surface.clearcoatRoughness,
-        side: THREE.DoubleSide,
-    });
-}
-
-function lacquerMaterial(surface: LacquerSurface, seed: number): THREE.Material {
-    // Paint hides the colour of the grain but not its relief, so only a normal map is needed.
-    const field = buildGrainField(surface.bands, seed);
-    return new THREE.MeshPhysicalMaterial({
-        color: new THREE.Color(surface.color),
-        normalMap: textureFrom(normalCanvas(field, surface.relief * 6), THREE.NoColorSpace),
-        normalScale: new THREE.Vector2(1, 1),
-        metalness: 0,
+        color: srgb(woodBaseColor(surface)),
         roughness: surface.roughness,
+        metalness: 0,
         clearcoat: surface.clearcoat,
         clearcoatRoughness: surface.clearcoatRoughness,
-        side: THREE.DoubleSide,
+        envMap: getFrameEnvironment(),
+        envMapIntensity: 0.18,
     });
 }
 
-function metalMaterial(color: string, roughness: number, metalness: number, base: THREE.Material): THREE.Material {
-    const material = base.clone() as THREE.MeshStandardMaterial;
-    material.color = new THREE.Color(color);
-    material.roughness = roughness;
-    material.metalness = metalness;
-    return material;
+function metalMaterial(surface: MetalSurface): THREE.MeshStandardMaterial {
+    const dielectric = surface.metalness < 0.3;
+    return new THREE.MeshStandardMaterial({
+        color: srgb(rgbOf(surface.color)),
+        metalness: surface.metalness,
+        roughness: surface.roughness,
+        envMap: getFrameEnvironment(),
+        // Powder-white and black anodising are mostly diffuse; don't let the stand-in light them.
+        envMapIntensity: dielectric ? 0.25 : 1,
+    });
 }
 
-const cache = new Map<FrameStyleId, THREE.Material>();
-/** Stable per style, so re-generating a texture always yields the same plank. */
-const SEEDS: Record<string, number> = {
-    'oak-natural': 1471, 'walnut': 5309, 'ash-black': 9127,
-    'lacquer-white': 2711, 'lacquer-black': 3313, 'lacquer-bordeaux': 4409,
-};
+/** Puts generated textures on a finish's material (the base colour then comes from the map). */
+function attachTextures(id: FrameFinishId, material: THREE.MeshStandardMaterial, textures: FinishTextures): void {
+    const surface = FRAME_FINISHES[id].surface;
+    material.map = dataTexture(textures.albedo, THREE.SRGBColorSpace);
+    material.roughnessMap = dataTexture(textures.roughness, THREE.NoColorSpace);
+    material.normalMap = dataTexture(textures.normal, THREE.NoColorSpace);
+    material.normalScale.set(1, 1);
+    if (surface.kind === 'wood') {
+        material.color.set(0xffffff);
+        material.roughness = 1;
+    } else {
+        // Brushed steel: the map only modulates the metal's own colour; roughness from the map.
+        material.roughness = 1;
+    }
+    material.needsUpdate = true;
+    for (const listener of listeners) listener();
+}
+
+// ── texture worker ──────────────────────────────────────────────────────────
+
+let worker: Worker | null = null;
+let nextRequest = 0;
+const waiting = new Map<number, (textures: FinishTextures | null) => void>();
+const listeners = new Set<() => void>();
+
+/** Called whenever a finish's textures arrived — frame meshes rendered on demand invalidate. */
+export function onFrameTexturesReady(listener: () => void): () => void {
+    listeners.add(listener);
+    return () => {
+        listeners.delete(listener);
+    };
+}
+
+function requestTextures(id: FrameFinishId): Promise<FinishTextures | null> {
+    if (typeof Worker === 'undefined') return Promise.resolve(generateFinishTextures(id));
+    if (!worker) {
+        worker = new Worker(new URL('../workers/frameTexture.worker.ts', import.meta.url), { type: 'module' });
+        worker.onmessage = (event: MessageEvent<FrameTextureResponse>) => {
+            const { reqId, textures } = event.data;
+            waiting.get(reqId)?.(textures);
+            waiting.delete(reqId);
+        };
+    }
+    const reqId = ++nextRequest;
+    return new Promise((resolve) => {
+        waiting.set(reqId, resolve);
+        worker!.postMessage({ reqId, finishId: id } satisfies FrameTextureRequest);
+    });
+}
+
+const cache = new Map<FrameFinishId, THREE.Material>();
 
 /**
- * Material for a frame style. `base` is the material that ships with the GLB — it is returned
- * as-is for the original silver profile and cloned for the other anodised colours, so those
- * two styles cost nothing.
+ * Material of a finish, shared by every profile and frame. Returned at once; wood and brushed
+ * steel get their textures a moment later (see onFrameTexturesReady).
  */
-export function getFrameMaterial(id: FrameStyleId, base: THREE.Material): THREE.Material {
-    const surface = frameStyle(id).surface;
-    if (!surface) return base;
-    if (surface.kind === 'metal' && surface.color === null) return base;
-
+export function getFrameMaterial(id: FrameFinishId): THREE.Material {
     const cached = cache.get(id);
     if (cached) return cached;
-
-    const seed = SEEDS[id] ?? 7919;
-    const material =
-        surface.kind === 'wood' ? woodMaterial(surface, seed) :
-        surface.kind === 'lacquer' ? lacquerMaterial(surface, seed) :
-        metalMaterial(surface.color as string, surface.roughness, surface.metalness, base);
-
+    const surface = FRAME_FINISHES[id].surface;
+    const material = surface.kind === 'wood' ? woodMaterial(surface) : metalMaterial(surface);
+    material.name = `frame-${id}`;
     cache.set(id, material);
+    if (finishHasTextures(id)) {
+        requestTextures(id)
+            .then((textures) => { if (textures) attachTextures(id, material, textures); })
+            .catch((err) => console.warn(`Rahmen-Textur ${id} konnte nicht erzeugt werden:`, err));
+    }
     return material;
+}
+
+// ── passepartout board ──────────────────────────────────────────────────────
+
+let passepartoutMaterial: THREE.MeshStandardMaterial | null = null;
+
+/** Metres of board per tile of the paper-fibre normal map. */
+export const PASSEPARTOUT_TILE = 0.04;
+
+/**
+ * KLUG museum board in HALBE's "Weiß": bright, neutral, fine-textured surface. The bevel shows
+ * the same white core. The normal map only adds the paper's felt texture (256² texels, a few ms
+ * to generate); its UVs are the board's own xy in metres.
+ */
+export function getPassepartoutMaterial(): THREE.MeshStandardMaterial {
+    if (passepartoutMaterial) return passepartoutMaterial;
+    const size = 256;
+    const normalMap = new THREE.DataTexture(paperNormalData(size, PASSEPARTOUT_TILE * 1000), size, size, THREE.RGBAFormat, THREE.UnsignedByteType);
+    normalMap.wrapS = THREE.RepeatWrapping;
+    normalMap.wrapT = THREE.RepeatWrapping;
+    normalMap.magFilter = THREE.LinearFilter;
+    normalMap.minFilter = THREE.LinearMipmapLinearFilter;
+    normalMap.generateMipmaps = true;
+    normalMap.needsUpdate = true;
+
+    passepartoutMaterial = new THREE.MeshStandardMaterial({
+        name: 'passepartout',
+        color: new THREE.Color('#f5f5f2'),
+        // The frame's shadow is baked into the board's vertex colours (see Passepartout).
+        vertexColors: true,
+        roughness: 0.92,
+        metalness: 0,
+        normalMap,
+        normalScale: new THREE.Vector2(0.35, 0.35),
+    });
+    return passepartoutMaterial;
 }

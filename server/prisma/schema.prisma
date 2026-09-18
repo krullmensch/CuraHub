@@ -174,9 +174,15 @@ model ArtworkInstance {
 
   medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d", "monitor", "beamer", "splat"
 
-  // Picture frame profile, "none" for an unframed work. See src/lib/frameStyles.ts (client)
-  // and server/src/lib/frameStyles.ts (accepted values).
-  frameStyle  String            @default("alu-silver")
+  // Picture frame, "<profile>-<finish>" from the HALBE range (e.g. "alu8-silber-matt") or
+  // "none" for an unframed work. See src/lib/frameStyles.ts (client) and
+  // server/src/lib/frameStyles.ts (accepted values).
+  frameStyle  String            @default("alu8-silber-matt")
+
+  // Passepartout inside the frame: width at the sides in cm (0 = none) and where the window
+  // sits ("center", "optical-center", "golden-ratio").
+  passepartoutWidth     Float   @default(0)
+  passepartoutPlacement String  @default("center")
 
   createdAt   DateTime          @default(now())
 }

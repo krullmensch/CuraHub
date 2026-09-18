@@ -3,14 +3,11 @@ import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useEditorStore, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
 import { InstancedFrameSlot } from './FrameInstancer';
-import { frameProfile, frameStyleOf } from '../lib/frameStyles';
+import { Passepartout } from './Passepartout';
+import { framedArtworkLayout } from '../lib/frameStyles';
 import { useArtworkTexture } from '../hooks/use-artwork-texture';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
-// Inset the image plane 4 mm behind the front face of the frame.
-const IMAGE_INSET_FROM_FRONT = 0.004;
-// How far an unframed work stands off the wall — a mounted print rather than a sticker.
-const UNFRAMED_DEPTH = 0.006;
 // Render so the frame's back face sits at outer-group local z = -WALL_PLACEMENT_OFFSET,
 // cancelling out the placement offset baked into stored positions so the back is
 // flush against the wall surface.
@@ -53,12 +50,17 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
         const effWidth = baseWidth * sx;
         const effHeight = baseHeight * sy;
 
-        // Frame style is per instance; 'none' hangs the picture on the wall unframed and the
-        // profile depth of the chosen style decides how far the picture sits from the wall.
-        const frameStyleId = frameStyleOf(instance.frameStyle);
-        const framed = frameStyleId !== 'none';
-        const profileDepth = framed ? frameProfile(frameStyleId).depth : UNFRAMED_DEPTH;
-        const imageZ = FRAME_Z + profileDepth - (framed ? IMAGE_INSET_FROM_FRONT : 0);
+        // Frame and passepartout are per instance. The picture stays where it was placed; a
+        // passepartout widens the frame's opening around it, and the chosen profile decides how
+        // far everything stands off the wall and how deep the picture sits behind the frame.
+        const layout = framedArtworkLayout({
+            width: effWidth,
+            height: effHeight,
+            frameStyle: instance.frameStyle,
+            passepartoutWidth: instance.passepartoutWidth,
+            passepartoutPlacement: instance.passepartoutPlacement,
+        });
+        const imageZ = FRAME_Z + layout.pictureZ;
 
         // LOAD-05: resolution follows the on-screen size; the selected artwork gets the
         // highest resolution the render preset allows.
@@ -92,13 +94,18 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
                     {/* Picture frame in the instance's style — wrapped so we can offset
                         the entire frame back so it sits flush on the wall. Drawn by
                         FrameInstancer (RND-01), one instanced pair per style. */}
-                    {framed && (
+                    {layout.style && (
                         <group position={[0, 0, FRAME_Z]}>
-                            <InstancedFrameSlot width={effWidth} height={effHeight} styleId={frameStyleId} />
+                            <group position={[0, layout.openingOffsetY, 0]}>
+                                <InstancedFrameSlot width={layout.openingWidth} height={layout.openingHeight} styleId={layout.style.id} />
+                            </group>
+                            {layout.passepartout && (
+                                <Passepartout pictureWidth={effWidth} pictureHeight={effHeight} layout={layout.passepartout} />
+                            )}
                         </group>
                     )}
 
-                    {/* Image plane, inset 4mm behind the front face of the frame.
+                    {/* Image plane, just behind the frame's lip (or the passepartout's window).
                         RND-04: unlit MeshBasicMaterial (true photo colours, cheap) unless the
                         "high" preset asks for lit PBR. */}
                     <mesh ref={imageRef} position={[0, 0, imageZ]} castShadow={false} receiveShadow={false}>
@@ -118,8 +125,8 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
 
                     {/* Selection halo — backside-rendered enlarged box (same pattern as ModularWallMesh) */}
                     {selected && (
-                        <mesh position={[0, 0, FRAME_Z + profileDepth / 2]}>
-                            <boxGeometry args={[effWidth + 0.05, effHeight + 0.05, profileDepth + 0.01]} />
+                        <mesh position={[(layout.left + layout.right) / 2, (layout.bottom + layout.top) / 2, FRAME_Z + layout.depth / 2]}>
+                            <boxGeometry args={[layout.right - layout.left + 0.05, layout.top - layout.bottom + 0.05, layout.depth + 0.01]} />
                             <meshBasicMaterial
                                 color="#4488ff"
                                 transparent

@@ -98,13 +98,12 @@ export const ViewerPage = () => {
         return () => document.removeEventListener('visibilitychange', handler);
     }, []);
 
-    // Preload the models used by placed artworks (Monitor GLB + picture frame GLB). Moved
-    // off module scope so importing these components no longer downloads them eagerly
-    // (LOAD-02).
+    // Preload the room and the monitor model used by placed videos. Moved off module scope so
+    // importing these components no longer downloads them eagerly (LOAD-02). Picture frames are
+    // generated in code, no model to load.
     useEffect(() => {
         useGLTF.preload(SATELLIT_MODEL_URL);
         useGLTF.preload('/models/Monitor65.glb');
-        useGLTF.preload('/models/Halbe_Classic_Alu8.glb');
         loadPhysicsWorld();
     }, []);
 

@@ -1,13 +1,12 @@
-import { forwardRef, useMemo } from 'react';
-import { useGLTF } from '@react-three/drei';
+import { forwardRef } from 'react';
 import * as THREE from 'three';
-import { FRAME_MODEL, extractFrameParts, getFramePartTransforms } from '../lib/modularFrameParts';
+import { getFrameParts, getFramePartTransforms } from '../lib/frameProfileGeometry';
 import { getFrameMaterial } from '../lib/frameMaterials';
-import { DEFAULT_FRAME_STYLE, type FrameStyleId } from '../lib/frameStyles';
+import { DEFAULT_FRAME_STYLE, frameStyle, type FrameStyleId } from '../lib/frameStyles';
 
 interface ModularFrameProps {
-    width: number;  // inner picture width in meters
-    height: number; // inner picture height in meters
+    width: number;  // frame opening width in meters (picture or passepartout)
+    height: number; // frame opening height in meters
     styleId?: FrameStyleId;
 }
 
@@ -17,10 +16,11 @@ interface ModularFrameProps {
  */
 export const ModularFrame = forwardRef<THREE.Group, ModularFrameProps>(
     ({ width, height, styleId = DEFAULT_FRAME_STYLE }, ref) => {
-        const { scene } = useGLTF(FRAME_MODEL);
-        const parts = useMemo(() => extractFrameParts(scene), [scene]);
-        const material = useMemo(() => getFrameMaterial(styleId, parts.baseMaterial), [styleId, parts]);
-        const { corners, edges } = getFramePartTransforms(width, height, styleId);
+        const style = frameStyle(styleId);
+        if (!style) return <group ref={ref} />;
+        const parts = getFrameParts(style.profile.id);
+        const material = getFrameMaterial(style.finish.id);
+        const { corners, edges } = getFramePartTransforms(width, height);
 
         return (
             <group ref={ref}>
@@ -30,8 +30,7 @@ export const ModularFrame = forwardRef<THREE.Group, ModularFrameProps>(
                         geometry={parts.cornerGeometry}
                         material={material}
                         position={part.position}
-                        rotation={part.rotation}
-                        scale={part.scale}
+                        rotation={[0, 0, part.angle]}
                     />
                 ))}
                 {edges.map((part, i) => (
@@ -40,8 +39,8 @@ export const ModularFrame = forwardRef<THREE.Group, ModularFrameProps>(
                         geometry={parts.edgeGeometry}
                         material={material}
                         position={part.position}
-                        rotation={part.rotation}
-                        scale={part.scale}
+                        rotation={[0, 0, part.angle]}
+                        scale={[Math.max(part.length, 1e-6), 1, 1]}
                     />
                 ))}
             </group>
@@ -50,7 +49,3 @@ export const ModularFrame = forwardRef<THREE.Group, ModularFrameProps>(
 );
 
 ModularFrame.displayName = 'ModularFrame';
-
-// Preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing this
-// component no longer downloads the frame GLB on every route, including the home page
-// (LOAD-02).

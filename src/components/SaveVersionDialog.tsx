@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { Save, X } from 'lucide-react';
-import { DEFAULT_FRAME_STYLE } from '../lib/frameStyles';
+import { frameStyleOf } from '../lib/frameStyles';
 
 interface SaveVersionDialogProps {
   onSave: () => void;
@@ -45,7 +45,9 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
               wallId: inst.wallId ?? null,
               wallIndex: inst.wallId ? walls.findIndex(w => w.id === inst.wallId) : null,
               medium: inst.medium ?? 'frame',
-              frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
+              frameStyle: frameStyleOf(inst.frameStyle),
+              passepartoutWidth: inst.passepartoutWidth ?? 0,
+              passepartoutPlacement: inst.passepartoutPlacement ?? 'center',
               position_x: inst.position_x,
               position_y: inst.position_y,
               position_z: inst.position_z,

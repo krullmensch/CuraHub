@@ -1,6 +1,6 @@
 import { createContext } from 'react';
 import * as THREE from 'three';
-import { composePartMatrix, getFramePartTransforms } from './modularFrameParts';
+import { composePartMatrix, getFramePartTransforms } from './frameProfileGeometry';
 import type { FrameStyleId } from './frameStyles';
 
 export interface FrameSlot {
@@ -158,7 +158,7 @@ export class FrameInstancerRegistry {
     }
 
     private writeLocals(slot: FrameSlot, width: number, height: number): void {
-        const { corners, edges } = getFramePartTransforms(width, height, slot.style);
+        const { corners, edges } = getFramePartTransforms(width, height);
         [...corners, ...edges].forEach((part, i) => composePartMatrix(part, slot.locals[i]));
     }
 

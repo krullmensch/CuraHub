@@ -1,11 +1,10 @@
-import { Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
-import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { FRAME_MODEL, extractFrameParts, type FrameParts } from '../lib/modularFrameParts';
+import { getFrameParts } from '../lib/frameProfileGeometry';
 import { FrameInstancerContext, FrameInstancerRegistry, type FrameSlot } from '../lib/frameInstancerRegistry';
-import { getFrameMaterial } from '../lib/frameMaterials';
-import { DEFAULT_FRAME_STYLE, type FrameStyleId } from '../lib/frameStyles';
+import { getFrameMaterial, onFrameTexturesReady } from '../lib/frameMaterials';
+import { DEFAULT_FRAME_STYLE, frameStyle, type FrameStyleId } from '../lib/frameStyles';
 import { ModularFrame } from './ModularFrame';
 
 // RND-01: every picture frame used to be 8 meshes (4 corners + 4 edges) = 8 draw calls per
@@ -21,19 +20,21 @@ const NO_RAYCAST = () => {};
 interface StyleInstancesProps {
     styleId: FrameStyleId;
     registry: FrameInstancerRegistry;
-    parts: FrameParts;
 }
 
 /** The two instanced meshes that draw every frame of one style. */
-const StyleInstances = ({ styleId, registry, parts }: StyleInstancesProps) => {
+const StyleInstances = ({ styleId, registry }: StyleInstancesProps) => {
     const invalidate = useThree((state) => state.invalidate);
     const [capacity, setCapacity] = useState(() => capacityFor(registry.slotCount(styleId)));
     const cornersRef = useRef<THREE.InstancedMesh>(null);
     const edgesRef = useRef<THREE.InstancedMesh>(null);
     const lastCorners = useRef<THREE.InstancedMesh | null>(null);
     const matrix = useMemo(() => new THREE.Matrix4(), []);
-    // Wood and lacquer textures are generated on first use and cached by frameMaterials.
-    const material = useMemo(() => getFrameMaterial(styleId, parts.baseMaterial), [styleId, parts]);
+    // Geometry per profile, material per finish — both generated on first use and cached, so
+    // these are stable objects across renders.
+    const style = frameStyle(styleId);
+    const parts = style ? getFrameParts(style.profile.id) : null;
+    const material = style ? getFrameMaterial(style.finish.id) : null;
 
     useEffect(() => {
         const onChange = () => {
@@ -47,6 +48,9 @@ const StyleInstances = ({ styleId, registry, parts }: StyleInstancesProps) => {
         return unsubscribe;
     }, [registry, styleId, invalidate]);
 
+    // Wood grain arrives from a worker after the frame is first drawn in its average colour.
+    useEffect(() => onFrameTexturesReady(invalidate), [invalidate]);
+
     useFrame(() => {
         const corners = cornersRef.current;
         const edges = edgesRef.current;
@@ -58,6 +62,7 @@ const StyleInstances = ({ styleId, registry, parts }: StyleInstancesProps) => {
         registry.writeInstances(styleId, corners, edges, matrix, meshesReplaced);
     });
 
+    if (!parts || !material) return null;
     return (
         <>
             <instancedMesh
@@ -84,8 +89,6 @@ const sameStyles = (a: FrameStyleId[], b: FrameStyleId[]) =>
     a.length === b.length && a.every((id, i) => id === b[i]);
 
 const FrameInstances = ({ registry }: { registry: FrameInstancerRegistry }) => {
-    const { scene } = useGLTF(FRAME_MODEL);
-    const parts = useMemo(() => extractFrameParts(scene), [scene]);
     const [styles, setStyles] = useState<FrameStyleId[]>(() => registry.activeStyles());
 
     useEffect(() => {
@@ -101,7 +104,7 @@ const FrameInstances = ({ registry }: { registry: FrameInstancerRegistry }) => {
     return (
         <>
             {styles.map((styleId) => (
-                <StyleInstances key={styleId} styleId={styleId} registry={registry} parts={parts} />
+                <StyleInstances key={styleId} styleId={styleId} registry={registry} />
             ))}
         </>
     );
@@ -112,16 +115,14 @@ export const FrameInstancerProvider = ({ children }: { children: ReactNode }) =>
     return (
         <FrameInstancerContext.Provider value={registry}>
             {children}
-            <Suspense fallback={null}>
-                <FrameInstances registry={registry} />
-            </Suspense>
+            <FrameInstances registry={registry} />
         </FrameInstancerContext.Provider>
     );
 };
 
 interface InstancedFrameSlotProps {
-    width: number;  // inner picture width in meters
-    height: number; // inner picture height in meters
+    width: number;  // frame opening width in meters (picture or passepartout)
+    height: number; // frame opening height in meters
     styleId?: FrameStyleId;
 }
 

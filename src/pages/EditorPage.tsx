@@ -17,6 +17,7 @@ import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft } fro
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
+import { framedArtworkLayout } from '../lib/frameStyles';
 import { WallEditor } from '../components/wall-editor/WallEditorChrome';
 import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
@@ -227,12 +228,25 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     const { draggedAsset } = snapshot;
     const assetType = draggedAsset.assetType || 'image';
 
-    // Compute minimum Y so the bottom edge of the artwork stays at or above the floor
+    // Compute minimum Y so the bottom edge of the artwork (frame and passepartout included for
+    // pictures) stays at or above the floor
     const hasPhysical = draggedAsset.artworkHeight != null && draggedAsset.artworkWidth != null;
+    const baseWidthM = hasPhysical
+      ? (draggedAsset.artworkWidth! / 100)
+      : (draggedAsset.width / (draggedAsset.dpi || 72)) * 0.0254;
     const baseHeightM = hasPhysical
       ? (draggedAsset.artworkHeight! / 100)
       : (draggedAsset.height / (draggedAsset.dpi || 72)) * 0.0254;
-    const placementMinY = isFloorAssetType(medium) ? 0 : baseHeightM / 2; // scale = 1 at placement
+    const pictureBottom = assetType === 'image'
+      ? -framedArtworkLayout({
+          width: baseWidthM,
+          height: baseHeightM,
+          frameStyle: store.defaultFrameStyle,
+          passepartoutWidth: store.defaultPassepartout.width,
+          passepartoutPlacement: store.defaultPassepartout.placement,
+        }).bottom
+      : baseHeightM / 2;
+    const placementMinY = isFloorAssetType(medium) ? 0 : pictureBottom; // scale = 1 at placement
     const clampedY = Math.max(placementMinY, snapshot.position[1]);
 
     store.commitLocalChange([...store.localInstances, {
@@ -241,9 +255,11 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       assetId: draggedAsset.type === 'asset' ? draggedAsset.id : undefined,
       wallId: snapshot.wallId,
       medium,
-      // New works use the frame style last picked in the properties panel (the drag ghost
-      // previews the same one).
+      // New works use the frame style and passepartout last picked in the properties panel (the
+      // drag ghost previews the same).
       frameStyle: store.defaultFrameStyle,
+      passepartoutWidth: store.defaultPassepartout.width,
+      passepartoutPlacement: store.defaultPassepartout.placement,
       artwork: {
         id: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
         width: draggedAsset.artworkWidth,
@@ -296,13 +312,12 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     };
   }, []);
 
-  // Preload the room model and the models used by placed artworks (Monitor GLB + picture frame
-  // GLB) once the editor actually mounts — moved off module scope so the home page no longer
-  // downloads them (LOAD-02).
+  // Preload the room model and the monitor model used by placed videos once the editor actually
+  // mounts — moved off module scope so the home page no longer downloads them (LOAD-02). Picture
+  // frames are generated in code (frameProfileGeometry), no model to load.
   useEffect(() => {
     useGLTF.preload(SATELLIT_MODEL_URL);
     useGLTF.preload('/models/Monitor65.glb');
-    useGLTF.preload('/models/Halbe_Classic_Alu8.glb');
   }, []);
 
   // ── Capture-phase drag listeners ──────────────────────────────────────────
