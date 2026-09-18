@@ -13,10 +13,15 @@ import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { useEditorStore, nextTempId, isFloorAssetType, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
-import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints } from 'lucide-react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
+import { WallEditor } from '../components/wall-editor/WallEditorChrome';
+import { useWallEditorView } from '../store/wallEditorViewStore';
+import { sideSeenFrom } from '../lib/wallEditor/geometry';
+import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
+import { wallEditorBridge } from '../lib/wallEditor/bridge';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
 const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
@@ -104,6 +109,57 @@ const ToolSeparator = () => (
   <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
 );
 
+/**
+ * Opens the 2D wall editor for the selected wall (on the face the camera looks at), or for the wall
+ * and face the selected artwork hangs on (with that artwork selected). Returns false if neither applies.
+ */
+function openWallEditorForSelection(): boolean {
+  const store = useEditorStore.getState();
+  if (store.selectedWallId !== null) {
+    const wall = store.localWalls.find(w => w.id === store.selectedWallId);
+    if (!wall) return false;
+    const camera = wallEditorBridge.getCameraPosition();
+    store.openWallEditor({ kind: 'wall', wallId: wall.id, side: camera ? sideSeenFrom(wall, camera) : 'front' });
+    return true;
+  }
+  const inst = store.selectedInstanceId !== null ? store.localInstances.find(i => i.id === store.selectedInstanceId) : undefined;
+  const target = inst ? targetForInstance(inst, store.localWalls, useWallEditorView.getState().roomFaces) : null;
+  if (!inst || !target) return false;
+  store.openWallEditor(target, [inst.id]);
+  return true;
+}
+
+/**
+ * Double-click on a room wall (or on an artwork hanging on one) opens it in the 2D wall editor.
+ * Modular walls handle their own double-click (ModularWallMesh).
+ */
+function handleCanvasDoubleClick(e: MouseEvent) {
+  if (!(e.target instanceof HTMLCanvasElement)) return;
+  const store = useEditorStore.getState();
+  if (store.plannerViewMode !== 'perspective') return;
+  const hit = wallEditorBridge.pick(e.clientX, e.clientY);
+  if (!hit) return;
+  const rooms = useWallEditorView.getState().roomFaces;
+
+  let instanceId: number | undefined;
+  for (let o: typeof hit.object | null = hit.object; o && instanceId === undefined; o = o.parent) {
+    if (typeof o.userData.instanceId === 'number') instanceId = o.userData.instanceId;
+  }
+  if (instanceId !== undefined) {
+    const inst = store.localInstances.find(i => i.id === instanceId);
+    // Videos keep their double-click (mute toggle).
+    if (!inst || inst.artwork.asset.type === 'video') return;
+    const target = targetForInstance(inst, store.localWalls, rooms);
+    if (!target) return;
+    if (!store.wallEditor) store.openWallEditor(target, [inst.id]);
+    else if (targetKey(store.wallEditor) === targetKey(target)) store.setWallEditorSelection([inst.id]);
+    return;
+  }
+  if (store.wallEditor || hit.object.name !== 'Wall' || !hit.normal) return;
+  const room = roomFaceAt(hit.point, hit.normal, rooms);
+  if (room) store.openWallEditor({ kind: 'room', faceId: room.id });
+}
+
 // RND-08: Rapier (~2.3 MB chunk + WASM) is only needed for the first-person preview.
 const PhysicsWorld = lazy(() => import('../components/physics/PhysicsWorld'));
 
@@ -138,6 +194,13 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
+  const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
+  // 2D wall editor: the selected wall, or the wall the selected artwork hangs on
+  const canOpenWallEditor = useEditorStore((state) => {
+    if (state.selectedWallId !== null) return true;
+    const inst = state.selectedInstanceId !== null ? state.localInstances.find(i => i.id === state.selectedInstanceId) : undefined;
+    return !!inst && targetForInstance(inst, state.localWalls, useWallEditorView.getState().roomFaces) !== null;
+  });
   // RND-11: preset-dependent pixel ratio; antialiasing is a context attribute and stays as
   // chosen when the Canvas was created.
   const renderSettings = useRenderQualitySettings();
@@ -178,6 +241,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       assetId: draggedAsset.type === 'asset' ? draggedAsset.id : undefined,
       wallId: snapshot.wallId,
       medium,
+      // New works use the frame style last picked in the properties panel (the drag ghost
+      // previews the same one).
+      frameStyle: store.defaultFrameStyle,
       artwork: {
         id: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
         width: draggedAsset.artworkWidth,
@@ -207,6 +273,28 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   useLayoutEffect(() => {
     placeInstanceRef.current = placeInstance;
   });
+
+  // Selects a freshly placed artwork — in the 2D wall editor its own multi-selection.
+  const selectPlaced = (id: number) => {
+    const store = useEditorStore.getState();
+    if (store.wallEditor) store.setWallEditorSelection([id]);
+    else store.selectInstance(id);
+  };
+
+  // Keep the 2D wall editor's view size in sync with the canvas container.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('dblclick', handleCanvasDoubleClick);
+    const update = () => useWallEditorView.getState().setViewport(el.clientWidth, el.clientHeight);
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      el.removeEventListener('dblclick', handleCanvasDoubleClick);
+    };
+  }, []);
 
   // Preload the room model and the models used by placed artworks (Monitor GLB + picture frame
   // GLB) once the editor actually mounts — moved off module scope so the home page no longer
@@ -283,7 +371,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
               setPendingVideoDrop(snapshot);
             } else {
               const medium: MediumType = assetType === 'model3d' || assetType === 'splat' ? assetType : 'frame';
-              placeInstanceRef.current(medium, snapshot);
+              const placedId = placeInstanceRef.current(medium, snapshot);
+              if (useEditorStore.getState().wallEditor) useEditorStore.getState().setWallEditorSelection([placedId]);
               const label = assetType === 'model3d' ? '3D-Modell' : assetType === 'splat' ? 'Splat' : 'Werk';
               gooeyToast.success(`${label} platziert`, {
                 description: draggedAsset.url.split('/').pop(),
@@ -344,6 +433,15 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       const store = useEditorStore.getState();
       const hasSelection = !!(store.selectedInstanceId || store.selectedWallId || store.selectedZoneId);
       const key = e.key.toLowerCase();
+
+      // The 2D wall editor handles its own keys (WallEditorOverlay); only undo/redo above apply.
+      if (store.wallEditor) return;
+
+      // Open the 2D wall editor for the selected wall / the wall of the selected artwork
+      if (key === 'e' && !cmdOrCtrl && store.plannerViewMode !== 'firstPerson') {
+        if (openWallEditorForSelection()) e.preventDefault();
+        return;
+      }
 
       // Escape always works — deselect everything, and leave first-person mode if active
       if (key === 'escape') {
@@ -492,6 +590,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       )}
       <SceneLoadingIndicator />
       
+      {/* 2D wall editor (overlay, top bar, tool bar) */}
+      {viewMode !== 'firstPerson' && isVisible && <WallEditor />}
+
       {/* FPV Crosshair + Artwork Info Overlay */}
       {viewMode === 'firstPerson' && <ArtworkInfoOverlay />}
 
@@ -507,7 +608,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       )}
 
       {/* ── Tool Bar — bottom center ── */}
-      {viewMode !== 'firstPerson' && (
+      {viewMode !== 'firstPerson' && !wallEditorOpen && (
         <div style={{
           position: 'absolute',
           bottom: 20,
@@ -542,6 +643,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
           <ToolSeparator />
 
+          {/* 2D wall editor */}
+          <ToolButton icon={<PanelsTopLeft size={16} />} tooltip="2D-Wandeditor (E)" onClick={openWallEditorForSelection} disabled={!canOpenWallEditor} />
+
           {/* First-person preview */}
           <ToolButton icon={<Footprints size={16} />} tooltip="Ego-Perspektive (V)" onClick={() => setPlannerViewMode('firstPerson')} />
 
@@ -558,7 +662,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         onSelect={(medium) => {
           if (!pendingVideoDrop) return;
           const id = placeInstance(medium, pendingVideoDrop);
-          useEditorStore.getState().selectInstance(id);
+          selectPlaced(id);
           gooeyToast.success('Video platziert', {
             description: medium === 'monitor' ? 'Monitor' : 'Beamer',
           });

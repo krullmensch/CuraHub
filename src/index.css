@@ -248,3 +248,21 @@ h1, h2, h3, h4, h5, h6 {
   text-underline-offset: 2px;
 }
 .wiki-content a:hover { color: #93c5fd; }
+.wiki-content table {
+  width: 100%;
+  margin-bottom: 1rem;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  color: #a1a1aa;               /* zinc-400 */
+}
+.wiki-content th,
+.wiki-content td {
+  border-bottom: 1px solid rgba(63, 63, 70, 0.7);
+  padding: 0.4rem 0.75rem 0.4rem 0;
+  text-align: left;
+  vertical-align: top;
+}
+.wiki-content th {
+  color: #e4e4e7;               /* zinc-200 */
+  font-weight: 600;
+}

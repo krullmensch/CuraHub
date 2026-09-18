@@ -8,6 +8,7 @@ import accessControlDoc from '../wiki/access-control.md?raw';
 import projectManagementDoc from '../wiki/project-management.md?raw';
 import assetDoc from '../wiki/asset-management.md?raw';
 import sceneDoc from '../wiki/3d-scene.md?raw';
+import wallEditorDoc from '../wiki/2d-wall-editor.md?raw';
 import viewerDoc from '../wiki/viewer.md?raw';
 import adminDoc from '../wiki/admin.md?raw';
 
@@ -22,6 +23,7 @@ const pages: WikiPage[] = [
   { id: 'project-management', title: 'Ausstellungen & Versionen', content: projectManagementDoc },
   { id: 'asset-management', title: 'Asset-Management', content: assetDoc },
   { id: '3d-scene', title: '3D-Editor (Planer)', content: sceneDoc },
+  { id: '2d-wall-editor', title: '2D-Wandeditor', content: wallEditorDoc },
   { id: 'viewer', title: 'Viewer-Modus', content: viewerDoc },
   { id: 'admin', title: 'Admin & Raumverwaltung', content: adminDoc },
 ];

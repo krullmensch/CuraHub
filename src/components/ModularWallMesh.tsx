@@ -1,46 +1,77 @@
-import { forwardRef } from 'react';
+import { forwardRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { Html } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import { Lock } from 'lucide-react';
 import { useEditorStore, type ModularWallData } from '@/store/editorStore';
+import { sideFromDirection, sideSeenFrom } from '@/lib/wallEditor/geometry';
 
 interface ModularWallMeshProps {
     wall: ModularWallData;
     selected: boolean;
     isEditor?: boolean;
+    /** 2D wall editor: another wall is open — hide this one. */
+    hidden?: boolean;
+    /** 2D wall editor: this wall is open — draw it unlit, like a plan. */
+    flat?: boolean;
 }
 
+const _cameraPos = new THREE.Vector3();
+const _faceNormal = new THREE.Vector3();
+
 export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
-    ({ wall, selected, isEditor = true }, ref) => {
+    ({ wall, selected, isEditor = true, hidden = false, flat = false }, ref) => {
         const selectWall = useEditorStore((state) => state.selectWall);
+        const openWallEditor = useEditorStore((state) => state.openWallEditor);
+        const inWallEditor = hidden || flat;
 
         const handleClick = isEditor ? (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
             selectWall(wall.id);
         } : undefined;
 
+        // Double-click opens the 2D wall editor on the face that was clicked (incl. the narrow ends).
+        const handleDoubleClick = isEditor ? (e: ThreeEvent<MouseEvent>) => {
+            e.stopPropagation();
+            let side;
+            if (e.face) {
+                _faceNormal.copy(e.face.normal).transformDirection(e.object.matrixWorld);
+                side = sideFromDirection(wall, _faceNormal.x, _faceNormal.z);
+            } else {
+                e.camera.getWorldPosition(_cameraPos);
+                side = sideSeenFrom(wall, _cameraPos);
+            }
+            openWallEditor({ kind: 'wall', wallId: wall.id, side });
+        } : undefined;
+
         // Wall color — slightly tinted when selected
         const wallColor = selected ? '#e0e0ff' : wall.color;
+        const flatColor = useMemo(() => new THREE.Color(wall.color).multiplyScalar(0.93), [wall.color]);
 
         return (
             <group
                 ref={ref}
                 position={[wall.position_x, wall.position_y, wall.position_z]}
                 rotation={[wall.rotation_x, wall.rotation_y, wall.rotation_z]}
+                visible={!hidden}
             >
                 {/* Main wall mesh */}
                 <mesh
                     name="ModularWall"
                     onClick={handleClick}
+                    onDoubleClick={handleDoubleClick}
                     userData={{ wallId: wall.id }}
                 >
                     <boxGeometry args={[wall.width, wall.height, wall.thickness]} />
-                    <meshStandardMaterial
-                        color={wallColor}
-                        roughness={0.9}
-                        metalness={0.02}
-                    />
+                    {flat ? (
+                        <meshBasicMaterial color={flatColor} toneMapped={false} />
+                    ) : (
+                        <meshStandardMaterial
+                            color={wallColor}
+                            roughness={0.9}
+                            metalness={0.02}
+                        />
+                    )}
                 </mesh>
 
                 {/* Selection outline effect */}
@@ -61,7 +92,7 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
                 )}
 
                 {/* Lock indicator (editor only) */}
-                {isEditor && wall.isLocked && (
+                {isEditor && !inWallEditor && wall.isLocked && (
                     <Html
                         position={[0, wall.height / 2 + 0.15, 0]}
                         center
@@ -81,7 +112,7 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
                 )}
 
                 {/* Wall label (editor only) */}
-                {isEditor && wall.label && (
+                {isEditor && !inWallEditor && wall.label && (
                     <Html
                         position={[0, -wall.height / 2 - 0.15, 0]}
                         center

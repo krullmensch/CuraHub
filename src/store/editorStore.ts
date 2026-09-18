@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { useAuthStore } from './authStore';
 import { gooeyToast } from 'goey-toast';
 import { readStoredRenderQualitySetting, storeRenderQualitySetting, type RenderQualitySetting } from '../lib/renderQuality';
+import type { WallSide } from '../lib/wallEditor/geometry';
+import type { WallEditorTarget } from '../lib/wallEditor/faces';
+import { DEFAULT_FRAME_STYLE, type FrameStyleId } from '../lib/frameStyles';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -71,6 +74,8 @@ export interface ArtworkInstanceData {
   assetId?: number;
   wallId?: number | null;
   medium?: MediumType;
+  /** Picture frame profile, 'none' for an unframed work. See lib/frameStyles.ts. */
+  frameStyle?: FrameStyleId;
   artwork: {
     id?: number;
     title?: string;
@@ -141,6 +146,8 @@ interface DragState {
   } | null;
 }
 
+export type { WallEditorTarget };
+
 interface EditorState {
   isPlacing: boolean;
   pendingArtwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string } | null;
@@ -205,6 +212,14 @@ interface EditorState {
   // RND-11: 'auto' resolves via hardware detection (see src/lib/renderQuality.ts)
   renderQualitySetting: RenderQualitySetting;
 
+  /** Frame style newly dropped artworks get — the last one the curator picked in the panel. */
+  defaultFrameStyle: FrameStyleId;
+
+  // 2D wall editor — null while the normal 3D editor is shown
+  wallEditor: WallEditorTarget | null;
+  /** Artworks selected inside the 2D wall editor (multi-selection, independent of selectedInstanceId). */
+  wallEditorSelection: number[];
+
   // Actions
   setDialogOpen: (isOpen: boolean) => void;
   startPlacement: (artwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string }) => void;
@@ -256,6 +271,15 @@ interface EditorState {
   setFpvHoveredInfo: (info: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null) => void;
 
   setRenderQualitySetting: (setting: RenderQualitySetting) => void;
+
+  setDefaultFrameStyle: (styleId: FrameStyleId) => void;
+
+  // 2D wall editor actions
+  /** Opens a face of a modular wall or a room wall (see lib/wallEditor/faces.ts). */
+  openWallEditor: (target: WallEditorTarget, selection?: number[]) => void;
+  closeWallEditor: () => void;
+  setWallEditorSide: (side: WallSide) => void;
+  setWallEditorSelection: (ids: number[]) => void;
 }
 
 // STATE-02 / FUNC-04: monotonically incremented by every store action below that marks the
@@ -324,6 +348,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   hasUnsavedChanges: false,
   syncStatus: 'idle',
 
+  defaultFrameStyle: DEFAULT_FRAME_STYLE,
+
   // Modular Walls defaults
   localWalls: [],
 
@@ -331,6 +357,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   fpvHoveredInfo: null,
 
   renderQualitySetting: readStoredRenderQualitySetting(),
+
+  wallEditor: null,
+  wallEditorSelection: [],
 
   setDialogOpen: (isOpen) => set({ isDialogOpen: isOpen }),
   startPlacement: (artwork) => set({ isPlacing: true, pendingArtwork: artwork }),
@@ -442,7 +471,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   }),
 
   // Phase 5 actions
-  setActiveProject: (id, name, slug, exhibitionId, versionId, exhibitionSlug = null) => set({
+  setActiveProject: (id, name, slug, exhibitionId, versionId, exhibitionSlug = null) => set((state) => ({
     activeProjectId: id,
     activeProjectName: name,
     activeProjectSlug: slug,
@@ -450,8 +479,10 @@ export const useEditorStore = create<EditorState>((set) => ({
     activeExhibitionSlug: exhibitionSlug,
     activeVersionId: versionId,
     selectedInstanceId: null, // Clear selection on project switch
-  }),
-  setActiveVersion: (id) => set({ activeVersionId: id, selectedInstanceId: null }),
+    // The 2D wall editor only survives a re-activation of the same version.
+    ...(versionId !== state.activeVersionId ? { wallEditor: null, wallEditorSelection: [] } : {}),
+  })),
+  setActiveVersion: (id) => set({ activeVersionId: id, selectedInstanceId: null, wallEditor: null, wallEditorSelection: [] }),
 
   // Phase 6 actions
   setLocalInstances: (instances) => {
@@ -537,6 +568,7 @@ export const useEditorStore = create<EditorState>((set) => ({
         inst.wallId === id ? { ...inst, wallId: null } : inst
       ),
       selectedWallId: state.selectedWallId === id ? null : state.selectedWallId,
+      ...(state.wallEditor?.kind === 'wall' && state.wallEditor.wallId === id ? { wallEditor: null, wallEditorSelection: [] } : {}),
       hasUnsavedChanges: true,
     }));
   },
@@ -557,6 +589,44 @@ export const useEditorStore = create<EditorState>((set) => ({
     storeRenderQualitySetting(setting);
     set({ renderQualitySetting: setting });
   },
+
+  setDefaultFrameStyle: (styleId) => set({ defaultFrameStyle: styleId }),
+
+  // 2D wall editor actions
+  openWallEditor: (target, selection = []) => set((state) => {
+    if (state.plannerViewMode === 'firstPerson') return state;
+    if (target.kind === 'wall' && !state.localWalls.some(w => w.id === target.wallId)) return state;
+    return {
+      wallEditor: target,
+      wallEditorSelection: selection,
+      // The 3D selection (gizmos, halos) stays out of the 2D view.
+      selectedInstanceId: null,
+      selectedWallId: null,
+      selectedZoneId: null,
+      transformAxisLock: 'none',
+      modalTransformActive: false,
+      isTransforming: false,
+      liveTransform: null,
+    };
+  }),
+  closeWallEditor: () => set((state) => {
+    const target = state.wallEditor;
+    if (!target) return state;
+    const wallId = target.kind === 'wall' && state.localWalls.some(w => w.id === target.wallId) ? target.wallId : null;
+    return {
+      wallEditor: null,
+      wallEditorSelection: [],
+      // Back in 3D an edited modular wall stays selected.
+      selectedWallId: wallId,
+      selectedInstanceId: null,
+    };
+  }),
+  setWallEditorSide: (side: WallSide) => set((state) => (
+    state.wallEditor?.kind === 'wall' && state.wallEditor.side !== side
+      ? { wallEditor: { ...state.wallEditor, side }, wallEditorSelection: [] }
+      : state
+  )),
+  setWallEditorSelection: (ids) => set({ wallEditorSelection: ids }),
 }));
 
 // ─── Auto-sync: persist every local change to backend immediately ────────────
@@ -805,6 +875,7 @@ const syncToBackend = async () => {
               assetId: assetId || undefined,
               wallId: inst.wallId ?? null,
               medium: inst.medium ?? 'frame',
+              frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
               position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
               rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
               scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
@@ -830,6 +901,9 @@ const syncToBackend = async () => {
               snapshot.map(i => i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i)
             ),
             selectedInstanceId: current.selectedInstanceId === inst.id ? created.id : current.selectedInstanceId,
+            wallEditorSelection: current.wallEditorSelection.includes(inst.id)
+              ? current.wallEditorSelection.map(id => id === inst.id ? created.id : id)
+              : current.wallEditorSelection,
           });
           nextInstancesMap.set(created.id, { ...inst, id: created.id, artworkId: created.artworkId });
           remapInstanceRefs(inst.id, created.id);
@@ -865,7 +939,8 @@ const syncToBackend = async () => {
       const scaleChanged = curr.scale_x !== prev.scale_x || curr.scale_y !== prev.scale_y || curr.scale_z !== prev.scale_z;
       const wallChanged = curr.wallId !== prev.wallId;
       const mediumChanged = curr.medium !== prev.medium;
-      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged)) {
+      const frameStyleChanged = curr.frameStyle !== prev.frameStyle;
+      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged || frameStyleChanged)) {
         nextInstancesMap.set(curr.id, curr); // no pending op — keep the snapshot in sync
         continue;
       }
@@ -876,6 +951,7 @@ const syncToBackend = async () => {
       if (scaleChanged) body.scale = { x: curr.scale_x, y: curr.scale_y, z: curr.scale_z };
       if (wallChanged) body.wallId = curr.wallId ?? null;
       if (mediumChanged) body.medium = curr.medium;
+      if (frameStyleChanged) body.frameStyle = curr.frameStyle;
 
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
@@ -931,6 +1007,9 @@ const syncToBackend = async () => {
               i.wallId === wall.id ? { ...i, wallId: created.id } : i
             ),
             selectedWallId: current.selectedWallId === wall.id ? created.id : current.selectedWallId,
+            wallEditor: current.wallEditor?.kind === 'wall' && current.wallEditor.wallId === wall.id
+              ? { ...current.wallEditor, wallId: created.id }
+              : current.wallEditor,
           });
           nextWallsMap.set(created.id, { ...created });
           createIdempotencyKeys.delete(`wall:${wall.id}`);

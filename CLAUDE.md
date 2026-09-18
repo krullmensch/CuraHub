@@ -128,6 +128,31 @@ The editor layout is structured as follows:
 
 Keyboard shortcuts: `G` grab, `R` rotate, `S` scale, `X/Y/Z` axis lock, `Shift` fine-tune, `Esc` cancel. Implemented via Three.js TransformControls + custom `ModalTransformSystem`.
 
+### 2D Wall Editor
+
+Frontal, Figma-like editing of one wall face (`src/components/wall-editor/`, `src/lib/wallEditor/`): any of the four faces of a modular wall, or a wall of the room model.
+
+- State: `editorStore.wallEditor` is a `WallEditorTarget` (`{ kind: 'wall', wallId, side: 'front' | 'back' | 'left' | 'right' }` or `{ kind: 'room', faceId }`, see `lib/wallEditor/faces.ts`) plus `wallEditorSelection` (its own multi-selection; `selectedInstanceId` stays null while the editor is open). `openFaceOf(state)` resolves the target to a frame (memoised, usable as a selector). View, tools, toggles and the room faces live in `src/store/wallEditorViewStore.ts` (`phase`: idle → entering → active → leaving).
+- Wall coordinates (`lib/wallEditor/geometry.ts`): `u` metres from the face's left edge as seen from in front of it, `v` world height above the floor, `d` distance in front of the face; right = up × normal. `left`/`right` are the narrow end faces (local −X/+X). An artwork's face comes from the direction it faces (`sideOfInstance`, fallback: position) — never compare Euler angles directly.
+- Room walls: `Satellit` (with `publishWallFaces`) runs `extractRoomFaces` on the wall mesh once — large vertical planes that face into the room (checked against the floor mesh) become faces; windows/doors are found as uncovered areas. Artworks on room walls have `wallId = null` and belong to a face by position + facing (`instanceOnFace`). While a room face is open the room model is hidden and `WallEditorRoomFace` draws that face (mesh named "Wall", so drag & drop placement still hits it). Double-clicks on room walls are handled by a native listener in EditorPage (`wallEditorBridge.pick`), because R3F handlers on the room mesh would stop `onPointerMissed` from deselecting.
+- Camera: `PlannerCameraSystem` flies the perspective camera to the frontal pose, then `WallEditorCamera` (orthographic, `zoom = pxPerM`) becomes the default camera. The DOM/SVG `WallEditorOverlay` uses the same wall ↔ screen mapping (`makeViewTransform`), so overlay and render line up pixel-perfectly.
+- Hiding: other walls/artworks get `visible={false}` (not unmounted), the room meshes are hidden via `Satellit hideGeometry` (its lights stay on). `FrameInstancerRegistry` collapses frames whose anchor has a hidden ancestor.
+- Drags move the Three.js groups directly (`applyDraft`, `wallEditorBridge.invalidate()`) and commit once on pointer-up via `commitWallOffsets` (one undo step, auto-sync PATCHes the positions). Footprints: framed pictures are computed (the frame reaches `frameOuterMargin(inst)` beyond the picture — 9 mm for the aluminium profile, up to ~20 mm for the wooden ones, 0 unframed), everything else is measured from its meshes (`lib/wallEditor/footprint.ts`).
+- Layout math (align, distribute, spacing, snapping, measuring) is pure and lives in `lib/wallEditor/layout.ts`; commands on the selection in `lib/wallEditor/operations.ts`.
+- `artworkTextureManager` also sizes textures for orthographic cameras (on-screen size = `sizeM × pxPerM`).
+- EditorPage's keyboard handler ignores everything but undo/redo while the editor is open; the overlay handles its own keys.
+
+### Picture Frames
+
+Per-instance `frameStyle` column (`'none'` = unframed). One catalogue, `src/lib/frameStyles.ts`, is the single source of truth for both geometry and material; `server/src/lib/frameStyles.ts` mirrors the id list for API validation.
+
+- Geometry: every style reuses the two meshes of `Halbe_Classic_Alu8.glb` (one L-shaped corner, one unit-length edge). A style only scales the cross-section — `faceScale` the visible band around the picture *and* the corner arms, `depthScale` how far it stands off the wall. The picture opening always stays exactly width × height.
+- FRAME-01: the corner reaches **11 mm** along each picture edge (`BASE_CORNER_ARM`) and 9 mm outward. Pairing it with 9 mm made every edge overlap both of its corners by 1.5 mm of coplanar face — the z-fighting around every corner. Edges are now cut to `width − 2 × (cornerArm + EDGE_SEAM_GAP)`; don't reintroduce a constant that isn't read off the GLB's bounding box (a DEV-only warning in `extractFrameParts` checks this).
+- UVs: the GLB's box unwrap is replaced at load time (`applyProfileUVs`) so U runs along the profile in metres and V wraps exactly once around its cross-section. Wood grain therefore varies along V only, which is why stretching an edge to the artwork's width leaves the grain intact and why corner and edge share one texture.
+- Materials: `src/lib/frameMaterials.ts` paints the wood grain, roughness and normal map onto canvases at first use and caches them per style (no texture downloads, no `onBeforeCompile` — WebGPU converts these materials to NodeMaterials and would drop a shader patch). The silver profile keeps the GLB's own material.
+- Instancing: `FrameInstancerRegistry` groups slots **by style**; `FrameInstancer` mounts one InstancedMesh pair per style in use, so a room with three styles costs six draw calls.
+- New drops take `editorStore.defaultFrameStyle` (the last style picked in the panel), which the drag ghost previews.
+
 ### Render Backends (WebGPU + WebGL fallback)
 
 - `src/lib/rendererBackend.ts` decides per Canvas: WebGPU (`WebGPURenderer`) when a hardware adapter exists, otherwise the **classic `WebGLRenderer`** (never WebGPURenderer's WebGL2 backend). Override: `?renderer=webgl|webgpu` or the "Renderer" select in `RenderQualityControl` (localStorage `curahub-renderer`).

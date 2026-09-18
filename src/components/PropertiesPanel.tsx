@@ -25,7 +25,21 @@ import {
     Pause,
     Volume2,
     VolumeX,
+    PanelsTopLeft,
 } from 'lucide-react';
+import { WallEditorPanel } from './wall-editor/WallEditorPanel';
+import { sideOfInstance, WALL_SIDES, WALL_SIDE_LABELS, type WallSide } from '@/lib/wallEditor/geometry';
+import { targetForInstance, type WallEditorTarget } from '@/lib/wallEditor/faces';
+import { useWallEditorView } from '@/store/wallEditorViewStore';
+import { useFaceDirectory } from '@/hooks/use-face-directory';
+import {
+    DEFAULT_FRAME_STYLE,
+    FRAME_STYLE_GROUP_LABELS,
+    SELECTABLE_FRAME_STYLES,
+    frameStyleOf,
+    type FrameStyleGroup,
+    type FrameStyleId,
+} from '@/lib/frameStyles';
 import type { LucideIcon } from 'lucide-react';
 
 // Numeric input that holds local string state while focused, only committing on blur/Enter.
@@ -95,6 +109,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const liveTransform = useEditorStore((state) => state.liveTransform);
     const token = useAuthStore((state) => state.token);
     const activeVersionId = useEditorStore((state) => state.activeVersionId);
+    const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
 
     // Sync active tab to properties when something is selected
     useEffect(() => {
@@ -115,6 +130,10 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const [aspectLocked, setAspectLocked] = useState(true);
     const [assetMeta, setAssetMeta] = useState<{ widthPx: number; heightPx: number; dpi: number; type?: string; physicalWidth?: number | null; physicalHeight?: number | null } | null>(null);
     const [instanceMedium, setInstanceMedium] = useState<MediumType>('frame');
+    const [instanceFrameStyle, setInstanceFrameStyle] = useState<FrameStyleId>(DEFAULT_FRAME_STYLE);
+    const setDefaultFrameStyle = useEditorStore((state) => state.setDefaultFrameStyle);
+    // Remembers what to go back to when the curator switches framing back on.
+    const lastFramedStyle = useRef<FrameStyleId>(DEFAULT_FRAME_STYLE);
 
     // For 3D models: use the natural bounding box size (in meters) from the scene as the base.
     // Falls back to { 1, 1, 1 } until the model renders and populates modelBBoxMap.
@@ -157,6 +176,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                 scale: { x: localInst.scale_x, y: localInst.scale_y, z: localInst.scale_z },
             });
             setInstanceMedium(localInst.medium || 'frame');
+            const style = frameStyleOf(localInst.frameStyle);
+            setInstanceFrameStyle(style);
+            if (style !== 'none') lastFramedStyle.current = style;
             if (localInst.artwork?.asset) {
                 setAssetMeta({
                     widthPx: localInst.artwork.asset.width,
@@ -193,6 +215,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                     scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
                 });
                 setInstanceMedium(inst.medium || 'frame');
+                const style = frameStyleOf(inst.frameStyle);
+                setInstanceFrameStyle(style);
+                if (style !== 'none') lastFramedStyle.current = style;
                 if (inst.artwork?.asset) {
                     setAssetMeta({
                         widthPx: inst.artwork.asset.width,
@@ -292,6 +317,27 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         store.commitLocalChange(updatedInstances);
     }, [selectedId]);
 
+    const handleFrameStyleChange = useCallback((frameStyle: FrameStyleId) => {
+        if (!selectedId) return;
+        setInstanceFrameStyle(frameStyle);
+        if (frameStyle !== 'none') {
+            lastFramedStyle.current = frameStyle;
+            // New drops follow the style last picked here.
+            setDefaultFrameStyle(frameStyle);
+        }
+        const store = useEditorStore.getState();
+        store.commitLocalChange(store.localInstances.map(inst =>
+            inst.id === selectedId ? { ...inst, frameStyle } : inst
+        ));
+    }, [selectedId, setDefaultFrameStyle]);
+
+    // Restoring the previous style lives in the handler so the panel body never reads a ref
+    // while rendering.
+    const handleFrameToggle = useCallback((framed: boolean) => {
+        const previous = lastFramedStyle.current;
+        handleFrameStyleChange(!framed ? 'none' : previous === 'none' ? DEFAULT_FRAME_STYLE : previous);
+    }, [handleFrameStyleChange]);
+
     // Auto-promote legacy video media (display/projector/frame/wallpaper) to 'monitor' so the
     // restricted Monitor/Beamer dropdown stays in sync with the underlying instance value.
     useEffect(() => {
@@ -323,10 +369,11 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
     return (
         <>
-            <Card className={cn(
+            <Card data-wall-editor-inset="right" className={cn(
                 "absolute right-4 top-6 bottom-8 w-72 bg-zinc-950/80 backdrop-blur-md border-zinc-800 shadow-xl flex flex-col z-20 rounded-xl overflow-hidden transition-transform duration-300 ease-in-out",
                 !isOpen && "translate-x-[calc(100%+2rem)]"
             )}>
+                {wallEditorOpen ? <WallEditorPanel onToggle={onToggle} /> : <>
                 <div className={cn("flex items-center border-b border-zinc-800", headerAccent)}>
                     <button onClick={() => setActiveTab('controls')} className={cn(
                         "flex-1 py-2.5 text-xs font-medium transition-colors",
@@ -363,6 +410,9 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                             medium={instanceMedium}
                             assetType={assetMeta?.type}
                             onMediumChange={handleMediumChange}
+                            frameStyle={instanceFrameStyle}
+                            onFrameToggle={handleFrameToggle}
+                            onFrameStyleChange={handleFrameStyleChange}
                             selectedInstanceId={selectedId}
                         />
                     ) : (
@@ -371,6 +421,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                         </div>
                     )
                 )}
+                </>}
             </Card>
 
             <div className={cn("absolute right-0 top-[2.625rem] -translate-y-1/2 z-10 transition-transform duration-300 ease-in-out", isOpen && "translate-x-full")}>
@@ -387,6 +438,8 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 const ControlsTabContent = () => {
     const showTraverses = useEditorStore((state) => state.showTraverses);
     const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
+    const openWallEditor = useEditorStore((state) => state.openWallEditor);
+    const faces = useFaceDirectory();
 
     return (
         <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
@@ -402,6 +455,29 @@ const ControlsTabContent = () => {
                         {showTraverses ? "Visible" : "Hidden"}
                     </Button>
                 </div>
+                {faces.length > 0 && (
+                    <>
+                        <Separator className="bg-zinc-800" />
+                        <div className="space-y-1.5">
+                            <Label className="text-xs text-zinc-400 uppercase tracking-wider">2D-Wandeditor</Label>
+                            <p className="text-[11px] text-zinc-500">Wand frontal öffnen – auch per Doppelklick auf eine Wand.</p>
+                            {faces.map((face) => (
+                                <button
+                                    key={face.key}
+                                    type="button"
+                                    onClick={() => openWallEditor(face.target)}
+                                    className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 transition-colors"
+                                    title={`${face.label} im 2D-Wandeditor öffnen`}
+                                >
+                                    <PanelsTopLeft className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                                    <span className="flex-1 truncate">{face.label}</span>
+                                    <span className="text-[10px] text-zinc-500">{face.group === 'room' ? 'Raum' : 'Stellwand'}</span>
+                                    <span className="w-4 text-right text-[10px] tabular-nums text-zinc-400">{face.count}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );
@@ -424,6 +500,9 @@ interface ArtworkPropertiesContentProps {
     medium: MediumType;
     assetType?: string;
     onMediumChange: (medium: MediumType) => void;
+    frameStyle: FrameStyleId;
+    onFrameToggle: (framed: boolean) => void;
+    onFrameStyleChange: (frameStyle: FrameStyleId) => void;
     selectedInstanceId: number | null;
 }
 
@@ -435,6 +514,10 @@ const MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
     { value: 'model3d', label: '3D Model' },
 ];
 
+/** Frame styles for the panel's dropdown, grouped by material. */
+const FRAME_STYLE_GROUPS = (['metall', 'holz', 'lack'] as FrameStyleGroup[])
+    .map((group) => [group, SELECTABLE_FRAME_STYLES.filter((style) => style.group === group)] as const);
+
 const VIDEO_MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
     { value: 'monitor', label: 'Monitor' },
     { value: 'beamer',  label: 'Beamer'  },
@@ -444,12 +527,13 @@ const ArtworkPropertiesContent = ({
     transform, transformMode, setTransformMode, modeButtons,
     toDeg, toFixed, baseCm, aspectLocked, setAspectLocked,
     handleInputChange, handleScaleChange, handleFocus, handleDelete,
-    medium, assetType, onMediumChange, selectedInstanceId,
+    medium, assetType, onMediumChange, frameStyle, onFrameToggle, onFrameStyleChange, selectedInstanceId,
 }: ArtworkPropertiesContentProps) => {
     // Splats get the same floor-object controls as 3D models.
     const isModel = isFloorAssetType(assetType);
     const isVideo = assetType === 'video';
     const sizeLocked  = isVideo && medium === 'monitor';
+    const framed = frameStyle !== 'none';
     const sizeIsBeamer = isVideo && medium === 'beamer';
     const hideAspectToggle = sizeLocked || sizeIsBeamer;
 
@@ -554,6 +638,46 @@ const ArtworkPropertiesContent = ({
                     </select>
                 )}
             </div>
+            {!isModel && !isVideo && (
+                <div className="space-y-2">
+                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">Rahmen</Label>
+                    <div className="flex gap-1">
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onFrameToggle(true)}
+                            className={cn("flex-1 h-8 text-xs", framed ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                        >
+                            Gerahmt
+                        </Button>
+                        <Button
+                            variant="secondary"
+                            size="sm"
+                            onClick={() => onFrameToggle(false)}
+                            className={cn("flex-1 h-8 text-xs", !framed ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                        >
+                            Ohne Rahmen
+                        </Button>
+                    </div>
+                    {framed ? (
+                        <select
+                            value={frameStyle}
+                            onChange={(e) => onFrameStyleChange(e.target.value as FrameStyleId)}
+                            className="w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        >
+                            {FRAME_STYLE_GROUPS.map(([group, styles]) => (
+                                <optgroup key={group} label={FRAME_STYLE_GROUP_LABELS[group]}>
+                                    {styles.map((style) => (
+                                        <option key={style.id} value={style.id}>{style.label}</option>
+                                    ))}
+                                </optgroup>
+                            ))}
+                        </select>
+                    ) : (
+                        <p className="text-[10px] text-zinc-500 italic">Werk hängt ungerahmt an der Wand.</p>
+                    )}
+                </div>
+            )}
             <div className="space-y-2">
                 <div className="flex items-center justify-between">
                     <Label className="text-xs text-zinc-400 uppercase tracking-wider">{isModel ? 'Größe (m)' : 'Size (cm)'}</Label>
@@ -606,6 +730,7 @@ const ArtworkPropertiesContent = ({
                     </div>
                 </>
             )}
+            <OpenArtworkWallButton instanceId={selectedInstanceId} />
             <Separator className="bg-zinc-800" />
             <div className="flex gap-2">
                 <Button variant="secondary" size="sm" onClick={handleFocus} className="flex-1 bg-zinc-800 text-zinc-100 hover:bg-zinc-700">
@@ -621,21 +746,69 @@ const ArtworkPropertiesContent = ({
     );
 };
 
+/** Opens the wall (modular or room wall) an artwork hangs on in the 2D wall editor. */
+const OpenArtworkWallButton = ({ instanceId }: { instanceId: number | null }) => {
+    const roomFaces = useWallEditorView((state) => state.roomFaces);
+    // Selector returns a string key so the component only re-renders when the target changes.
+    const key = useEditorStore((state) => {
+        const inst = instanceId !== null ? state.localInstances.find(i => i.id === instanceId) : undefined;
+        const target = inst ? targetForInstance(inst, state.localWalls, roomFaces) : null;
+        return target ? JSON.stringify(target) : null;
+    });
+    const openWallEditor = useEditorStore((state) => state.openWallEditor);
+    if (!key || instanceId === null) return null;
+    const target = JSON.parse(key) as WallEditorTarget;
+    return (
+        <Button
+            size="sm"
+            onClick={() => openWallEditor(target, [instanceId])}
+            className="w-full h-9 text-xs gap-1.5 bg-blue-600 hover:bg-blue-500 text-white"
+            title="Die Wand dieses Werks frontal bearbeiten (E)"
+        >
+            <PanelsTopLeft className="h-3.5 w-3.5" />
+            Wand im 2D-Editor öffnen
+        </Button>
+    );
+};
+
 const WallPropertiesContent = () => {
     const selectedWallId = useEditorStore((state) => state.selectedWallId);
     const localWalls = useEditorStore((state) => state.localWalls);
     const localInstances = useEditorStore((state) => state.localInstances);
     const updateWall = useEditorStore((state) => state.updateWall);
     const toggleWallLock = useEditorStore((state) => state.toggleWallLock);
+    const openWallEditor = useEditorStore((state) => state.openWallEditor);
     const wall = localWalls.find(w => w.id === selectedWallId);
     if (!wall) return null;
     const artworksOnWall = localInstances.filter(i => i.wallId === wall.id);
     const hasArtworks = artworksOnWall.length > 0;
     const toDeg = (rad: number) => ((rad * 180) / Math.PI).toFixed(1);
     const toFixed = (v: number, d = 3) => v.toFixed(d);
+    const countOn = (side: WallSide) => artworksOnWall.filter(i => sideOfInstance(wall, i) === side).length;
     return (
         <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
             <div className="text-xs text-zinc-500 italic">{wall.label || 'Modular Wall'} — {wall.width}m × {wall.height}m</div>
+            <div className="space-y-2">
+                <Label className="text-xs text-zinc-400 uppercase tracking-wider">2D-Wandeditor</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    {WALL_SIDES.map((side) => (
+                        <Button
+                            key={side}
+                            size="sm"
+                            onClick={() => openWallEditor({ kind: 'wall', wallId: wall.id, side })}
+                            className={cn(
+                                "h-9 text-xs gap-1.5 text-white",
+                                side === 'front' || side === 'back' ? "bg-blue-600 hover:bg-blue-500" : "bg-blue-600/60 hover:bg-blue-500",
+                            )}
+                            title={`${WALL_SIDE_LABELS[side]} frontal bearbeiten (E / Doppelklick auf die Wand)`}
+                        >
+                            <PanelsTopLeft className="h-3.5 w-3.5" />
+                            {WALL_SIDE_LABELS[side]}
+                            <span className="text-white/60 tabular-nums">{countOn(side)}</span>
+                        </Button>
+                    ))}
+                </div>
+            </div>
             <Separator className="bg-zinc-800" />
             <div className="space-y-2">
                 <Label className="text-xs text-zinc-400 uppercase tracking-wider">Position</Label>

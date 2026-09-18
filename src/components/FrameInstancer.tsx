@@ -2,31 +2,42 @@ import { Suspense, useContext, useEffect, useLayoutEffect, useMemo, useRef, useS
 import { useFrame, useThree } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import * as THREE from 'three';
-import { FRAME_MODEL, extractFrameParts } from '../lib/modularFrameParts';
+import { FRAME_MODEL, extractFrameParts, type FrameParts } from '../lib/modularFrameParts';
 import { FrameInstancerContext, FrameInstancerRegistry, type FrameSlot } from '../lib/frameInstancerRegistry';
+import { getFrameMaterial } from '../lib/frameMaterials';
+import { DEFAULT_FRAME_STYLE, type FrameStyleId } from '../lib/frameStyles';
 import { ModularFrame } from './ModularFrame';
 
 // RND-01: every picture frame used to be 8 meshes (4 corners + 4 edges) = 8 draw calls per
-// artwork (~580 of the 661 draw calls in "Yol"). All frames now share two InstancedMeshes.
+// artwork (~580 of the 661 draw calls in "Yol"). Frames now share two InstancedMeshes *per
+// frame style* — one style in the room still costs two draw calls, and a style nobody uses
+// costs nothing because its meshes are never mounted.
 
 const CAPACITY_STEP = 64;
 const capacityFor = (frames: number) => Math.max(CAPACITY_STEP, Math.ceil((frames * 4) / CAPACITY_STEP) * CAPACITY_STEP);
-// Frames are 8 mm profiles: clicks and FPV info raycasts go to the picture plane instead.
+// Frames are thin profiles: clicks and FPV info raycasts go to the picture plane instead.
 const NO_RAYCAST = () => {};
 
-const FrameInstances = ({ registry }: { registry: FrameInstancerRegistry }) => {
-    const { scene } = useGLTF(FRAME_MODEL);
-    const parts = useMemo(() => extractFrameParts(scene), [scene]);
+interface StyleInstancesProps {
+    styleId: FrameStyleId;
+    registry: FrameInstancerRegistry;
+    parts: FrameParts;
+}
+
+/** The two instanced meshes that draw every frame of one style. */
+const StyleInstances = ({ styleId, registry, parts }: StyleInstancesProps) => {
     const invalidate = useThree((state) => state.invalidate);
-    const [capacity, setCapacity] = useState(() => capacityFor(registry.slots.size));
+    const [capacity, setCapacity] = useState(() => capacityFor(registry.slotCount(styleId)));
     const cornersRef = useRef<THREE.InstancedMesh>(null);
     const edgesRef = useRef<THREE.InstancedMesh>(null);
     const lastCorners = useRef<THREE.InstancedMesh | null>(null);
     const matrix = useMemo(() => new THREE.Matrix4(), []);
+    // Wood and lacquer textures are generated on first use and cached by frameMaterials.
+    const material = useMemo(() => getFrameMaterial(styleId, parts.baseMaterial), [styleId, parts]);
 
     useEffect(() => {
         const onChange = () => {
-            const needed = capacityFor(registry.slots.size);
+            const needed = capacityFor(registry.slotCount(styleId));
             setCapacity((current) => (needed > current ? needed : current));
             invalidate();
         };
@@ -34,7 +45,7 @@ const FrameInstances = ({ registry }: { registry: FrameInstancerRegistry }) => {
         // Slots registered between this component's render and the subscription.
         queueMicrotask(onChange);
         return unsubscribe;
-    }, [registry, invalidate]);
+    }, [registry, styleId, invalidate]);
 
     useFrame(() => {
         const corners = cornersRef.current;
@@ -44,7 +55,7 @@ const FrameInstances = ({ registry }: { registry: FrameInstancerRegistry }) => {
         // A capacity change re-creates the meshes with empty instance buffers.
         const meshesReplaced = lastCorners.current !== corners;
         lastCorners.current = corners;
-        registry.writeInstances(corners, edges, matrix, meshesReplaced);
+        registry.writeInstances(styleId, corners, edges, matrix, meshesReplaced);
     });
 
     return (
@@ -52,7 +63,7 @@ const FrameInstances = ({ registry }: { registry: FrameInstancerRegistry }) => {
             <instancedMesh
                 key={`frame-corners-${capacity}`}
                 ref={cornersRef}
-                args={[parts.cornerGeometry, parts.cornerMaterial, capacity]}
+                args={[parts.cornerGeometry, material, capacity]}
                 count={0}
                 frustumCulled={false}
                 raycast={NO_RAYCAST}
@@ -60,11 +71,38 @@ const FrameInstances = ({ registry }: { registry: FrameInstancerRegistry }) => {
             <instancedMesh
                 key={`frame-edges-${capacity}`}
                 ref={edgesRef}
-                args={[parts.edgeGeometry, parts.edgeMaterial, capacity]}
+                args={[parts.edgeGeometry, material, capacity]}
                 count={0}
                 frustumCulled={false}
                 raycast={NO_RAYCAST}
             />
+        </>
+    );
+};
+
+const sameStyles = (a: FrameStyleId[], b: FrameStyleId[]) =>
+    a.length === b.length && a.every((id, i) => id === b[i]);
+
+const FrameInstances = ({ registry }: { registry: FrameInstancerRegistry }) => {
+    const { scene } = useGLTF(FRAME_MODEL);
+    const parts = useMemo(() => extractFrameParts(scene), [scene]);
+    const [styles, setStyles] = useState<FrameStyleId[]>(() => registry.activeStyles());
+
+    useEffect(() => {
+        const onChange = () => {
+            const next = registry.activeStyles();
+            setStyles((current) => (sameStyles(current, next) ? current : next));
+        };
+        const unsubscribe = registry.subscribe(onChange);
+        queueMicrotask(onChange);
+        return unsubscribe;
+    }, [registry]);
+
+    return (
+        <>
+            {styles.map((styleId) => (
+                <StyleInstances key={styleId} styleId={styleId} registry={registry} parts={parts} />
+            ))}
         </>
     );
 };
@@ -84,10 +122,11 @@ export const FrameInstancerProvider = ({ children }: { children: ReactNode }) =>
 interface InstancedFrameSlotProps {
     width: number;  // inner picture width in meters
     height: number; // inner picture height in meters
+    styleId?: FrameStyleId;
 }
 
 /** Marks where a frame goes; rendered by FrameInstancerProvider, or as a plain ModularFrame outside of it. */
-export const InstancedFrameSlot = ({ width, height }: InstancedFrameSlotProps) => {
+export const InstancedFrameSlot = ({ width, height, styleId = DEFAULT_FRAME_STYLE }: InstancedFrameSlotProps) => {
     const registry = useContext(FrameInstancerContext);
     const anchorRef = useRef<THREE.Group>(null);
     const slotRef = useRef<FrameSlot | null>(null);
@@ -95,13 +134,13 @@ export const InstancedFrameSlot = ({ width, height }: InstancedFrameSlotProps) =
     useLayoutEffect(() => {
         const anchor = anchorRef.current;
         if (!registry || !anchor) return;
-        const slot = registry.add(anchor, width, height);
+        const slot = registry.add(anchor, styleId, width, height);
         slotRef.current = slot;
         return () => {
             registry.remove(slot);
             slotRef.current = null;
         };
-        // Size changes are applied by the effect below without re-registering.
+        // Size and style changes are applied by the effects below without re-registering.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [registry]);
 
@@ -109,6 +148,13 @@ export const InstancedFrameSlot = ({ width, height }: InstancedFrameSlotProps) =
         if (registry && slotRef.current) registry.setSize(slotRef.current, width, height);
     }, [registry, width, height]);
 
-    if (!registry) return <ModularFrame width={width} height={height} />;
+    useLayoutEffect(() => {
+        // Moves the frame to the other style's instanced meshes; the size effect above keeps
+        // width/height current, so they are read here rather than tracked as dependencies.
+        if (registry && slotRef.current) registry.setStyle(slotRef.current, styleId, width, height);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [registry, styleId]);
+
+    if (!registry) return <ModularFrame width={width} height={height} styleId={styleId} />;
     return <group ref={anchorRef} />;
 };

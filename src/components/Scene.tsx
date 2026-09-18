@@ -9,6 +9,7 @@ import { FrameInstancerProvider } from './FrameInstancer';
 import { ShaderWarmup } from './ShaderWarmup';
 import { WindowView } from './WindowView';
 import { EditorGrid } from './EditorGrid';
+import { WallEditorRoomFace } from './wall-editor/WallEditorRoomFace';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
@@ -22,6 +23,8 @@ interface SceneProps {
 
 export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShadersReady }: SceneProps) => {
     const plannerViewMode = useEditorStore(state => state.plannerViewMode);
+    // 2D wall editor: the room and the floor grid make way for the open wall
+    const wallEditorOpen = useEditorStore(state => isEditor && !!state.wallEditor);
     const { rectAreaLights } = useRenderQualitySettings();
     const [windowViewReady, setWindowViewReady] = useState(false);
 
@@ -67,7 +70,7 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShaders
                     </>
                 )}
 
-                {isEditor && viewMode !== 'firstPerson' && (
+                {isEditor && viewMode !== 'firstPerson' && !wallEditorOpen && (
                     <EditorGrid />
                 )}
 
@@ -76,7 +79,12 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShaders
                     viewMode={viewMode}
                     rectAreaLights={rectAreaLights}
                     clearGlass={showWindowView && windowViewReady}
+                    hideGeometry={wallEditorOpen}
+                    publishWallFaces={isEditor}
                 />
+
+                {/* 2D wall editor: the open room wall, drawn on its own */}
+                {isEditor && <WallEditorRoomFace />}
 
                 {/* Street outside the windows — first person only; loads when entering it. */}
                 {showWindowView && (

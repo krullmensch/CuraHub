@@ -161,6 +161,7 @@ export class ArtworkTextureManager {
     private invalidate: () => void = () => {};
     private readonly cameraPos = new THREE.Vector3();
     private readonly lastCameraPos = new THREE.Vector3(Infinity, Infinity, Infinity);
+    private readonly lastProjection: [number, number] = [NaN, NaN];
     private readonly objectPos = new THREE.Vector3();
     readonly placeholder: THREE.DataTexture;
 
@@ -238,6 +239,13 @@ export class ArtworkTextureManager {
         camera.getWorldPosition(this.cameraPos);
         if (this.cameraPos.distanceToSquared(this.lastCameraPos) > 1e-4) {
             this.lastCameraPos.copy(this.cameraPos);
+            this.dirty = true;
+        }
+        // Zooming an orthographic camera (2D wall editor) doesn't move it.
+        const projection = (camera as THREE.OrthographicCamera).projectionMatrix;
+        if (projection && (projection.elements[0] !== this.lastProjection[0] || projection.elements[5] !== this.lastProjection[1])) {
+            this.lastProjection[0] = projection.elements[0];
+            this.lastProjection[1] = projection.elements[5];
             this.dirty = true;
         }
 
@@ -335,6 +343,11 @@ export class ArtworkTextureManager {
         const focalPx = perspective
             ? (viewportHeightPx * perspective.zoom) / (2 * Math.tan(THREE.MathUtils.degToRad(perspective.fov) / 2))
             : 0;
+        // Orthographic (2D wall editor): the on-screen size doesn't depend on the distance.
+        const ortho = (camera as THREE.OrthographicCamera).isOrthographicCamera ? (camera as THREE.OrthographicCamera) : null;
+        const orthoPxPerM = ortho
+            ? (viewportHeightPx * ortho.zoom) / Math.max(1e-6, ortho.top - ortho.bottom)
+            : 0;
 
         let totalBytes = 0;
         for (const entry of this.entries.values()) {
@@ -342,6 +355,14 @@ export class ArtworkTextureManager {
             if (entry.forceMax) {
                 entry.projectedPx = Infinity;
                 entry.wantedTier = maxTier;
+            } else if (entry.object && ortho) {
+                const px = entry.sizeM * orthoPxPerM;
+                entry.projectedPx = px;
+                let tier = tierFor(px, maxTier);
+                if (entry.currentTier > tier) {
+                    tier = Math.min(entry.currentTier, tierFor(px * DOWNGRADE_FACTOR, maxTier));
+                }
+                entry.wantedTier = tier;
             } else if (!entry.object || !perspective) {
                 entry.projectedPx = 0;
                 entry.wantedTier = Math.min(1, maxTier);

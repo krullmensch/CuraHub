@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
+import { DEFAULT_FRAME_STYLE, frameStyleSchema } from '../lib/frameStyles';
 
 export const instancesRouter = Router();
 const prisma = new PrismaClient();
@@ -13,6 +14,7 @@ const instanceSchema = z.object({
   assetId: z.number().optional(),
   wallId: z.number().nullable().optional(),
   medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat']).optional(),
+  frameStyle: frameStyleSchema.optional(),
   position: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   rotation: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional()
@@ -77,6 +79,7 @@ instancesRouter.post('/', authenticate, idempotency, async (req: Request, res) =
                 versionId: data.versionId,
                 wallId: data.wallId ?? null,
                 medium: data.medium ?? 'frame',
+                frameStyle: data.frameStyle ?? DEFAULT_FRAME_STYLE,
                 position_x: data.position.x,
                 position_y: data.position.y,
                 position_z: data.position.z,
@@ -144,6 +147,7 @@ instancesRouter.get('/', authenticate, async (req: Request, res) => {
 const patchInstanceSchema = z.object({
     wallId: z.number().nullable().optional(),
     medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat']).optional(),
+    frameStyle: frameStyleSchema.optional(),
     position: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
     rotation: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
     scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
@@ -175,6 +179,9 @@ instancesRouter.patch('/:id', authenticate, async (req: Request, res) => {
         }
         if (data.medium !== undefined) {
             updateData.medium = data.medium;
+        }
+        if (data.frameStyle !== undefined) {
+            updateData.frameStyle = data.frameStyle;
         }
         if (data.position) {
             updateData.position_x = data.position.x;
