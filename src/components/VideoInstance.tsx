@@ -86,10 +86,15 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
                 canvas.width = video.videoWidth;
                 canvas.height = video.videoHeight;
+                // WebGPU allocates the GPU texture once, at the canvas size of the first upload
+                // (the 16×9 placeholder), and later copies only that many pixels — the plane
+                // showed one flat colour instead of the video. dispose() drops the GPU texture
+                // and its bind groups; the next render re-creates it at the new size.
+                texture.dispose();
             }
             canvasCtxRef.current ??= canvas.getContext('2d');
             canvasCtxRef.current?.drawImage(video, 0, 0, canvas.width, canvas.height);
-        }, [canvas, video]);
+        }, [canvas, video, texture]);
 
         // Read the actual video aspect once metadata is available.
         useEffect(() => {
