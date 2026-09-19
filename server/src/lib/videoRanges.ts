@@ -1,6 +1,6 @@
 import type { RequestHandler } from 'express';
 
-// Videos are served in short range responses, and never from the Cloudflare cache.
+// Videos played in the scene are streamed in short range responses, past the Cloudflare cache.
 //
 // Firefox over HTTP/3 (Cloudflare) stalls the whole QUIC connection while a media channel
 // is suspended: the <video> element asks for `bytes=0-`, reads until its read-ahead buffer
@@ -9,8 +9,9 @@ import type { RequestHandler } from 'express';
 // (public viewer of "Yol": ~20 of 72 pictures loaded). Short 206 responses finish quickly,
 // and the browser asks for the next range when it needs it.
 //
-// Cloudflare would answer range requests from its cached copy of the whole file, so video
-// responses are `private` (browser cache only).
+// This needs its own URL without a file extension (`/uploads/stream?src=<file>`): for paths
+// ending in .mp4 Cloudflare drops the Range header, fetches the whole file for its cache and
+// answers every range from that copy, whatever the origin would have sent.
 
 export const VIDEO_RANGE_CHUNK_BYTES = 2 * 1024 * 1024;
 
@@ -31,9 +32,22 @@ export function capRangeHeader(range: string, chunk = VIDEO_RANGE_CHUNK_BYTES): 
     return `bytes=${start}-${end}`;
 }
 
-/** Mount before express.static for the uploads directory. */
-export const capVideoRanges: RequestHandler = (req, _res, next) => {
-    const range = req.headers.range;
-    if (range && isVideoPath(req.path)) req.headers.range = capRangeHeader(range);
-    next();
-};
+/** GET /uploads/stream?src=<path inside uploads> — a video file with capped ranges. */
+export function videoStreamHandler(uploadsDir: string): RequestHandler {
+    return (req, res) => {
+        const src = typeof req.query.src === 'string' ? req.query.src : '';
+        if (!isVideoPath(src)) {
+            res.status(400).json({ error: 'Ungültige Videoquelle' });
+            return;
+        }
+        if (req.headers.range) req.headers.range = capRangeHeader(req.headers.range);
+        // `root` makes send() reject `..` segments, so src can't leave the uploads directory.
+        res.sendFile(src, {
+            root: uploadsDir,
+            dotfiles: 'deny',
+            headers: { 'Cache-Control': 'private, max-age=604800' },
+        }, (err?: Error & { status?: number }) => {
+            if (err && !res.headersSent) res.status(err.status ?? 500).json({ error: 'Video nicht gefunden' });
+        });
+    };
+}

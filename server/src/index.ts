@@ -16,7 +16,7 @@ import { exhibitionsRouter } from './routes/exhibitions';
 import { publicRouter } from './routes/public';
 import { adminRouter } from './routes/admin';
 import { resumeVideoJobs } from './lib/videoJobs';
-import { capVideoRanges, isVideoPath } from './lib/videoRanges';
+import { videoStreamHandler } from './lib/videoRanges';
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -52,13 +52,14 @@ app.use((req, res, next) => {
 // Serve uploaded files statically.
 // LOAD-06: cacheable but not immutable — pre-SEC-04 filenames were not
 // guaranteed unique, so a filename could in principle be reused.
-// Videos: short range responses and `private` (see lib/videoRanges.ts).
-const uploadsCacheHeaders = (res: express.Response, filePath: string) => {
-    res.setHeader('Cache-Control', isVideoPath(filePath) ? 'private, max-age=604800' : 'public, max-age=604800');
+const uploadsCacheHeaders = (res: express.Response) => {
+    res.setHeader('Cache-Control', 'public, max-age=604800');
 };
 const uploadsDirPath = path.join(__dirname, '../uploads');
-app.use('/uploads', capVideoRanges, express.static(uploadsDirPath, { setHeaders: uploadsCacheHeaders }));
-app.use('/api/uploads', capVideoRanges, express.static(uploadsDirPath, { setHeaders: uploadsCacheHeaders }));
+// Videos played in the scene stream in short ranges (see lib/videoRanges.ts).
+app.get(['/uploads/stream', '/api/uploads/stream'], videoStreamHandler(uploadsDirPath));
+app.use('/uploads', express.static(uploadsDirPath, { setHeaders: uploadsCacheHeaders }));
+app.use('/api/uploads', express.static(uploadsDirPath, { setHeaders: uploadsCacheHeaders }));
 
 // --- API Routes (Direct) ---
 app.use('/auth', authRouter);

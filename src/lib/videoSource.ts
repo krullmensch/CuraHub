@@ -26,11 +26,14 @@ export function pickVideoSource(asset: VideoAssetLike, maxShortEdge: number | nu
     return best ? best[1] : asset.path;
 }
 
+const UPLOADS_PREFIX = '/uploads/';
+
 /**
- * URL for a playing <video>. The server answers video ranges in short chunks and marks them
- * `private` (server/src/lib/videoRanges.ts) — the query gives the file a new Cloudflare cache
- * key, so copies Cloudflare cached before that change (whole-file ranges) are not used.
+ * URL for a playing <video>: the server's stream endpoint, which answers in short ranges past
+ * the Cloudflare cache (server/src/lib/videoRanges.ts — long-lived video streams stalled
+ * Firefox's HTTP/3 connection and with it every artwork image).
  */
 export function videoStreamUrl(path: string): string {
-    return `${path}${path.includes('?') ? '&' : '?'}stream=chunked`;
+    if (!path.startsWith(UPLOADS_PREFIX)) return path;
+    return `/uploads/stream?src=${encodeURIComponent(path.slice(UPLOADS_PREFIX.length))}`;
 }
