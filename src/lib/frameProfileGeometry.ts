@@ -21,12 +21,26 @@ import { FRAME_PROFILES, type FrameProfileId, type FrameProfileSpec } from './fr
 // distance around the cross-section in metres, starting on the hidden back face. A texture
 // painted with the grain along U therefore wraps around the profile like a real veneer and
 // turns the corner at the mitre.
+//
+// Box frames (profiles with `objectDepth`, Aab 111) add a white spacer strip lining the space
+// between the glass and the back board. It is a second cross-section swept the same way and
+// written into the same two geometries as a second group, drawn with the spacer material
+// (frameMaterials.getFrameStyleMaterial) — still two instanced meshes per style.
 
 const MM = 0.001;
 /** Line segments per quarter circle of a rounded edge. */
 const ARC_SEGMENTS = 6;
 /** How far (mm) the inner reveal continues behind the picture surface. */
 const LIP_OVERLAP = 2;
+/** Thickness (mm) of a box frame's spacer strip. */
+const SPACER_THICKNESS = 3;
+/**
+ * Baked occlusion on the spacer (vertex colours): full brightness right behind the glass, this
+ * much at the back board — the box's deep inner corner gets far less light than its open front.
+ */
+const SPACER_BACK_SHADE = 0.58;
+/** Rows the spacer's inner face is split into, so the baked gradient can curve. */
+const SPACER_SHADE_STEPS = 6;
 
 interface OutlinePoint {
     c: number;
@@ -60,8 +74,9 @@ function profileCorners(profile: FrameProfileSpec): Corner[] {
     const W = profile.width * MM;
     const D = profile.depth * MM;
     // The reveal reaches a little past the picture surface, so no sliver of the hollow profile
-    // shows between the picture's edge and the lip at a grazing angle.
-    const R = (profile.reveal + LIP_OVERLAP) * MM;
+    // shows between the picture's edge and the lip at a grazing angle. In a box frame the spacer
+    // takes over right behind the glass instead.
+    const R = (profile.reveal + (profile.objectDepth ? 0 : LIP_OVERLAP)) * MM;
     const B = Math.min(profile.body, profile.width) * MM;
     return [
         { c: W - B, z: 0, radius: 0 },
@@ -71,6 +86,44 @@ function profileCorners(profile: FrameProfileSpec): Corner[] {
         { c: 0, z: D - R, radius: 0 },
         { c: W - B, z: D - R, radius: 0 },
     ];
+}
+
+/**
+ * Cross-section of a box frame's spacer strip, counter-clockwise from its back face: flush with
+ * the lip's inner edge (c = 0), from the glass down to a little behind the back board's surface.
+ * Its inner face is split into rows for the baked shading; the other faces hide under the lip,
+ * in the rebate and behind the board.
+ *
+ *            glass  ┌──┐
+ *                   │  │ ← inner face, seen through the glass
+ *                   │  │
+ *      back board   └──┘
+ */
+function spacerCorners(profile: FrameProfileSpec): Corner[] {
+    const D = profile.depth * MM;
+    const T = SPACER_THICKNESS * MM;
+    const top = D - profile.reveal * MM;
+    const bottom = D - (profile.reveal + (profile.objectDepth ?? 0) + LIP_OVERLAP) * MM;
+    const inner: Corner[] = [];
+    for (let k = 0; k <= SPACER_SHADE_STEPS; k++) {
+        inner.push({ c: 0, z: top + ((bottom - top) * k) / SPACER_SHADE_STEPS, radius: 0 });
+    }
+    return [
+        { c: 0, z: bottom, radius: 0 },
+        { c: T, z: bottom, radius: 0 },
+        { c: T, z: top, radius: 0 },
+        ...inner.slice(0, -1),
+    ];
+}
+
+/** Spacer brightness at height z: bright behind the glass, falling off towards the back board. */
+function spacerShade(profile: FrameProfileSpec): (z: number) => number {
+    const top = (profile.depth - profile.reveal) * MM;
+    const deep = (profile.objectDepth ?? 0) * MM;
+    return (z) => {
+        const t = Math.min(1, Math.max(0, (top - z) / deep));
+        return 1 - (1 - SPACER_BACK_SHADE) * t ** 1.5;
+    };
 }
 
 /** Replaces every rounded 90° corner by an arc of short segments. */
@@ -146,6 +199,7 @@ export class GeometryWriter {
     readonly uvs: number[] = [];
     readonly colors: number[] = [];
     private readonly withColors: boolean;
+    private readonly groups: { start: number; materialIndex: number }[] = [];
 
     /** `withColors`: every quad passes per-vertex colours (e.g. baked shading). */
     constructor(withColors = false) {
@@ -172,52 +226,70 @@ export class GeometryWriter {
         }
     }
 
+    /** Quads written from here on belong to a group drawn with material `materialIndex`. */
+    beginGroup(materialIndex: number): void {
+        this.groups.push({ start: this.positions.length / 3, materialIndex });
+    }
+
     build(): THREE.BufferGeometry {
         const geometry = new THREE.BufferGeometry();
         geometry.setAttribute('position', new THREE.Float32BufferAttribute(this.positions, 3));
         geometry.setAttribute('normal', new THREE.Float32BufferAttribute(this.normals, 3));
         geometry.setAttribute('uv', new THREE.Float32BufferAttribute(this.uvs, 2));
         if (this.withColors) geometry.setAttribute('color', new THREE.Float32BufferAttribute(this.colors, 3));
+        const vertices = this.positions.length / 3;
+        this.groups.forEach((group, i) => {
+            const end = this.groups[i + 1]?.start ?? vertices;
+            geometry.addGroup(group.start, end - group.start, group.materialIndex);
+        });
         geometry.computeBoundingBox();
         geometry.computeBoundingSphere();
         return geometry;
     }
 }
 
+/** Vertex colours of a quad from a shading function of z (undefined = no colours). */
+type Shade = ((z: number) => number) | undefined;
+const shadeOf = (shade: Shade, za: number, zb: number): number[][] | undefined => {
+    if (!shade) return undefined;
+    const a = shade(za), b = shade(zb);
+    return [[a, a, a], [a, a, a], [b, b, b], [b, b, b]];
+};
+
 /** The bottom moulding, x ∈ [0, 1] m, frame below y = 0. */
-function buildEdge(segments: Segment[]): THREE.BufferGeometry {
-    const out = new GeometryWriter();
+function writeEdge(out: GeometryWriter, segments: Segment[], shade?: Shade): void {
     for (const { a, b, na, nb, va, vb } of segments) {
         out.quad(
             [[0, -a.c, a.z], [1, -a.c, a.z], [1, -b.c, b.z], [0, -b.c, b.z]],
             [[0, -na[0], na[1]], [0, -na[0], na[1]], [0, -nb[0], nb[1]], [0, -nb[0], nb[1]]],
             [[0, va], [1, va], [1, vb], [0, vb]],
+            shadeOf(shade, a.z, b.z),
         );
     }
-    return out.build();
 }
 
 /**
  * The bottom-left corner square, x and y ∈ [-W, 0]: the end of the bottom moulding below the
  * mitre (y < x) and the end of the left moulding above it.
  */
-function buildCorner(segments: Segment[]): THREE.BufferGeometry {
-    const out = new GeometryWriter();
+function writeCorner(out: GeometryWriter, segments: Segment[], shade?: Shade): void {
     for (const { a, b, na, nb, va, vb } of segments) {
+        const colors = shadeOf(shade, a.z, b.z);
         // Bottom moulding: runs along +x, its profile spans y = -c; cut where x = -c.
         out.quad(
             [[-a.c, -a.c, a.z], [0, -a.c, a.z], [0, -b.c, b.z], [-b.c, -b.c, b.z]],
             [[0, -na[0], na[1]], [0, -na[0], na[1]], [0, -nb[0], nb[1]], [0, -nb[0], nb[1]]],
             [[-a.c, va], [0, va], [0, vb], [-b.c, vb]],
+            colors,
         );
         // Left moulding: runs along +y, its profile spans x = -c; cut where y = -c.
         out.quad(
             [[-a.c, -a.c, a.z], [-a.c, 0, a.z], [-b.c, 0, b.z], [-b.c, -b.c, b.z]],
             [[-na[0], 0, na[1]], [-na[0], 0, na[1]], [-nb[0], 0, nb[1]], [-nb[0], 0, nb[1]]],
             [[-a.c, va], [0, va], [0, vb], [-b.c, vb]],
+            colors,
         );
     }
-    return out.build();
 }
 
 export interface FrameParts {
@@ -227,12 +299,28 @@ export interface FrameParts {
 
 const partsCache = new Map<FrameProfileId, FrameParts>();
 
+function buildPart(profile: FrameProfileSpec, write: typeof writeEdge): THREE.BufferGeometry {
+    const moulding = outlineSegments(buildOutline(profileCorners(profile)));
+    if (!profile.objectDepth) {
+        const out = new GeometryWriter();
+        write(out, moulding);
+        return out.build();
+    }
+    // Box frame: group 0 is the moulding (finish material), group 1 the spacer (white, shaded).
+    const out = new GeometryWriter(true);
+    out.beginGroup(0);
+    write(out, moulding);
+    out.beginGroup(1);
+    write(out, outlineSegments(buildOutline(spacerCorners(profile))), spacerShade(profile));
+    return out.build();
+}
+
 /** Corner and edge geometry of a profile, built once and shared by every frame using it. */
 export function getFrameParts(profileId: FrameProfileId): FrameParts {
     let parts = partsCache.get(profileId);
     if (!parts) {
-        const segments = outlineSegments(buildOutline(profileCorners(FRAME_PROFILES[profileId])));
-        parts = { cornerGeometry: buildCorner(segments), edgeGeometry: buildEdge(segments) };
+        const profile = FRAME_PROFILES[profileId];
+        parts = { cornerGeometry: buildPart(profile, writeCorner), edgeGeometry: buildPart(profile, writeEdge) };
         partsCache.set(profileId, parts);
     }
     return parts;

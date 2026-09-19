@@ -36,20 +36,21 @@ import {
     DEFAULT_FRAME_STYLE,
     DEFAULT_PASSEPARTOUT_WIDTH_CM,
     FRAME_FINISHES,
-    FRAME_GROUP_LABELS,
+    FRAME_LINES,
+    FRAME_MANUFACTURER_LABELS,
     FRAME_PROFILES,
     MAX_PASSEPARTOUT_WIDTH_CM,
     PASSEPARTOUT_PLACEMENTS,
     PROFILE_FINISHES,
-    PROFILE_GROUPS,
+    frameLineOf,
     frameStyle as frameStyleSpec,
     frameStyleOf,
     framedArtworkLayout,
     isPassepartoutPlacement,
+    profileFitsFormat,
     styleForProfile,
     styleIdOf,
     type FrameFinishId,
-    type FrameMaterialGroup,
     type FrameProfileId,
     type FrameStyleId,
     type PassepartoutPlacement,
@@ -565,14 +566,6 @@ interface ArtworkPropertiesContentProps {
     selectedInstanceId: number | null;
 }
 
-const MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
-    { value: 'frame', label: 'Frame' },
-    { value: 'display', label: 'Display' },
-    { value: 'projector', label: 'Projector' },
-    { value: 'wallpaper', label: 'Wallpaper' },
-    { value: 'model3d', label: '3D Model' },
-];
-
 const VIDEO_MEDIUM_OPTIONS: { value: MediumType; label: string }[] = [
     { value: 'monitor', label: 'Monitor' },
     { value: 'beamer',  label: 'Beamer'  },
@@ -667,11 +660,9 @@ const ArtworkPropertiesContent = ({
                 </div>
             </div>
             <Separator className="bg-zinc-800" />
-            <div className="space-y-2">
-                <Label className="text-xs text-zinc-400 uppercase tracking-wider">Medium</Label>
-                {isModel ? (
-                    <div className="text-xs text-zinc-500 bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2">{assetType === 'splat' ? 'Gaussian Splat' : '3D Model'}</div>
-                ) : isVideo ? (
+            {isVideo && (
+                <div className="space-y-2">
+                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">Wiedergabe</Label>
                     <select
                         value={medium === 'monitor' || medium === 'beamer' ? medium : 'monitor'}
                         onChange={(e) => onMediumChange(e.target.value as MediumType)}
@@ -681,18 +672,8 @@ const ArtworkPropertiesContent = ({
                             <option key={o.value} value={o.value}>{o.label}</option>
                         ))}
                     </select>
-                ) : (
-                    <select
-                        value={medium}
-                        onChange={(e) => onMediumChange(e.target.value as MediumType)}
-                        className="w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500"
-                    >
-                        {MEDIUM_OPTIONS.filter(o => o.value !== 'model3d' && o.value !== 'monitor' && o.value !== 'beamer').map(o => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                    </select>
-                )}
-            </div>
+                </div>
+            )}
             {!isModel && !isVideo && (
                 <FrameControls
                     frameStyle={frameStyle}
@@ -790,12 +771,13 @@ function passepartoutOf(inst: { passepartoutWidth?: number | null; passepartoutP
 const formatCm = (value: number) => value.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 const formatMm = (value: number) => value.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 
-/** CSS swatch of a finish: flat colour for metal, the grain's light-to-dark range for wood. */
+/** CSS swatch of a finish: the grain's light-to-dark range for wood, a sheen on metal, flat lacquer. */
 function finishSwatch(id: FrameFinishId): string {
     const surface = FRAME_FINISHES[id].surface;
     if (surface.kind === 'wood') {
         return `repeating-linear-gradient(100deg, ${surface.light} 0 3px, ${surface.dark} 3px 4px, ${surface.light} 4px 6px)`;
     }
+    if (surface.kind === 'lacquer') return surface.color;
     return `linear-gradient(135deg, #ffffff66 0%, transparent 45%), ${surface.color}`;
 }
 
@@ -813,23 +795,30 @@ interface FrameControlsProps {
 const selectClass = "w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500";
 const toggleClass = (active: boolean) => cn("flex-1 h-8 text-xs", active ? "bg-blue-600 hover:bg-blue-500 text-white" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700");
 
-/** Frame profile and colour (the HALBE range) plus the passepartout of a picture. */
+/** Frame profile and colour (the HALBE and Max Aab ranges) plus the passepartout of a picture. */
 const FrameControls = ({
     frameStyle, onFrameToggle, onFrameStyleChange, passepartout, onPassepartoutToggle, onPassepartoutChange, pictureCm,
 }: FrameControlsProps) => {
     const style = frameStyleSpec(frameStyle);
     const hasPassepartout = !!style && passepartout.width > 0;
-    // Last colour picked per material, so switching Alu → Holz → Alu comes back to it.
-    const lastFinish = useRef<Partial<Record<FrameMaterialGroup, FrameFinishId>>>({});
+    // Last colour picked per maker and material (see frameLineOf), so switching
+    // Alu → Holz → Alu comes back to it.
+    const lastFinish = useRef<Partial<Record<string, FrameFinishId>>>({});
     const pickStyle = (id: FrameStyleId) => {
         const next = frameStyleSpec(id);
-        if (next) lastFinish.current[next.finish.group] = next.finish.id;
+        if (next) lastFinish.current[frameLineOf(next.finish)] = next.finish.id;
         onFrameStyleChange(id);
     };
     const pickProfile = (profile: FrameProfileId) => {
-        const group = FRAME_PROFILES[profile].group;
-        if (style) lastFinish.current[style.finish.group] = style.finish.id;
-        const preferred = style && style.finish.group === group ? style.finish.id : lastFinish.current[group] ?? null;
+        const spec = FRAME_PROFILES[profile];
+        const line = frameLineOf(spec);
+        if (style) lastFinish.current[frameLineOf(style.finish)] = style.finish.id;
+        // Same maker and material: keep the colour where it exists. Other material: the colour
+        // last used there. Other maker: the closest-looking colour (see styleForProfile).
+        const otherMaker = !!style && style.profile.manufacturer !== spec.manufacturer;
+        const preferred = style && frameLineOf(style.finish) === line
+            ? style.finish.id
+            : lastFinish.current[line] ?? (otherMaker ? style.finish.id : null);
         pickStyle(styleForProfile(profile, preferred));
     };
     const layout = framedArtworkLayout({
@@ -841,6 +830,10 @@ const FrameControls = ({
     });
     const outerW = (layout.right - layout.left) * 100;
     const outerH = (layout.top - layout.bottom) * 100;
+    const openingW = layout.openingWidth * 100;
+    const openingH = layout.openingHeight * 100;
+    const formats = style?.profile.formats;
+    const outsideFormats = !!style && !!formats && !profileFitsFormat(style.profile, openingW, openingH);
 
     return (
         <>
@@ -859,9 +852,9 @@ const FrameControls = ({
                                 onChange={(e) => pickProfile(e.target.value as FrameProfileId)}
                                 className={selectClass}
                             >
-                                {PROFILE_GROUPS.map(([group, profiles]) => (
-                                    <optgroup key={group} label={FRAME_GROUP_LABELS[group]}>
-                                        {profiles.map((profile) => (
+                                {FRAME_LINES.map((line) => (
+                                    <optgroup key={line.key} label={line.label}>
+                                        {line.profiles.map((profile) => (
                                             <option key={profile.id} value={profile.id}>
                                                 {profile.label} · {formatMm(profile.width)} × {formatMm(profile.depth)} mm
                                             </option>
@@ -895,7 +888,17 @@ const FrameControls = ({
                         </div>
                         <p className="text-[10px] text-zinc-500">
                             Aufsichtsmaß {formatMm(style.profile.width)} mm, Profiltiefe {formatMm(style.profile.depth)} mm
+                            {style.profile.objectDepth
+                                ? `, ${formatMm(style.profile.objectDepth)} mm Raum zwischen Glas und Rückwand mit weißer Innenleiste`
+                                : ''}
                         </p>
+                        {outsideFormats && formats && (
+                            <p className="text-[10px] text-amber-400">
+                                {FRAME_MANUFACTURER_LABELS[style.profile.manufacturer]} fertigt {style.profile.label} für Bildmaße
+                                von {formatCm(formats.min[0])} × {formatCm(formats.min[1])} bis {formatCm(formats.max[0])} × {formatCm(formats.max[1])} cm
+                                {' '}— hier sind es {formatCm(openingW)} × {formatCm(openingH)} cm.
+                            </p>
+                        )}
                     </>
                 ) : (
                     <p className="text-[10px] text-zinc-500 italic">Werk hängt ungerahmt an der Wand.</p>

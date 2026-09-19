@@ -1,11 +1,12 @@
 import {
     FRAME_FINISHES,
+    rgbOf,
     type FrameFinishId,
     type WoodSpecies,
     type WoodSurface,
 } from './frameStyles';
 
-// Procedural textures for the HALBE frame finishes and the passepartout board.
+// Procedural textures for the frame finishes (HALBE, Max Aab) and the passepartout board.
 //
 // Pure functions over typed arrays — no three.js, no DOM — so they run in a worker
 // (workers/frameTexture.worker.ts): a wood finish is ~0.5 M texels of noise and takes a good
@@ -102,12 +103,24 @@ interface SpeciesGrain {
  * HALBE's veneers show the grain as long, fine lines along the moulding that wander a little and
  * run together here and there (a mix of rift and flat cut) — close to parallel, never evenly
  * spaced. Oak adds open pores as short dark dashes, walnut broad darker streaks.
+ *
+ * Aab's solid woods, after their colour samples: ash is ring-porous like oak but with bolder,
+ * wider-swinging lines; spruce has regular, sharply defined late-wood lines about 2 mm apart and
+ * no pores; ayous is even with fine open pores; aspen is almost featureless; sipo's interlocked
+ * grain shows as broad alternating light/dark ribbons rather than lines; cherry has few soft,
+ * wavy lines.
  */
 const SPECIES: Record<WoodSpecies, SpeciesGrain> = {
     eiche:    { lineMin: 0.7, lineMax: 4.2, widthMin: 0.07, widthMax: 0.32, darkMin: 0.15, darkMax: 0.65, late: 0.4, lateDark: 0.22, wave: 2.2, fibre: 0.14, pores: 1, ringPorous: true, bands: 0.2 },
     ahorn:    { lineMin: 0.8, lineMax: 3.2, widthMin: 0.05, widthMax: 0.18, darkMin: 0.1, darkMax: 0.4, late: 0.3, lateDark: 0.14, wave: 1.2, fibre: 0.1, pores: 0.15, ringPorous: false, bands: 0.12 },
     erle:     { lineMin: 0.8, lineMax: 3.4, widthMin: 0.06, widthMax: 0.22, darkMin: 0.12, darkMax: 0.45, late: 0.35, lateDark: 0.18, wave: 1.5, fibre: 0.12, pores: 0.3, ringPorous: false, bands: 0.22 },
     nussbaum: { lineMin: 0.5, lineMax: 4.5, widthMin: 0.08, widthMax: 0.5, darkMin: 0.25, darkMax: 0.9, late: 0.45, lateDark: 0.32, wave: 2.4, fibre: 0.18, pores: 0.5, ringPorous: false, bands: 0.5 },
+    esche:    { lineMin: 1.0, lineMax: 5.5, widthMin: 0.1, widthMax: 0.4, darkMin: 0.25, darkMax: 0.75, late: 0.45, lateDark: 0.28, wave: 3.4, fibre: 0.14, pores: 1, ringPorous: true, bands: 0.2 },
+    fichte:   { lineMin: 1.6, lineMax: 2.8, widthMin: 0.12, widthMax: 0.3, darkMin: 0.4, darkMax: 0.7, late: 0.5, lateDark: 0.35, wave: 1.4, fibre: 0.1, pores: 0, ringPorous: false, bands: 0.1 },
+    ayous:    { lineMin: 0.8, lineMax: 3.0, widthMin: 0.05, widthMax: 0.15, darkMin: 0.05, darkMax: 0.22, late: 0.2, lateDark: 0.06, wave: 1.0, fibre: 0.12, pores: 0.55, ringPorous: false, bands: 0.1 },
+    aspe:     { lineMin: 1.0, lineMax: 4.0, widthMin: 0.05, widthMax: 0.12, darkMin: 0.03, darkMax: 0.12, late: 0.2, lateDark: 0.04, wave: 1.0, fibre: 0.07, pores: 0, ringPorous: false, bands: 0.08 },
+    sipo:     { lineMin: 0.6, lineMax: 2.4, widthMin: 0.04, widthMax: 0.12, darkMin: 0.05, darkMax: 0.2, late: 0.2, lateDark: 0.06, wave: 0.8, fibre: 0.12, pores: 0.35, ringPorous: false, bands: 0.9 },
+    kirsche:  { lineMin: 1.5, lineMax: 5.0, widthMin: 0.15, widthMax: 0.5, darkMin: 0.12, darkMax: 0.35, late: 0.35, lateDark: 0.15, wave: 2.8, fibre: 0.1, pores: 0.15, ringPorous: false, bands: 0.3 },
 };
 
 interface GrainField {
@@ -232,12 +245,8 @@ function buildBrushed(seed: number): GrainField {
 
 // ── textures ────────────────────────────────────────────────────────────────
 
-/** sRGB bytes of a catalogue colour (#rrggbb). Albedo textures are tagged sRGB, so mixing happens in sRGB. */
-export function rgbOf(hex: string): [number, number, number] {
-    const n = parseInt(hex.slice(1), 16);
-    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
-}
-
+// Colours are built from the catalogue's sRGB bytes (rgbOf); albedo textures are tagged sRGB,
+// so mixing happens in sRGB.
 function woodAlbedo(field: GrainField, surface: WoodSurface): Uint8Array {
     const data = new Uint8Array(TEX_U * TEX_V * 4);
     const light = rgbOf(surface.light);
@@ -311,10 +320,10 @@ function seedOf(id: FrameFinishId): number {
 /** Whether a finish is drawn with generated textures (wood grain, brushing marks). */
 export function finishHasTextures(id: FrameFinishId): boolean {
     const surface = FRAME_FINISHES[id].surface;
-    return surface.kind === 'wood' || surface.brushed;
+    return surface.kind === 'wood' || (surface.kind === 'metal' && surface.brushed);
 }
 
-/** Texture data of a finish, or null for the flat anodised colours. */
+/** Texture data of a finish, or null for the flat anodised colours and smooth lacquers. */
 export function generateFinishTextures(id: FrameFinishId): FinishTextures | null {
     const surface = FRAME_FINISHES[id].surface;
     const seed = seedOf(id);
@@ -326,7 +335,7 @@ export function generateFinishTextures(id: FrameFinishId): FinishTextures | null
             normal: normalData(field, surface.relief * 1.6),
         };
     }
-    if (!surface.brushed) return null;
+    if (surface.kind !== 'metal' || !surface.brushed) return null;
     const field = buildBrushed(seed);
     const albedo = new Uint8Array(TEX_U * TEX_V * 4);
     for (let i = 0; i < field.tone.length; i++) {
@@ -337,13 +346,6 @@ export function generateFinishTextures(id: FrameFinishId): FinishTextures | null
         albedo[i * 4 + 3] = 255;
     }
     return { albedo, roughness: roughnessData(field, surface.roughness, 0, 0.35), normal: normalData(field, 1) };
-}
-
-/** Average look of a wood finish (sRGB bytes), shown until its textures are ready. */
-export function woodBaseColor(surface: WoodSurface): [number, number, number] {
-    const light = rgbOf(surface.light);
-    const dark = rgbOf(surface.dark);
-    return light.map((v, i) => Math.round(v + (dark[i] - v) * 0.3 * surface.contrast)) as [number, number, number];
 }
 
 /** Fine felt texture of museum board as tangent-space normals, `size`² texels, tileable. */

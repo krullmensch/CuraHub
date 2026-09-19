@@ -1,5 +1,15 @@
 import * as THREE from 'three';
-import { FRAME_FINISHES, type FrameFinishId, type MetalSurface, type WoodSurface } from './frameStyles';
+import {
+    BOX_FRAME_SPACER_SURFACE,
+    FRAME_FINISHES,
+    finishBaseColor,
+    rgbOf,
+    type FrameFinishId,
+    type FrameStyle,
+    type LacquerSurface,
+    type MetalSurface,
+    type WoodSurface,
+} from './frameStyles';
 import {
     TEX_U,
     TEX_V,
@@ -8,13 +18,12 @@ import {
     finishHasTextures,
     generateFinishTextures,
     paperNormalData,
-    rgbOf,
-    woodBaseColor,
     type FinishTextures,
 } from './frameTextures';
 import type { FrameTextureRequest, FrameTextureResponse } from '../workers/frameTexture.worker';
 
-// Materials for the HALBE frame finishes and the passepartout board.
+// Materials for the frame finishes (HALBE, Max Aab), the box frame's spacer and the passepartout
+// board.
 //
 // A material is created synchronously in its finish's average colour, so a frame shows up at
 // once; the wood grain / brushing textures are generated in a worker (frameTexture.worker, see
@@ -97,7 +106,20 @@ const srgb = ([r, g, b]: [number, number, number]) => new THREE.Color().setRGB(r
 
 function woodMaterial(surface: WoodSurface): THREE.MeshPhysicalMaterial {
     return new THREE.MeshPhysicalMaterial({
-        color: srgb(woodBaseColor(surface)),
+        color: srgb(finishBaseColor(surface)),
+        roughness: surface.roughness,
+        metalness: 0,
+        clearcoat: surface.clearcoat,
+        clearcoatRoughness: surface.clearcoatRoughness,
+        envMap: getFrameEnvironment(),
+        envMapIntensity: 0.18,
+    });
+}
+
+/** Smooth opaque lacquer: lit like the wood finishes, just without grain. */
+function lacquerMaterial(surface: LacquerSurface): THREE.MeshPhysicalMaterial {
+    return new THREE.MeshPhysicalMaterial({
+        color: srgb(rgbOf(surface.color)),
         roughness: surface.roughness,
         metalness: 0,
         clearcoat: surface.clearcoat,
@@ -179,7 +201,9 @@ export function getFrameMaterial(id: FrameFinishId): THREE.Material {
     const cached = cache.get(id);
     if (cached) return cached;
     const surface = FRAME_FINISHES[id].surface;
-    const material = surface.kind === 'wood' ? woodMaterial(surface) : metalMaterial(surface);
+    const material = surface.kind === 'wood'
+        ? woodMaterial(surface)
+        : surface.kind === 'lacquer' ? lacquerMaterial(surface) : metalMaterial(surface);
     material.name = `frame-${id}`;
     cache.set(id, material);
     if (finishHasTextures(id)) {
@@ -188,6 +212,39 @@ export function getFrameMaterial(id: FrameFinishId): THREE.Material {
             .catch((err) => console.warn(`Rahmen-Textur ${id} konnte nicht erzeugt werden:`, err));
     }
     return material;
+}
+
+let spacerMaterial: THREE.MeshPhysicalMaterial | null = null;
+
+/**
+ * The white lacquered spacer strip inside a box frame (Aab 111). Its vertex colours carry baked
+ * occlusion — brighter behind the glass, darker down at the back board — since the scene has no
+ * shadow maps and the depth of the box would otherwise read flat.
+ */
+function getSpacerMaterial(): THREE.MeshPhysicalMaterial {
+    if (spacerMaterial) return spacerMaterial;
+    spacerMaterial = lacquerMaterial(BOX_FRAME_SPACER_SURFACE);
+    spacerMaterial.vertexColors = true;
+    spacerMaterial.name = 'frame-spacer';
+    return spacerMaterial;
+}
+
+const styleCache = new Map<FrameFinishId, THREE.Material[]>();
+
+/**
+ * What a style's frame geometry is drawn with: the finish's material, plus the spacer's for a box
+ * frame, whose geometry carries two groups (see frameProfileGeometry.getFrameParts). Stable
+ * objects, so instanced meshes don't re-create.
+ */
+export function getFrameStyleMaterial(style: FrameStyle): THREE.Material | THREE.Material[] {
+    const finish = getFrameMaterial(style.finish.id);
+    if (!style.profile.objectDepth) return finish;
+    let materials = styleCache.get(style.finish.id);
+    if (!materials) {
+        materials = [finish, getSpacerMaterial()];
+        styleCache.set(style.finish.id, materials);
+    }
+    return materials;
 }
 
 // ── passepartout board ──────────────────────────────────────────────────────

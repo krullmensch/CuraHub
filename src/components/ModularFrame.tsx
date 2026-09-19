@@ -1,7 +1,7 @@
 import { forwardRef } from 'react';
 import * as THREE from 'three';
 import { getFrameParts, getFramePartTransforms } from '../lib/frameProfileGeometry';
-import { getFrameMaterial } from '../lib/frameMaterials';
+import { getFrameStyleMaterial } from '../lib/frameMaterials';
 import { DEFAULT_FRAME_STYLE, frameStyle, type FrameStyleId } from '../lib/frameStyles';
 
 interface ModularFrameProps {
@@ -19,7 +19,7 @@ export const ModularFrame = forwardRef<THREE.Group, ModularFrameProps>(
         const style = frameStyle(styleId);
         if (!style) return <group ref={ref} />;
         const parts = getFrameParts(style.profile.id);
-        const material = getFrameMaterial(style.finish.id);
+        const material = getFrameStyleMaterial(style);
         const { corners, edges } = getFramePartTransforms(width, height);
 
         return (

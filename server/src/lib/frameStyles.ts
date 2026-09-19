@@ -1,10 +1,16 @@
 import { z } from 'zod';
 
+const AAB_STANDARD = [
+    'aab-weiss', 'aab-weiss-lasiert', 'aab-lichtgrau', 'aab-anthrazit', 'aab-schwarz',
+    'aab-aspe', 'aab-fichte', 'aab-ayous', 'aab-sipo', 'aab-esche-dunkel',
+];
+const AAB_WIDE = ['aab-weiss', 'aab-weiss-lasiert', 'aab-schwarz', 'aab-ayous'];
+
 /**
- * Picture frames an instance can use: "<profile>-<finish>" for every combination HALBE sells,
- * or "none". Mirrors PROFILE_FINISHES in src/lib/frameStyles.ts on the client — keep both in
- * sync when the range changes. Stored as a plain string column so adding a style needs no
- * migration; the enum here is what rejects typos coming in over the API.
+ * Picture frames an instance can use: "<profile>-<finish>" for every combination HALBE and
+ * Max Aab sell, or "none". Mirrors PROFILE_FINISHES in src/lib/frameStyles.ts on the client —
+ * keep both in sync when the range changes. Stored as a plain string column so adding a style
+ * needs no migration; the enum here is what rejects typos coming in over the API.
  */
 const PROFILE_FINISHES: Record<string, string[]> = {
     alu6: ['silber-matt', 'weiss-matt', 'schwarz-matt', 'gold-matt'],
@@ -17,6 +23,10 @@ const PROFILE_FINISHES: Record<string, string[]> = {
     holz16: ['eiche-natur', 'eiche-schwarz', 'eiche-weiss', 'ahorn-natur', 'ahorn-weiss', 'erle-dunkel', 'erle-braun', 'nussbaum-natur'],
     holz20: ['eiche-natur', 'eiche-schwarz', 'ahorn-natur', 'ahorn-weiss', 'erle-dunkel', 'erle-braun', 'nussbaum-natur'],
     holz22: ['eiche-natur', 'eiche-schwarz', 'eiche-weiss', 'ahorn-natur', 'ahorn-weiss', 'nussbaum-natur'],
+    aab116: AAB_STANDARD,
+    aab102: [...AAB_STANDARD, 'aab-ahorn', 'aab-kirsche', 'aab-eiche'],
+    aab107: AAB_WIDE,
+    aab111: AAB_WIDE,
 };
 
 export const FRAME_STYLE_IDS = [

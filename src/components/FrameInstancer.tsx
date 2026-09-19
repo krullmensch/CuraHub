@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { getFrameParts } from '../lib/frameProfileGeometry';
 import { FrameInstancerContext, FrameInstancerRegistry, type FrameSlot } from '../lib/frameInstancerRegistry';
-import { getFrameMaterial, onFrameTexturesReady } from '../lib/frameMaterials';
+import { getFrameStyleMaterial, onFrameTexturesReady } from '../lib/frameMaterials';
 import { DEFAULT_FRAME_STYLE, frameStyle, type FrameStyleId } from '../lib/frameStyles';
 import { ModularFrame } from './ModularFrame';
 
@@ -30,11 +30,11 @@ const StyleInstances = ({ styleId, registry }: StyleInstancesProps) => {
     const edgesRef = useRef<THREE.InstancedMesh>(null);
     const lastCorners = useRef<THREE.InstancedMesh | null>(null);
     const matrix = useMemo(() => new THREE.Matrix4(), []);
-    // Geometry per profile, material per finish — both generated on first use and cached, so
-    // these are stable objects across renders.
+    // Geometry per profile, material per finish (plus the spacer's for a box frame) — all
+    // generated on first use and cached, so these are stable objects across renders.
     const style = frameStyle(styleId);
     const parts = style ? getFrameParts(style.profile.id) : null;
-    const material = style ? getFrameMaterial(style.finish.id) : null;
+    const material = style ? getFrameStyleMaterial(style) : null;
 
     useEffect(() => {
         const onChange = () => {
