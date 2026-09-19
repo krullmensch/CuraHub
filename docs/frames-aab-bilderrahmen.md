@@ -8,7 +8,9 @@ Farbmuster, Passepartout-Seiten, FAQ). Grundlage ist das HALBE-System, siehe CLA
 - **Umgesetzt (2026-09-19):** die vier Aab-Profile inkl. Objektrahmen 111 mit weißer Innenleiste, alle
   13 Farben mit Verfügbarkeit je Profil, neue Holzarten + Lackoberfläche, Hersteller-Ebene im Panel,
   Formathinweis, Server-Validierung, kalibrierte Farben (Abschnitt 5).
-- **Offen:** farbige Aab-Passepartouts (Abschnitt 4), Glas (6.3), Custom Frame (7).
+- **Offen:** Glas (6.3), Custom Frame (7).
+- **Nicht gewünscht (Entscheidung 2026-09-19):** farbige Aab-Passepartouts (Abschnitt 4) — es bleibt beim
+  weißen Museumskarton.
 
 ## 1. Hersteller
 
@@ -113,6 +115,8 @@ Vorhanden: Arten `eiche`, `ahorn`, `erle`, `nussbaum`. Neu nötig:
   Worker-Arbeit — besser eigene Art ohne Texturen).
 
 ## 4. Passepartouts bei Aab
+
+> Nur zur Dokumentation — farbige Passepartouts werden nicht umgesetzt (Entscheidung 2026-09-19).
 
 - **Standard**: Museumskarton **gebrochen weiß, 1,6 mm**, chlor- und säurefrei, 100 % gebleichter Zellstoff,
   pH 8,0–9,5, Puffer > 4 % Calciumcarbonat, DIN ISO 9706. Schrägschnitt, computergesteuert geschnitten.

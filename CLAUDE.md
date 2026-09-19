@@ -157,7 +157,7 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 - Passepartout (`src/components/Passepartout.tsx`): KLUG museum board, white, 1.5 mm, 45° bevel — the window at the back is exactly the picture. One mesh per matted picture; the frame's soft shadow on the board is baked into vertex colours (no shadow maps in the scene).
 - Instancing: `FrameInstancerRegistry` groups slots **by style**; `FrameInstancer` mounts one InstancedMesh pair per style in use (geometry per profile, material per finish), so a room with three styles costs six draw calls.
 - New drops take `editorStore.defaultFrameStyle` / `defaultPassepartout` (the last ones picked in the panel), which the drag ghost previews.
-- Planned, not built yet: Aab's coloured passepartouts, glass, and a custom frame option — see `docs/frames-aab-bilderrahmen.md`.
+- Planned, not built yet: glass and a custom frame option — see `docs/frames-aab-bilderrahmen.md`. Coloured passepartouts are not wanted (white museum board only).
 
 ### Render Backends (WebGPU + WebGL fallback)
 
