@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { getMaxAnisotropy, isWebGPURenderer } from '../lib/rendererBackend';
 import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
-import { pickVideoSource } from '../lib/videoSource';
+import { pickVideoSource, videoStreamUrl } from '../lib/videoSource';
 
 // Monitor GLB preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing
 // this component no longer downloads the model on every route, including the home page
@@ -27,7 +27,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
         const [muted, setMuted] = useState(true);
         // VID-04: low/medium presets play a smaller proxy version when one exists.
         const { videoMaxShortEdge } = useRenderQualitySettings();
-        const src = pickVideoSource(asset, videoMaxShortEdge);
+        const src = videoStreamUrl(pickVideoSource(asset, videoMaxShortEdge));
 
         // DPI-based sizing (same as SelectableInstance) — used as the base unit before user scale
         const dpi = asset.dpi || 72;

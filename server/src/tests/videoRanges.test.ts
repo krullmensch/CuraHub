@@ -1,0 +1,66 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import express from 'express';
+import request from 'supertest';
+import { capRangeHeader, capVideoRanges, isVideoPath, VIDEO_RANGE_CHUNK_BYTES } from '../lib/videoRanges';
+
+describe('capRangeHeader', () => {
+    it('limits open-ended ranges to one chunk', () => {
+        expect(capRangeHeader('bytes=0-', 100)).toBe('bytes=0-99');
+        expect(capRangeHeader('bytes=500-', 100)).toBe('bytes=500-599');
+    });
+
+    it('limits long closed ranges and keeps short ones', () => {
+        expect(capRangeHeader('bytes=0-1000', 100)).toBe('bytes=0-99');
+        expect(capRangeHeader('bytes=10-20', 100)).toBe('bytes=10-20');
+    });
+
+    it('leaves suffix and multi-part ranges alone', () => {
+        expect(capRangeHeader('bytes=-500', 100)).toBe('bytes=-500');
+        expect(capRangeHeader('bytes=0-10, 20-30', 100)).toBe('bytes=0-10, 20-30');
+    });
+
+    it('recognises video files only', () => {
+        expect(isVideoPath('/clip-1.MP4')).toBe(true);
+        expect(isVideoPath('/clip.webm')).toBe(true);
+        expect(isVideoPath('/picture.webp')).toBe(false);
+    });
+});
+
+describe('capVideoRanges with express.static', () => {
+    const size = VIDEO_RANGE_CHUNK_BYTES * 2 + 123;
+    let dir: string;
+    let app: express.Express;
+
+    beforeAll(() => {
+        dir = fs.mkdtempSync(path.join(os.tmpdir(), 'curahub-video-ranges-'));
+        fs.writeFileSync(path.join(dir, 'clip.mp4'), Buffer.alloc(size, 1));
+        fs.writeFileSync(path.join(dir, 'still.webp'), Buffer.alloc(size, 2));
+        app = express();
+        app.use('/uploads', capVideoRanges, express.static(dir));
+    });
+
+    afterAll(() => {
+        fs.rmSync(dir, { recursive: true, force: true });
+    });
+
+    it('answers bytes=0- on a video with the first chunk', async () => {
+        const res = await request(app).get('/uploads/clip.mp4?stream=chunked').set('Range', 'bytes=0-');
+        expect(res.status).toBe(206);
+        expect(res.headers['content-range']).toBe(`bytes 0-${VIDEO_RANGE_CHUNK_BYTES - 1}/${size}`);
+        expect(Number(res.headers['content-length'])).toBe(VIDEO_RANGE_CHUNK_BYTES);
+    });
+
+    it('ends the last chunk at the end of the file', async () => {
+        const start = VIDEO_RANGE_CHUNK_BYTES * 2;
+        const res = await request(app).get('/uploads/clip.mp4').set('Range', `bytes=${start}-`);
+        expect(res.status).toBe(206);
+        expect(res.headers['content-range']).toBe(`bytes ${start}-${size - 1}/${size}`);
+    });
+
+    it('does not touch other files', async () => {
+        const res = await request(app).get('/uploads/still.webp').set('Range', 'bytes=0-');
+        expect(res.headers['content-range']).toBe(`bytes 0-${size - 1}/${size}`);
+    });
+});

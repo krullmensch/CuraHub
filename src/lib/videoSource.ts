@@ -25,3 +25,12 @@ export function pickVideoSource(asset: VideoAssetLike, maxShortEdge: number | nu
         .sort((a, b) => b[0] - a[0])[0];
     return best ? best[1] : asset.path;
 }
+
+/**
+ * URL for a playing <video>. The server answers video ranges in short chunks and marks them
+ * `private` (server/src/lib/videoRanges.ts) — the query gives the file a new Cloudflare cache
+ * key, so copies Cloudflare cached before that change (whole-file ranges) are not used.
+ */
+export function videoStreamUrl(path: string): string {
+    return `${path}${path.includes('?') ? '&' : '?'}stream=chunked`;
+}
