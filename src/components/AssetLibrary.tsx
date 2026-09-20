@@ -910,7 +910,7 @@ export const AssetLibrary = () => {
                   >
                     <div className="aspect-square relative flex items-center justify-center bg-black/40 p-2">
                       {asset.type === 'splat' ? (
-                        <SplatPreviewTile filename={asset.filename} />
+                        <SplatPreviewTile filename={asset.filename} thumbnailPath={asset.thumbnailPath} />
                       ) : isModel ? (
                         <ModelPreviewCard url={asset.path} />
                       ) : isVideo ? (

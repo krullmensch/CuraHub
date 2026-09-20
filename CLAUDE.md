@@ -23,6 +23,7 @@ This file gives Claude Code full context about the project — its architecture,
 - `cd server && npx prisma migrate dev` — apply migrations
 - `cd server && npx prisma studio` — database browser
 - `cd server && npx prisma db seed` — seed via `prisma/seed.ts`
+- `cd server && npm run build && node dist/scripts/backfill-splats.js --apply` — convert existing splat assets to `.spz` and render their thumbnails
 
 Both frontend and backend must run simultaneously for development. The backend requires a MySQL database configured via `DATABASE_URL` in `server/.env`.
 
@@ -171,7 +172,11 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 
 ### Gaussian Splats
 
-- Asset/medium type `splat` (`.ply`, `.spz`, `.splat`, `.ksplat`, max 1 GB). Server (`server/src/lib/splats.ts`) validates headers and tells splat PLYs from mesh PLYs; files are stored unchanged.
+- Asset/medium type `splat` (`.ply`, `.sog`, `.spz`, `.splat`, `.ksplat`, max 1 GB). Server (`server/src/lib/splats.ts`) validates headers and tells splat PLYs from mesh PLYs.
+- **Every upload is converted to `.spz`** (`server/src/lib/spz.ts` + `splatReaders.ts`), roughly a tenth of a raw INRIA PLY, and the source file is deleted — like the GLB pipeline. `metadata.originalFormat`/`originalSize` keep what was uploaded. `.ksplat` has no reader and stays as it is; a `.sog` that cannot be converted is rejected (no backend of ours reads SOG directly). The encoders are the exact inverse of three.js r186's `SPZLoader`/`GaussianSplatPLYLoader`, so a converted capture renders like its source (verified attribute by attribute in `server/src/tests/splatConvert.test.ts`).
+- SOG v2 (`.sog`, PlayCanvas/SuperSplat) is read as what it is: a zip (fflate) of `meta.json` plus lossless WebP planes (decoded with sharp), dequantised into SPZ's arrays.
+- Asset-browser thumbnails are rasterised on the CPU during the upload (`server/src/lib/splatThumbnail.ts`): splats sorted back to front and composited as round Gaussians, written as the usual `-thumb-512/256.webp` pair. `SplatPreviewTile` shows it; captures from before fall back to the badge.
+- `node dist/scripts/backfill-splats.js --apply` converts and thumbnails existing splat assets (dry run by default).
 - `SplatInstance` stands on the floor like `model3d`: capture flipped upright (`SPLAT_UP_FLIP`), anchored at the bottom centre of its robust (1–99 %) bounds. Clicks hit a box proxy (`SplatHitProxy`), not the splats.
 - WebGPU: three.js `GaussianSplat`, parsed in `src/workers/splatParse.worker.ts`, geometry cached per URL. WebGL: Spark (`src/lib/sparkSupport.ts`, one `SparkRenderer` per renderer, `onDirty` → `invalidate`).
 - `GaussianSplat` smears splats in render targets — hide splats (`hideSplats`) during offscreen captures such as the glass reflection.
@@ -193,7 +198,7 @@ Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/pr
 - **Images** — client-side resize to 2500px max as WebP 80%, server extracts EXIF
 - **Video** — server transcodes to H.264 MP4 via ffmpeg, generates thumbnails
 - **3D Models** — direct upload (GLB/GLTF/OBJ/FBX), 50MB limit
-- **Gaussian Splats** — PLY/SPZ/SPLAT/KSPLAT stored as uploaded, decoded in the browser, 1GB limit
+- **Gaussian Splats** — PLY/SOG/SPZ/SPLAT converted to `.spz` on the server (thumbnail rendered on the CPU), KSPLAT stored as uploaded, 1GB limit
 - **Size limits** — image 10MB, video 200MB, model 50MB
 
 ---

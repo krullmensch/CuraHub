@@ -19,7 +19,15 @@ import { authenticate, requireCurator, userCanAccessProject } from '../lib/middl
 import { tryGenerateImageThumbnails } from '../lib/thumbnails';
 import { enqueueVideoJob } from '../lib/videoJobs';
 import { CHUNK_MAX_BYTES, CHUNK_SIZE_BYTES, ChunkedUploadStore } from '../lib/chunkedUploads';
-import { SPLAT_ONLY_EXTENSIONS, inspectSplatFile, type SplatInspection } from '../lib/splats';
+import {
+    CONVERTIBLE_SPLAT_FORMATS,
+    SPLAT_ONLY_EXTENSIONS,
+    convertSplatToSpz,
+    inspectSplatFile,
+    type SplatInspection,
+} from '../lib/splats';
+import { readSplatFile } from '../lib/splatReaders';
+import { trySplatThumbnails } from '../lib/splatThumbnail';
 
 export const uploadRouter = Router();
 const prisma = new PrismaClient();
@@ -73,7 +81,7 @@ const SIZE_LIMITS: Record<string, number> = {
     image: 200 * 1024 * 1024,   // 200MB (increased from 10MB as client handles optimization)
     video: 2 * 1024 * 1024 * 1024, // 2GB (was Infinity — see SEC-01)
     model3d: 100 * 1024 * 1024, // 100MB (source formats are larger, output is compressed)
-    splat: 1024 * 1024 * 1024, // 1GB (uncompressed PLY captures; stored as uploaded)
+    splat: 1024 * 1024 * 1024, // 1GB (uncompressed PLY captures; converted to .spz on upload)
 };
 
 /** Size limit before the file's content is known: a `.ply` may still turn out to be a splat. */
@@ -119,7 +127,7 @@ const upload = multer({
       if (type) {
           cb(null, true);
       } else {
-          cb(new Error('Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .spz, .splat, .ksplat)'));
+          cb(new Error('Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .sog, .spz, .splat, .ksplat)'));
       }
   }
 });
@@ -189,7 +197,7 @@ uploadRouter.post('/chunks', authenticate, requireCurator, async (req: Request, 
 
     const assetType = detectAssetType(mimetype, filename);
     if (!assetType) {
-        return res.status(400).json({ error: 'Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .spz, .splat, .ksplat)' });
+        return res.status(400).json({ error: 'Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .sog, .spz, .splat, .ksplat)' });
     }
     const sizeLimit = Math.min(preliminarySizeLimit(assetType, filename), UPLOAD_MAX_BYTES);
     if (size > sizeLimit) {
@@ -458,8 +466,14 @@ async function handleStoredUpload(
       }
 
       if (assetType === 'splat' && splat) {
-          const asset = await processSplat(file, splat, projectId, folderId, fileHash);
-          return { status: 200, body: asset };
+          try {
+              const asset = await processSplat(file, splat, projectId, folderId, fileHash);
+              return { status: 200, body: asset };
+          } catch (err) {
+              // processSplat only rethrows when the file cannot be used at all (see there).
+              discard();
+              return { status: 400, body: { error: (err as Error).message || 'Splat konnte nicht verarbeitet werden' } };
+          }
       }
 
       const asset = await processModel(file, projectId, folderId, fileHash);
@@ -471,26 +485,71 @@ async function handleStoredUpload(
   }
 }
 
-// ── Gaussian splats: stored as uploaded, decoded in the browser ──
+// ── Gaussian splats: converted to .spz, thumbnail rendered on the CPU ──
+
+/**
+ * A splat upload is stored as `.spz` (lib/spz): a PLY capture shrinks roughly tenfold, which is
+ * what the editor spends its time on when a splat is placed. The source file is removed
+ * afterwards, like the 3D model pipeline does with its input. `.ksplat` is already compact and has
+ * no reader, so it stays as uploaded — then there is no thumbnail either.
+ */
 async function processSplat(file: StoredFile, splat: SplatInspection, projectId: string | undefined, folderId?: number, fileHash?: string) {
     console.log(`[Upload] Gaussian splat: ${file.originalname} (${splat.format}, ${splat.splatCount ?? '?'} splats)`);
+
+    let storedFilename = file.filename;
+    let size = file.size;
+    let format = splat.format;
+    let splatCount = splat.splatCount ?? undefined;
+    let thumbnailPath: string | null = null;
+
+    if (CONVERTIBLE_SPLAT_FORMATS.includes(splat.format)) {
+        try {
+            const started = Date.now();
+            if (splat.format === 'spz') {
+                // Already the target format — only read it for the thumbnail.
+                thumbnailPath = await trySplatThumbnails(await readSplatFile(file.path, '.spz'), file.path);
+            } else {
+                const converted = await convertSplatToSpz(file.path, splat.format);
+                console.log(
+                    `[Splat] ${splat.format} → spz in ${Date.now() - started} ms: `
+                    + `${(file.size / 1024 / 1024).toFixed(1)} MB → ${(converted.size / 1024 / 1024).toFixed(1)} MB`,
+                );
+                fs.unlinkSync(file.path);
+                storedFilename = converted.filename;
+                size = converted.size;
+                format = 'spz';
+                splatCount = converted.splats.count;
+                thumbnailPath = await trySplatThumbnails(converted.splats, converted.path);
+            }
+        } catch (err) {
+            console.warn(`[Splat] Konvertierung fehlgeschlagen (${splat.format}):`, (err as Error).message);
+            // A `.sog` bundle is the one format no render backend of ours reads directly, so it is
+            // only useful converted. Everything else still renders from the file as uploaded.
+            if (splat.format === 'sog') throw err;
+        }
+    }
+
+    const originalExt = path.extname(file.originalname).toLowerCase();
     return prisma.asset.create({
         data: {
-            filename: file.originalname,
-            path: `/uploads/${file.filename}`,
+            filename: format === splat.format ? file.originalname : path.basename(file.originalname, originalExt) + '.spz',
+            path: `/uploads/${storedFilename}`,
             mimetype: 'application/octet-stream',
-            size: file.size,
+            size,
             type: 'splat',
             width: null,
             height: null,
             dpi: null,
             fileHash,
+            thumbnailPath: thumbnailPath ?? undefined,
             projectId: projectId ? parseInt(projectId, 10) : undefined,
             folderId,
             metadata: {
                 projectId: projectId ? String(projectId) : undefined,
-                splatFormat: splat.format,
-                splatCount: splat.splatCount ?? undefined,
+                splatFormat: format,
+                splatCount,
+                originalFormat: splat.format,
+                originalSize: format === splat.format ? undefined : file.size,
             },
         },
     });

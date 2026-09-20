@@ -133,7 +133,7 @@ export const UploadDropzone = ({
           '.glb', '.gltf', '.obj', '.fbx', '.dae', '.stl',
           '.ply', '.3ds', '.ase', '.blend', '.usdz', '.usd',
           // Gaussian splats (.ply is either — the server tells them apart by the header)
-          '.spz', '.splat', '.ksplat',
+          '.sog', '.spz', '.splat', '.ksplat',
       ];
 
       const validFiles = Array.from(files).filter(file => {
@@ -146,7 +146,7 @@ export const UploadDropzone = ({
 
       if (validFiles.length === 0) {
           if (files.length > 0) {
-             onUploadError('Nicht unterstütztes Dateiformat. Erlaubt: Bilder, Videos, 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …) und Gaussian Splats (.ply, .spz, .splat, .ksplat)');
+             onUploadError('Nicht unterstütztes Dateiformat. Erlaubt: Bilder, Videos, 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …) und Gaussian Splats (.ply, .sog, .spz, .splat, .ksplat)');
           }
           return;
       }
@@ -254,7 +254,7 @@ export const UploadDropzone = ({
             type="file"
             className="hidden"
             onChange={handleFileSelect}
-            accept="image/*,video/*,.glb,.gltf,.obj,.fbx,.dae,.stl,.ply,.3ds,.ase,.blend,.usdz,.usd,.spz,.splat,.ksplat"
+            accept="image/*,video/*,.glb,.gltf,.obj,.fbx,.dae,.stl,.ply,.3ds,.ase,.blend,.usdz,.usd,.sog,.spz,.splat,.ksplat"
             multiple
             disabled={processing}
         />

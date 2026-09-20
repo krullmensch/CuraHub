@@ -189,7 +189,7 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
                 </div>
              ) : asset.type === 'splat' ? (
                 <div className="h-48 w-full overflow-hidden rounded-md">
-                    <SplatPreviewTile filename={asset.filename} />
+                    <SplatPreviewTile filename={asset.filename} thumbnailPath={processed ? processed.thumbnailPath : asset.thumbnailPath} />
                 </div>
              ) : (asset.type) === 'model3d' ? (
                 <div className="h-48 w-full">

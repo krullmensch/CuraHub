@@ -1,14 +1,21 @@
 import fs from 'fs';
+import path from 'path';
 import zlib from 'zlib';
+import { parseSogBundle, readSplatFile } from './splatReaders';
+import { writeSpzFile, type SpzSplats } from './spz';
 
-// Gaussian splat uploads (3D Gaussian Splatting captures). Files are stored unchanged; the
-// browser decodes them (three.js GaussianSplat on WebGPU, Spark on WebGL). The checks here only
-// make sure a file really is a splat file of the claimed format and read the splat count.
+// Gaussian splat uploads (3D Gaussian Splatting captures). Uploads are converted to `.spz`
+// (./splatReaders, ./spz) — roughly a tenth of a raw PLY, and both render backends read it as it
+// is (three.js GaussianSplat on WebGPU, Spark on WebGL). The checks here identify the uploaded
+// file and read its splat count before anything is converted.
 
-export type SplatFormat = 'ply' | 'spz' | 'splat' | 'ksplat';
+export type SplatFormat = 'ply' | 'spz' | 'splat' | 'ksplat' | 'sog';
 
 /** Extensions that are always splats. `.ply` can also be a mesh — see inspectSplatFile. */
-export const SPLAT_ONLY_EXTENSIONS = ['.spz', '.splat', '.ksplat'];
+export const SPLAT_ONLY_EXTENSIONS = ['.spz', '.splat', '.ksplat', '.sog'];
+
+/** Formats convertSplatToSpz can read. `.ksplat` is stored as uploaded. */
+export const CONVERTIBLE_SPLAT_FORMATS: SplatFormat[] = ['ply', 'sog', 'splat', 'spz'];
 
 export interface SplatInspection {
     format: SplatFormat;
@@ -115,6 +122,11 @@ export async function inspectSplatFile(filePath: string, ext: string, size: numb
             if (size === 0 || size % SPLAT_RECORD_BYTES !== 0) throw new Error('Keine gültige SPLAT-Datei');
             return { format: 'splat', splatCount: size / SPLAT_RECORD_BYTES };
         }
+        case '.sog': {
+            // A SOG bundle is a zip of meta.json + WebP planes; parseSogBundle validates both.
+            const { meta } = parseSogBundle(await fs.promises.readFile(filePath));
+            return { format: 'sog', splatCount: meta.count };
+        }
         case '.ksplat': {
             const head = await readHead(filePath, 20);
             if (head.length < 20 || head[0] !== 0 || head[1] < 1) throw new Error('Keine gültige KSPLAT-Datei');
@@ -123,4 +135,28 @@ export async function inspectSplatFile(filePath: string, ext: string, size: numb
         default:
             return null;
     }
+}
+
+
+export interface SplatConversion {
+    splats: SpzSplats;
+    /** Public-facing file name of the written `.spz`. */
+    filename: string;
+    path: string;
+    size: number;
+}
+
+/**
+ * Reads `sourcePath` and writes it next to itself as `<stem>.spz`. The caller deletes the source
+ * (the 3D model pipeline does the same with its input). Returns the parsed splats as well, so a
+ * thumbnail can be rendered without reading the file back.
+ */
+export async function convertSplatToSpz(sourcePath: string, format: SplatFormat): Promise<SplatConversion> {
+    const splats = await readSplatFile(sourcePath, `.${format}`);
+    const directory = path.dirname(sourcePath);
+    const stem = path.basename(sourcePath, path.extname(sourcePath));
+    const filename = `${stem}.spz`;
+    const target = path.join(directory, filename);
+    const size = await writeSpzFile(splats, target);
+    return { splats, filename, path: target, size };
 }

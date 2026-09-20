@@ -314,7 +314,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                             </div>
                                         </div>
                                     ) : asset.type === 'splat' ? (
-                                        <SplatPreviewTile filename={asset.filename} compact />
+                                        <SplatPreviewTile filename={asset.filename} thumbnailPath={asset.thumbnailPath} compact />
                                     ) : asset.type === 'model3d' ? (
                                         <div className="flex items-center justify-center h-full bg-zinc-800">
                                             <ModelPreviewCard url={asset.path} compact />

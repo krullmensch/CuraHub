@@ -1,5 +1,5 @@
 /** Extensions of files that can become an artwork (see server/src/lib/artworkTitle.ts). */
-const MEDIA_EXTENSION_RE = /\.(webp|jpe?g|png|tiff?|gif|avif|heic|mp4|m4v|mov|webm|glb|gltf|obj|fbx|ply|spz|splat|ksplat)$/i;
+const MEDIA_EXTENSION_RE = /\.(webp|jpe?g|png|tiff?|gif|avif|heic|mp4|m4v|mov|webm|glb|gltf|obj|fbx|ply|sog|spz|splat|ksplat)$/i;
 
 /**
  * Artworks created by dropping an asset are titled after the file. Older ones kept the
