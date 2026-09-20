@@ -50,20 +50,19 @@ export const ArtworkInfoOverlay = () => {
     const [isActive, setIsActive] = useState(false);
     const [isLocked, setIsLocked] = useState(false);
     const [isMuted, setIsMuted] = useState(true);
+    // Hidden by a left click and staying hidden until the next click — also when the player
+    // looks at another artwork in between.
     const [dismissed, setDismissed] = useState(false);
 
     const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const enterFrame = useRef<number | null>(null);
     const descRef = useRef<HTMLDivElement>(null);
-    const [dismissedForId, setDismissedForId] = useState<number | null>(null);
 
     // Refs for mousedown handler
     const fpvHoveredInfoRef = useRef(fpvHoveredInfo);
-    const dismissedRef = useRef(dismissed);
     const isLockedRef = useRef(isLocked);
     useLayoutEffect(() => {
         fpvHoveredInfoRef.current = fpvHoveredInfo;
-        dismissedRef.current = dismissed;
         isLockedRef.current = isLocked;
     });
 
@@ -78,15 +77,7 @@ export const ArtworkInfoOverlay = () => {
     const [prevHoveredInfo, setPrevHoveredInfo] = useState<typeof fpvHoveredInfo>(null);
     if (fpvHoveredInfo !== prevHoveredInfo) {
         setPrevHoveredInfo(fpvHoveredInfo);
-        if (fpvHoveredInfo) {
-            setDisplayInfo(fpvHoveredInfo);
-
-            // Reset dismissed when looking at a new artwork
-            if (fpvHoveredInfo.instanceId !== dismissedForId) {
-                setDismissed(false);
-                setDismissedForId(null);
-            }
-        }
+        if (fpvHoveredInfo) setDisplayInfo(fpvHoveredInfo);
     }
 
     // Start the exit transition as soon as the panel should hide
@@ -129,18 +120,8 @@ export const ArtworkInfoOverlay = () => {
     useEffect(() => {
         const onMouseDown = (e: MouseEvent) => {
             if (e.button !== 0 || !isLockedRef.current) return;
-            const hovered = fpvHoveredInfoRef.current;
-            if (!hovered) return;
-
-            if (dismissedRef.current) {
-                // Currently hidden → show it
-                setDismissed(false);
-                setDismissedForId(null);
-            } else {
-                // Currently showing → hide it
-                setDismissed(true);
-                setDismissedForId(hovered.instanceId);
-            }
+            if (!fpvHoveredInfoRef.current) return;
+            setDismissed((prev) => !prev);
         };
         window.addEventListener('mousedown', onMouseDown);
         return () => window.removeEventListener('mousedown', onMouseDown);
