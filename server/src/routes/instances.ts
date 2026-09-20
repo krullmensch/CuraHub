@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
 import { DEFAULT_FRAME_STYLE, frameStyleSchema, passepartoutPlacementSchema, passepartoutWidthSchema } from '../lib/frameStyles';
+import { artworkTitleFromFilename } from '../lib/artworkTitle';
 
 export const instancesRouter = Router();
 const prisma = new PrismaClient();
@@ -54,7 +55,7 @@ instancesRouter.post('/', authenticate, idempotency, async (req: Request, res) =
             if (!artwork) {
                 artwork = await prisma.artwork.create({
                     data: {
-                        title: asset.filename,
+                        title: artworkTitleFromFilename(asset.filename),
                         assetId: asset.id,
                         artist: 'Unknown',
                         year: new Date().getFullYear().toString()

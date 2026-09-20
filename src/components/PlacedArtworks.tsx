@@ -8,6 +8,7 @@ import { ModelInstance } from './ModelInstance';
 import { SplatInstance } from './SplatInstance';
 import { InstanceTransformControls } from './InstanceTransformControls';
 import { instanceOnFace, openFaceOf } from '../lib/wallEditor/faces';
+import { displayArtworkTitle } from '../lib/artworkTitle';
 
 interface PlacedArtworksProps {
     viewerInstances?: ArtworkInstanceData[];
@@ -15,7 +16,7 @@ interface PlacedArtworksProps {
 }
 
 const buildArtworkInfo = (instance: ArtworkInstanceData) => ({
-    title: instance.artwork?.title || '',
+    title: displayArtworkTitle(instance.artwork?.title || ''),
     artist: instance.artwork?.artist || '',
     year: instance.artwork?.year || '',
     description: instance.artwork?.description || '',

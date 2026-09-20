@@ -196,6 +196,15 @@ export const ArtworkInfoOverlay = () => {
         };
     };
 
+    // Titles fall back to the file name, which can be one long unbroken token. It wraps
+    // (anywhere, not only at spaces) and the type steps down so the panel grows in height
+    // instead of the text running past its border.
+    const title = displayInfo?.title ?? '';
+    // Break after separators first (Noera_Izmir_Print-9 → Noera_ / Izmir_ / Print-9); only a
+    // single word longer than the panel falls back to breaking anywhere.
+    const wrappableTitle = title.replace(/[_\-–—/]/g, '$&\u200B');
+    const titleFontSize = title.length > 44 ? 18 : title.length > 26 ? 22 : 28;
+
     const extensionStart = gap + armLen + 2;
     const extensionLen = 56;
     const panelLeft = extensionStart + extensionLen;
@@ -251,10 +260,11 @@ export const ArtworkInfoOverlay = () => {
                         {/* Title */}
                         <div style={{
                             fontFamily: '"Funnel Display", sans-serif',
-                            fontSize: 28, fontWeight: 800,
+                            fontSize: titleFontSize, fontWeight: 800,
                             color: 'white', lineHeight: 1.2, marginBottom: 8,
+                            overflowWrap: 'anywhere',
                         }}>
-                            {displayInfo.title}
+                            {wrappableTitle}
                         </div>
 
                         {/* Description */}
@@ -269,6 +279,7 @@ export const ArtworkInfoOverlay = () => {
                                         fontSize: 14, fontWeight: 400,
                                         color: 'white', lineHeight: 1.15,
                                         marginBottom: 10, whiteSpace: 'pre-wrap',
+                                        overflowWrap: 'anywhere',
                                         ...(isLong ? {
                                             maxHeight: 140, overflowY: 'auto',
                                             pointerEvents: 'auto',
@@ -286,6 +297,7 @@ export const ArtworkInfoOverlay = () => {
                                 fontFamily: '"Albert Sans", sans-serif',
                                 fontSize: 14, fontWeight: 800,
                                 color: 'white', lineHeight: 1.2, marginTop: 'auto',
+                                overflowWrap: 'anywhere',
                             }}>
                                 {displayInfo.artist}
                                 {displayInfo.artist && displayInfo.year && ' — '}
