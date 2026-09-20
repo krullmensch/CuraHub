@@ -12,6 +12,7 @@ import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { ArrowLeft } from 'lucide-react';
 import type { ArtworkInstanceData, ModularWallData } from '../store/editorStore';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
+import { useArtworkLoadProgress } from '../lib/artworkLoadProgress';
 import { Grid } from 'ldrs/react';
 import 'ldrs/react/Grid.css';
 
@@ -43,6 +44,9 @@ interface ExhibitionData {
 
 // RND-08: physics (Rapier) + player live in a lazy chunk; the download starts on mount.
 const loadPhysicsWorld = () => import('../components/physics/PhysicsWorld');
+
+/** Never keep the door shut longer than this once the room itself is ready (slow or dead image). */
+const TEXTURE_WAIT_TIMEOUT_MS = 30_000;
 const PhysicsWorld = lazy(loadPhysicsWorld);
 
 export const ViewerPage = () => {
@@ -57,7 +61,17 @@ export const ViewerPage = () => {
     const [roomReady, setRoomReady] = useState(false);
     // Shader programs of the room/artworks compiled (ShaderWarmup) — entering earlier froze the first frame.
     const [shadersReady, setShadersReady] = useState(false);
-    const sceneReady = roomReady && shadersReady;
+    // Every picture shows its first (lowest) texture tier — sharper ones load while walking.
+    // Counted against the instances the API sent, so the wait also covers the ones whose
+    // component hasn't mounted (and registered a texture) yet.
+    const textures = useArtworkLoadProgress();
+    const [textureWaitTimedOut, setTextureWaitTimedOut] = useState(false);
+    const expectedPictures = useMemo(
+        () => (data?.instances ?? []).filter((i) => !['video', 'model3d', 'splat'].includes(i.artwork?.asset?.type ?? '')).length,
+        [data],
+    );
+    const texturesReady = textureWaitTimedOut || textures.settled >= expectedPictures;
+    const sceneReady = roomReady && shadersReady && texturesReady;
     const [loading, setLoading] = useState(true);
     const [showLoading, setShowLoading] = useState(true);
     const [isLocked, setIsLocked] = useState(false);
@@ -90,6 +104,13 @@ export const ViewerPage = () => {
         document.addEventListener('pointerlockchange', handler);
         return () => document.removeEventListener('pointerlockchange', handler);
     }, [loading]);
+
+    // A missing or very slow image must not lock the exhibition shut forever.
+    useEffect(() => {
+        if (!roomReady || texturesReady) return;
+        const timer = setTimeout(() => setTextureWaitTimedOut(true), TEXTURE_WAIT_TIMEOUT_MS);
+        return () => clearTimeout(timer);
+    }, [roomReady, texturesReady]);
 
     // Track tab visibility — stop rendering when the tab is backgrounded (RND-02)
     useEffect(() => {
@@ -172,6 +193,11 @@ export const ViewerPage = () => {
         );
     }
 
+    // While the room loads: drei's loader progress. Afterwards: the artworks' first tier.
+    const loadingPercent = roomReady && expectedPictures > 0
+        ? (Math.min(textures.settled, expectedPictures) / expectedPictures) * 100
+        : progress;
+
     // RND-02: render continuously only while the player is actually in the scene
     // (pointer-locked) and the tab is visible. Otherwise render on demand — the entry
     // overlay is static HTML on top of the canvas, not a reason to keep rendering.
@@ -236,7 +262,8 @@ export const ViewerPage = () => {
             )}
 
             {/* Top-right nav button */}
-            <div className="fixed top-6 right-6 z-20">
+            {/* Above the entry overlay (z-[1000]) — it comes back on Escape and swallowed the click. */}
+            <div className="fixed top-6 right-6 z-[1010]">
                 <button
                     onClick={() => window.open('/exhibitions', '_blank')}
                     className="text-white/70 hover:text-white text-sm font-medium uppercase tracking-[0.15em] bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 backdrop-blur-sm px-4 py-2 rounded-lg transition-all duration-200"
@@ -279,21 +306,21 @@ export const ViewerPage = () => {
                         <div className="flex flex-col items-center gap-4 text-center px-6">
                             {loading ? (
                                 <>
-                                    {progress > 0 && progress < 100 && (
+                                    {loadingPercent > 0 && loadingPercent < 100 && (
                                         <div className="flex flex-col items-center gap-2">
                                             <div className="w-48 h-1 bg-white/10 rounded-full overflow-hidden">
                                                 <div
                                                     className="h-full bg-white transition-all duration-300 ease-out"
-                                                    style={{ width: `${progress}%` }}
+                                                    style={{ width: `${loadingPercent}%` }}
                                                 />
                                             </div>
                                             <p className="text-white/40 text-[10px] uppercase tracking-[0.2em] font-medium">
-                                                {Math.round(progress)}%
+                                                {Math.round(loadingPercent)}%
                                             </p>
                                         </div>
                                     )}
                                     <p className="text-white/40 text-[11px] uppercase tracking-[0.3em] font-medium animate-pulse">
-                                        {apiLoading ? 'Initialisierung' : 'Asset-Synchronisation'}
+                                        {apiLoading ? 'Initialisierung' : roomReady && !texturesReady ? 'Bilder werden geladen' : 'Asset-Synchronisation'}
                                     </p>
                                 </>
                             ) : !isLocked ? (

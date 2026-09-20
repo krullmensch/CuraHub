@@ -274,6 +274,18 @@ export class ArtworkTextureManager {
         return this.pendingKeys.size;
     }
 
+    /**
+     * Artworks that already show a picture (any tier), plus those with nothing left to try
+     * (every source failed) — the viewer waits for this before letting the player in.
+     */
+    get baseProgress(): { settled: number; total: number } {
+        let settled = 0;
+        for (const entry of this.entries.values()) {
+            if (entry.currentTier >= 0 || entry.failedKeys.size > 0) settled++;
+        }
+        return { settled, total: this.entries.size };
+    }
+
     handleContextRestored(): void {
         this.abortAll();
         for (const item of this.cache.values()) item.texture.dispose();
@@ -415,11 +427,15 @@ export class ArtworkTextureManager {
         const waiting: number[] = [];
         for (const id of this.queue) {
             const entry = this.entries.get(id);
-            if (!entry || entry.wantedTier === entry.currentTier || entry.loadingTier === entry.wantedTier) continue;
-            // Nothing visible yet: let the running load (usually the thumbnail) finish first
-            // instead of switching to a larger, slower download.
+            if (!entry || entry.wantedTier === entry.currentTier) continue;
+            // Nothing visible yet: show the smallest tier (the thumbnail) first, however big the
+            // artwork is on screen — an empty frame is worse than a soft picture, and the viewer
+            // waits for all of them before letting the player in. The upgrade follows right after.
+            const tier = entry.currentTier === -1 ? 0 : entry.wantedTier;
+            if (entry.loadingTier === tier) continue;
+            // Let the running load finish instead of switching to a larger, slower download.
             if (entry.currentTier === -1 && entry.loadingKey) continue;
-            const { isThumbnail } = this.sourceFor(entry, entry.wantedTier, settings);
+            const { isThumbnail } = this.sourceFor(entry, tier, settings);
             const slotsFull = isThumbnail
                 ? this.activeThumbnailJobs >= THUMBNAIL_CONCURRENCY
                 : this.activeJobs >= settings.maxConcurrentLoads;
@@ -427,7 +443,7 @@ export class ArtworkTextureManager {
                 waiting.push(id);
                 continue;
             }
-            this.request(entry, entry.wantedTier, settings);
+            this.request(entry, tier, settings);
         }
         this.queue = waiting;
     }
@@ -515,6 +531,8 @@ export class ArtworkTextureManager {
         const item = this.cache.get(key);
         if (!item) return;
         entry.currentTier = tier;
+        // The first tier is always the smallest one (see pump) — queue the upgrade.
+        if (tier !== entry.wantedTier) this.dirty = true;
         if (entry.currentKey === key) return;
         item.refs++;
         if (entry.currentKey) this.release(entry.currentKey);

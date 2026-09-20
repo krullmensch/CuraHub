@@ -4,6 +4,7 @@ import { ArtworkTextureManager } from '../lib/artworkTextureManager';
 import { ArtworkTextureContext } from '../lib/artworkTextureContext';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { getMaxTextureSize, onRendererContextRestored } from '../lib/rendererBackend';
+import { resetArtworkLoadProgress, setArtworkLoadProgress } from '../lib/artworkLoadProgress';
 
 /**
  * LOAD-05 / LOAD-07: owns the artwork texture LOD manager for this Canvas and drives it
@@ -27,10 +28,14 @@ export const ArtworkTextureProvider = ({ children }: { children: ReactNode }) =>
         });
     }, [manager, gl, invalidate]);
 
-    useEffect(() => () => manager.dispose(), [manager]);
+    useEffect(() => () => {
+        manager.dispose();
+        resetArtworkLoadProgress();
+    }, [manager]);
 
     useFrame((state) => {
         manager.tick(state.camera, gl, performance.now());
+        setArtworkLoadProgress(manager.baseProgress);
     });
 
     return <ArtworkTextureContext.Provider value={manager}>{children}</ArtworkTextureContext.Provider>;
