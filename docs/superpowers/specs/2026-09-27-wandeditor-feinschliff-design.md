@@ -45,10 +45,11 @@ wall_guides    Json?                  // { [faceKey]: { axis: 'h' | 'v', value: 
 
 Neue reine Funktionen in `server/src/lib/wallGuides.ts`:
 
-- `wallGuidesSchema` (Zod): Keys als String, pro Key höchstens 200 Linien, `axis ∈ {'h','v'}`, `value` endlich und 0–100 m.
+- `wallGuidesSchema` (Zod): Keys als String, pro Key höchstens 200 Linien, `axis ∈ {'h','v'}`, `value` −100 bis 100 m (Hilfslinien dürfen außerhalb der Wandfläche liegen).
 - `hangingHeightSchema`: 0,01–9,99 m.
 - `guidesToIndexKeys(guides, wallIdToIndex)`: `wall:<id>:<side>` → `wallIndex:<i>:<side>`. Keys unbekannter Wände fallen weg, Raum-Keys bleiben unverändert.
 - `guidesFromIndexKeys(guides, newWallIds)`: `wallIndex:<i>:<side>` → `wall:<neueId>:<side>`.
+- `remapWallGuides(guides, wallIdToIndex, newWallIds)`: beides hintereinander.
 - `dropWallGuides(guides, wallId)`: entfernt alle `wall:<wallId>:*`.
 
 Routen:
@@ -56,8 +57,9 @@ Routen:
 | Methode | Pfad | Änderung |
 |---|---|---|
 | `PATCH` | `/exhibitions/:eid/versions/:vid/wall-layout` | **neu.** Body `{ hangingHeight?: number, guides?: WallGuides }`, ersetzt die übergebenen Felder vollständig. Rechteprüfung wie bei Instanz-Änderungen. |
-| `GET` | `/exhibitions/:eid/versions/:vid` | liefert `hanging_height` und `wall_guides` mit |
-| `POST` | `/exhibitions/:eid/versions` | Body bekommt optional `hangingHeight` und `wallGuides`. Der Client schickt die Guides schon mit `wallIndex:`-Keys (gleiche Reihenfolge wie `wallIndex` der Instanzen), der Server wandelt sie mit `guidesFromIndexKeys` um. Im Deep-Copy-Zweig (ohne Client-Daten) kopiert der Server `hanging_height` und wandelt `wall_guides` über das vorhandene `oldWallIdToIndex` → Index → neue IDs um. |
+| `GET` | `/exhibitions/:eid/versions/:vid/wall-layout` | **neu.** `{ hangingHeight, guides }` — der Editor lädt Instanzen und Wände über eigene Routen, nicht über die Versions-GET-Route, und braucht deshalb einen leichten Lese-Endpoint. |
+| `GET` | `/exhibitions/:eid/versions/:vid` | liefert `hanging_height` und `wall_guides` automatisch mit (Skalarfelder) |
+| `POST` | `/exhibitions/:eid/versions` | Body bekommt optional `hangingHeight` und `wallGuides` (Keys mit den lokalen Wand-IDs); jede Wand in `walls[]` trägt zusätzlich ihre lokale `id`. Der Server baut daraus `wallIdToIndex` und wandelt die Keys mit `remapWallGuides` auf die neuen IDs um. Fehlen die Felder (alter Client), nimmt er die Werte der Quellversion. Im Deep-Copy-Zweig (ohne Client-Daten) kopiert der Server `hanging_height` und wandelt `wall_guides` über das vorhandene `oldWallIdToIndex` → Index → neue IDs um. |
 | `POST` | `/exhibitions/:eid/versions/:vid/merge` | wie Deep-Copy: Hängehöhe kopieren, Keys umschreiben |
 | `DELETE` | `/walls/:id` | `dropWallGuides` auf `wall_guides` der Version anwenden |
 
@@ -69,9 +71,11 @@ Routen:
 - `guides: RulerGuide[]` wird ersetzt durch `guidesByFace: Record<string, RulerGuide[]>`; die Guides der offenen Seite kommen über einen Selektor (`guidesOf(faceKey)`).
 - `RulerGuide.axis` wird `'h' | 'v'`, `value` relativ zur Wandseite (siehe oben). Das Overlay rechnet für Zeichnen und Einrasten in Wandkoordinaten um (`u = wallRect.x + value` bzw. `v = wallRect.y + value`).
 - `resetForWall()` löscht nur noch Messungen.
-- Neu: `loadWallLayout({ hangingHeight, guides })` beim Laden bzw. Wechsel der Version (aus der GET-Antwort, im Client mit Zod geprüft).
+- Neu: `loadWallLayout({ hangingHeight, guides })` beim Laden bzw. Wechsel der Version (aus `GET …/wall-layout`, im Client mit Zod geprüft). Zod kommt dafür als direkte Abhängigkeit ins Frontend.
 
-Speichern: `subscribe` auf `hangingHeight` und `guidesByFace` außerhalb von React, 300 ms Debounce, dann `PATCH …/wall-layout` mit dem vollständigen Stand. Die Speicherfunktion schreibt nur und löst keine Store-Aktionen aus (Regel aus Bug 1). Beim Laden einer Version wird der Subscriber übersprungen, damit das Laden keinen PATCH auslöst.
+Speichern: `src/lib/wallEditor/layoutSync.ts` (`startWallLayoutSync()`, gestartet von `EditorPage`) abonniert `hangingHeight` und `guidesByFace` außerhalb von React, 300 ms Debounce, dann `PATCH …/wall-layout` mit dem vollständigen Stand. Die Speicherfunktion schreibt nur und löst keine Store-Aktionen aus (Regel aus Bug 1). Beim Laden einer Version wird der Subscriber übersprungen, damit das Laden keinen PATCH auslöst; gespeichert wird nur, wenn die geladene Version die aktive ist. Ein offener Debounce wird beim Versionswechsel noch für die alte Version abgeschickt.
+
+Wand-IDs: Bekommt eine neue Wand ihre Datenbank-ID (temporäre negative ID → echte ID) oder wird eine Wand gelöscht, meldet `editorStore` das über `src/lib/wallEvents.ts`; `layoutSync` benennt die Keys um bzw. entfernt sie.
 
 Undo: Hilfslinien und Hängehöhe sind **nicht** im Instanz-Undo-Stack. „Alle löschen" zeigt einen Toast mit „Rückgängig", der die vorherige Liste wiederherstellt.
 
@@ -140,7 +144,8 @@ Einträge anpassen bzw. ergänzen: „Lineal oben ziehen → waagrechte Hilfslin
 Nötig, weil `PropertiesPanel` an `selectedInstanceId` hängt, das im Editor null ist. Nur verschieben, kein Verhalten ändern:
 
 - `FrameControls` (samt `PassepartoutValue`, `passepartoutOf`, `finishSwatch`) → `src/components/properties/FrameControls.tsx`.
-- Berechnung von `baseCm` → reine Funktion `artworkBaseCm(inst, modelSize?)` in `src/lib/artworkSize.ts`.
+- `NumericInput` → `src/components/properties/NumericInput.tsx`; `PassepartoutValue`, `NO_PASSEPARTOUT`, `passepartoutOf` → `src/lib/passepartout.ts`.
+- Die Bildgröße kommt aus dem vorhandenen `baseArtworkSize(inst)` in `src/lib/wallEditor/footprint.ts` (dieselbe Rechnung wie `baseCm` im PropertiesPanel für Bilder und Videos); neu daneben `pictureSize(inst)` = Grundmaß × Skalierung.
 - `PropertiesPanel` importiert beides und verhält sich wie vorher.
 
 ### Tab „Werk" (`WallEditorArtworkTab.tsx`)
