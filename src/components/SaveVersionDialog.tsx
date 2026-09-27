@@ -3,6 +3,8 @@ import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { Save, X } from 'lucide-react';
 import { frameStyleOf } from '../lib/frameStyles';
+import { useWallEditorView } from '../store/wallEditorViewStore';
+import { serializeGuides } from '../lib/wallEditor/guides';
 
 interface SaveVersionDialogProps {
   onSave: () => void;
@@ -37,6 +39,9 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
           comment: comment.trim(),
           branch_name: branchName,
           sourceVersionId: activeVersionId,
+          // 2D wall editor layout; the guide keys use the wall ids sent with `walls` below.
+          hangingHeight: useWallEditorView.getState().hangingHeight,
+          wallGuides: serializeGuides(useWallEditorView.getState().guidesByFace),
           instances: (() => {
             const walls = useEditorStore.getState().localWalls;
             return useEditorStore.getState().localInstances.map(inst => ({
@@ -60,6 +65,7 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
             }));
           })(),
           walls: useEditorStore.getState().localWalls.map(w => ({
+            id: w.id,
             label: w.label ?? null,
             position_x: w.position_x,
             position_y: w.position_y,
