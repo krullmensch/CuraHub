@@ -323,7 +323,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             return;
         }
 
-        // Werk > hanging line > guide when they overlap
+        // artwork > hanging line > guide when they overlap
         if (hitHanging(x, y)) {
             setInter({ kind: 'hanging', pointerId: e.pointerId, value: view.hangingHeight });
             return;
