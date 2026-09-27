@@ -347,6 +347,12 @@ export const WallEditor = () => {
     const phase = useWallEditorView((s) => s.phase);
     const face = useWallFace();
 
+    const isOpen = !!wallEditor;
+    // Every editor session starts on "Anordnen"; selections may switch to "Werk" until a tab is picked.
+    useEffect(() => {
+        if (isOpen) useWallEditorView.getState().resetPanelTab();
+    }, [isOpen]);
+
     // The wall was deleted or the version changed underneath the editor.
     useEffect(() => {
         if (wallEditor && !face) closeWallEditor();

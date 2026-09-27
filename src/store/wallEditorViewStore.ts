@@ -19,6 +19,8 @@ import {
 
 export type WallEditorTool = 'select' | 'hand' | 'measure';
 
+export type WallEditorPanelTab = 'arrange' | 'artwork' | 'guides';
+
 /**
  * idle      — 3D editor
  * entering  — camera flies to the wall (perspective)
@@ -118,6 +120,10 @@ interface WallEditorViewState {
     /** Guide highlighted by hovering it in the canvas or in the guides tab. */
     hoverGuideId: number | null;
 
+    panelTab: WallEditorPanelTab;
+    /** The user picked a tab in this editor session — selecting artworks no longer switches it. */
+    panelTabPinned: boolean;
+
     /** Wall faces of the room model (published by Satellit in the editor). */
     roomFaces: RoomFace[];
     setRoomFaces: (faces: RoomFace[]) => void;
@@ -153,6 +159,9 @@ interface WallEditorViewState {
     dropWallGuides: (wallId: number) => void;
     /** Clears per-wall view state (measurements) when another wall/side is opened. */
     resetForWall: () => void;
+    setPanelTab: (tab: WallEditorPanelTab, byUser?: boolean) => void;
+    /** Back to "Anordnen" when the editor opens. */
+    resetPanelTab: () => void;
 }
 
 export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
@@ -176,6 +185,9 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
     guidesHidden: initialGuidesView.hidden,
     guidesLocked: initialGuidesView.locked,
     hoverGuideId: null,
+
+    panelTab: 'arrange',
+    panelTabPinned: false,
 
     roomFaces: [],
     setRoomFaces: (roomFaces) => set({ roomFaces }),
@@ -282,6 +294,8 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
         return guidesByFace === s.guidesByFace ? s : { guidesByFace };
     }),
     resetForWall: () => set({ measurements: [], hoverGuideId: null }),
+    setPanelTab: (tab, byUser = true) => set((s) => ({ panelTab: tab, panelTabPinned: s.panelTabPinned || byUser })),
+    resetPanelTab: () => set({ panelTab: 'arrange', panelTabPinned: false }),
 }));
 
 /** Screen ↔ wall coordinate mapping for a view snapshot. */
