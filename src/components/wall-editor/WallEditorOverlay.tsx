@@ -9,7 +9,7 @@ import {
     useWallEditorView,
     type WallEditorTool,
 } from '@/store/wallEditorViewStore';
-import { guideToWall, wallToGuideValue, type GuideAxis } from '@/lib/wallEditor/guides';
+import { guideToWall, MAX_HANGING_HEIGHT, MIN_HANGING_HEIGHT, wallToGuideValue, type GuideAxis } from '@/lib/wallEditor/guides';
 import { wallToWorld } from '@/lib/wallEditor/geometry';
 import { wallEditorBridge } from '@/lib/wallEditor/bridge';
 import {
@@ -65,6 +65,7 @@ type Interaction =
     | { kind: 'pan'; pointerId: number; lastX: number; lastY: number }
     | { kind: 'measure'; pointerId: number; x1: number; y1: number; x2: number; y2: number }
     | { kind: 'guide'; pointerId: number; id: number; axis: GuideAxis; overRuler: boolean }
+    | { kind: 'hanging'; pointerId: number; /** Height above the floor while dragging (metres). */ value: number }
     | {
         kind: 'spacing';
         pointerId: number;
@@ -144,6 +145,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     const [interaction, setInteraction] = useState<Interaction | null>(null);
     const interactionRef = useRef<Interaction | null>(null);
     const [hoverId, setHoverId] = useState<number | null>(null);
+    const [hoverHanging, setHoverHanging] = useState(false);
     const [pointer, setPointer] = useState<{ u: number; v: number } | null>(null);
     const [altDown, setAltDown] = useState(false);
     const [spaceDown, setSpaceDown] = useState(false);
@@ -214,7 +216,8 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     const visibleGuides = view.guidesHidden ? EMPTY_GUIDES : guides;
     const guidesX = visibleGuides.filter((g) => g.axis === 'v').map((g) => guideToWall(g, wallRect));
     const guidesY = visibleGuides.filter((g) => g.axis === 'h').map((g) => guideToWall(g, wallRect));
-    const hangY = wallRect.y + view.hangingHeight;
+    const hangingValue = interaction?.kind === 'hanging' ? interaction.value : view.hangingHeight;
+    const hangY = wallRect.y + hangingValue;
     if (view.showHangingLine) guidesY.push(hangY);
 
     const toLocal = (e: { clientX: number; clientY: number }) => {
@@ -241,6 +244,12 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     const isOverRuler = (axis: GuideAxis, x: number, y: number) => (axis === 'h'
         ? y < RULER_SIZE
         : x > rulerLeft - 8 && x < rulerLeft + RULER_SIZE);
+
+    const hitHanging = (x: number, y: number) => (
+        view.showHangingLine && !view.guidesLocked
+        && Math.abs(vt.toScreenY(hangY) - y) <= GUIDE_HIT_PX
+        && x >= vt.toScreenX(wallRect.x) - 12 && x <= vt.toScreenX(right(wallRect)) + 12
+    );
 
     /** Snaps a guide position (wall coordinates) to the wall's edges and centre and to artwork edges. */
     const snapGuideValue = (axis: GuideAxis, value: number) => {
@@ -314,6 +323,12 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             return;
         }
 
+        // Werk > hanging line > guide when they overlap
+        if (hitHanging(x, y)) {
+            setInter({ kind: 'hanging', pointerId: e.pointerId, value: view.hangingHeight });
+            return;
+        }
+
         const guide = hitGuide(x, y);
         if (guide) {
             setInter({ kind: 'guide', pointerId: e.pointerId, id: guide.id, axis: guide.axis, overRuler: false });
@@ -358,7 +373,9 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         if (!it) {
             const hit = effectiveTool === 'hand' ? null : hitItem(u, v);
             if ((hit?.id ?? null) !== hoverId) setHoverId(hit?.id ?? null);
-            const guide = effectiveTool === 'select' && !hit ? hitGuide(x, y) : null;
+            const overHanging = !hit && effectiveTool === 'select' && hitHanging(x, y);
+            if (overHanging !== hoverHanging) setHoverHanging(overHanging);
+            const guide = effectiveTool === 'select' && !hit && !overHanging ? hitGuide(x, y) : null;
             useWallEditorView.getState().setHoverGuide(guide?.id ?? null);
             return;
         }
@@ -400,6 +417,14 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 const wallValue = snapGuideValue(it.axis, it.axis === 'v' ? u : v);
                 useWallEditorView.getState().updateGuide(face.key, it.id, { value: roundMm(wallToGuideValue(it.axis, wallValue, wallRect)) });
                 if (overRuler !== it.overRuler) setInter({ ...it, overRuler });
+                return;
+            }
+            case 'hanging': {
+                const raw = v - wallRect.y;
+                // Whole centimetres, with Alt whole millimetres.
+                const rounded = e.altKey ? roundMm(raw) : Math.round(raw * 100) / 100;
+                const value = Math.min(MAX_HANGING_HEIGHT, Math.max(MIN_HANGING_HEIGHT, rounded));
+                if (value !== it.value) setInter({ ...it, value });
                 return;
             }
             case 'move': {
@@ -477,6 +502,9 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 break;
             case 'guide':
                 if (it.overRuler) useWallEditorView.getState().removeGuide(face.key, it.id);
+                break;
+            case 'hanging':
+                useWallEditorView.getState().setHangingHeight(it.value);
                 break;
             default:
                 break;
@@ -764,10 +792,12 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     if (interaction?.kind === 'pan') cursor = 'grabbing';
     else if (interaction?.kind === 'spacing') cursor = interaction.axis === 'x' ? 'ew-resize' : 'ns-resize';
     else if (interaction?.kind === 'guide') cursor = interaction.axis === 'v' ? 'col-resize' : 'row-resize';
+    else if (interaction?.kind === 'hanging') cursor = 'row-resize';
     else if (effectiveTool === 'hand') cursor = 'grab';
     else if (effectiveTool === 'measure') cursor = 'crosshair';
     else if (interaction?.kind === 'move') cursor = 'move';
     else if (hoverId !== null) cursor = 'move';
+    else if (hoverHanging) cursor = 'row-resize';
     else if (view.hoverGuideId !== null) {
         const g = guides.find((gg) => gg.id === view.hoverGuideId);
         if (g) cursor = g.axis === 'v' ? 'col-resize' : 'row-resize';
@@ -780,7 +810,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         for (let i = 0; i < o.length; i += 4) outlinePath += `M${sx(o[i])} ${sy(o[i + 1])}L${sx(o[i + 2])} ${sy(o[i + 3])}`;
     }
     // Hanging height label left of the wall when there is room, otherwise just inside it.
-    const hangingLabel = `Hängehöhe ${formatCm(view.hangingHeight)}`;
+    const hangingLabel = `Hängehöhe ${formatCm(hangingValue)}`;
     const hangingLabelOutside = sx(wallRect.x) - (rulerLeft + RULER_SIZE) > textWidth(hangingLabel) + 30;
     const wallScreen = screenRect(wallRect);
     const marquee = interaction?.kind === 'marquee' ? {
@@ -805,6 +835,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 if (!interactionRef.current) {
                     setPointer(null);
                     setHoverId(null);
+                    setHoverHanging(false);
                     useWallEditorView.getState().setHoverGuide(null);
                 }
             }}
@@ -863,7 +894,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                         <line
                             x1={sx(wallRect.x) - 12} x2={sx(right(wallRect)) + 12}
                             y1={sy(hangY)} y2={sy(hangY)}
-                            stroke={WE_COLORS.hanging} strokeWidth={1} strokeDasharray="6 4" opacity={0.9}
+                            stroke={WE_COLORS.hanging} strokeWidth={hoverHanging || interaction?.kind === 'hanging' ? 2 : 1} strokeDasharray="6 4" opacity={0.9}
                         />
                         {hangingLabelOutside ? (
                             <Pill
