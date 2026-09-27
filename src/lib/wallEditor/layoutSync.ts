@@ -18,6 +18,14 @@ const authHeaders = (): Record<string, string> => ({
     Authorization: `Bearer ${useAuthStore.getState().token ?? ''}`,
 });
 
+/** Version whose layout the view store holds; changes are only saved for it. */
+let loadedVersionId: number | null = null;
+
+/** True once the stored layout of `versionId` is in the view store (not while loading, not after a failed load). */
+export function isWallLayoutLoaded(versionId: number | null): boolean {
+    return versionId != null && versionId === loadedVersionId;
+}
+
 /**
  * Keeps the 2D wall editor's hanging height and ruler guides in sync with the active exhibition
  * version: loads them whenever the version changes and PATCHes the full state (debounced) after
@@ -25,10 +33,9 @@ const authHeaders = (): Record<string, string> => ({
  * Returns a cleanup that sends a waiting change and unsubscribes.
  */
 export function startWallLayoutSync(): () => void {
-    /** Version whose layout the view store holds; changes are only saved for it. */
-    let loadedVersionId: number | null = null;
     /** Set while a loaded layout is written into the store, so loading doesn't save. */
     let applying = false;
+    let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let pending: (() => void) | null = null;
     let queue: Promise<void> = Promise.resolve();
@@ -51,8 +58,8 @@ export function startWallLayoutSync(): () => void {
             const res = await fetch(layoutUrl(exhibitionId, versionId), { headers: authHeaders() });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const layout = parseWallLayout(await res.json());
-            // The version changed again while loading.
-            if (useEditorStore.getState().activeVersionId !== versionId) return;
+            // The sync was torn down, or the version changed again while loading.
+            if (stopped || useEditorStore.getState().activeVersionId !== versionId) return;
             apply(layout);
             loadedVersionId = versionId;
         } catch (err) {
@@ -126,6 +133,8 @@ export function startWallLayoutSync(): () => void {
 
     return () => {
         flush();
+        stopped = true;
+        loadedVersionId = null;
         unsubscribeView();
         unsubscribeEditor();
         unsubscribeWalls();

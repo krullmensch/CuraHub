@@ -5,6 +5,7 @@ import { Save, X } from 'lucide-react';
 import { frameStyleOf } from '../lib/frameStyles';
 import { useWallEditorView } from '../store/wallEditorViewStore';
 import { serializeGuides } from '../lib/wallEditor/guides';
+import { isWallLayoutLoaded } from '../lib/wallEditor/layoutSync';
 
 interface SaveVersionDialogProps {
   onSave: () => void;
@@ -39,9 +40,12 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
           comment: comment.trim(),
           branch_name: branchName,
           sourceVersionId: activeVersionId,
-          // 2D wall editor layout; the guide keys use the wall ids sent with `walls` below.
-          hangingHeight: useWallEditorView.getState().hangingHeight,
-          wallGuides: serializeGuides(useWallEditorView.getState().guidesByFace),
+          // 2D wall editor layout — only once it is loaded for this version; otherwise the server
+          // copies the source version's stored layout. Guide keys use the wall ids sent with `walls`.
+          ...(isWallLayoutLoaded(activeVersionId) ? {
+            hangingHeight: useWallEditorView.getState().hangingHeight,
+            wallGuides: serializeGuides(useWallEditorView.getState().guidesByFace),
+          } : {}),
           instances: (() => {
             const walls = useEditorStore.getState().localWalls;
             return useEditorStore.getState().localInstances.map(inst => ({
