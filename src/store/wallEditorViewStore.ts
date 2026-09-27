@@ -1,6 +1,16 @@
 import { create } from 'zustand';
 import type { Rect } from '../lib/wallEditor/layout';
 import type { RoomFace } from '../lib/wallEditor/roomFaces';
+import {
+    DEFAULT_HANGING_HEIGHT,
+    MAX_HANGING_HEIGHT,
+    MIN_HANGING_HEIGHT,
+    dropWallKeys,
+    renameWallKeys,
+    type GuideAxis,
+    type StoredGuide,
+    type WallLayout,
+} from '../lib/wallEditor/guides';
 
 /**
  * View + tool state of the 2D wall editor (editorStore holds which wall is open and the selection).
@@ -32,29 +42,47 @@ export interface PinnedMeasurement {
     y2: number;
 }
 
-export interface RulerGuide {
+export interface RulerGuide extends StoredGuide {
     id: number;
-    /** 'x' = vertical line at u = value, 'y' = horizontal line at v = value. */
-    axis: 'x' | 'y';
-    value: number;
 }
+
+/** Stable empty list for selectors (a fresh [] per call would re-render forever). */
+export const EMPTY_GUIDES: RulerGuide[] = [];
 
 export const MIN_PX_PER_M = 25;
 export const MAX_PX_PER_M = 6000;
 export const RULER_SIZE = 22;
 
-const HANGING_HEIGHT_KEY = 'curahub-hanging-height';
-const DEFAULT_HANGING_HEIGHT = 1.5;
+const GUIDES_VIEW_KEY = 'curahub-wall-guides-view';
 
-const readHangingHeight = (): number => {
+interface GuidesView {
+    hidden: boolean;
+    locked: boolean;
+}
+
+const readGuidesView = (): GuidesView => {
     try {
-        const raw = window.localStorage.getItem(HANGING_HEIGHT_KEY);
-        const value = raw ? Number(raw) : NaN;
-        return Number.isFinite(value) && value > 0 && value < 10 ? value : DEFAULT_HANGING_HEIGHT;
+        const raw = window.localStorage.getItem(GUIDES_VIEW_KEY);
+        const parsed: unknown = raw ? JSON.parse(raw) : null;
+        if (parsed && typeof parsed === 'object') {
+            const { hidden, locked } = parsed as Record<string, unknown>;
+            return { hidden: hidden === true, locked: locked === true };
+        }
     } catch {
-        return DEFAULT_HANGING_HEIGHT;
+        // storage unavailable or broken — fall back to the defaults
+    }
+    return { hidden: false, locked: false };
+};
+
+const storeGuidesView = (view: GuidesView) => {
+    try {
+        window.localStorage.setItem(GUIDES_VIEW_KEY, JSON.stringify(view));
+    } catch {
+        // storage unavailable — keep the setting for this session only
     }
 };
+
+const initialGuidesView = readGuidesView();
 
 const clampScale = (s: number) => Math.min(MAX_PX_PER_M, Math.max(MIN_PX_PER_M, s));
 
@@ -77,11 +105,18 @@ interface WallEditorViewState {
     showFloorDistances: boolean;
     showGaps: boolean;
     showHangingLine: boolean;
-    /** Height of the picture centres above the floor (metres). */
+    /** Height of the picture centres above the floor (metres), stored per exhibition version. */
     hangingHeight: number;
 
     measurements: PinnedMeasurement[];
-    guides: RulerGuide[];
+    /** Ruler guides per wall face (key: targetKey of the face), stored per exhibition version. */
+    guidesByFace: Record<string, RulerGuide[]>;
+    /** Hidden guides are neither drawn nor snapped to (per browser). */
+    guidesHidden: boolean;
+    /** Locked guides and the hanging line can't be grabbed in the canvas (per browser). */
+    guidesLocked: boolean;
+    /** Guide highlighted by hovering it in the canvas or in the guides tab. */
+    hoverGuideId: number | null;
 
     /** Wall faces of the room model (published by Satellit in the editor). */
     roomFaces: RoomFace[];
@@ -104,10 +139,19 @@ interface WallEditorViewState {
     removeMeasurement: (id: number) => void;
     clearMeasurements: () => void;
 
-    addGuide: (axis: 'x' | 'y', value: number) => number;
-    moveGuide: (id: number, value: number) => void;
-    removeGuide: (id: number) => void;
-    /** Clears per-wall state (measurements, guides) when another wall/side is opened. */
+    addGuide: (faceKey: string, axis: GuideAxis, value: number) => number;
+    updateGuide: (faceKey: string, id: number, patch: Partial<StoredGuide>) => void;
+    removeGuide: (faceKey: string, id: number) => void;
+    setFaceGuides: (faceKey: string, guides: RulerGuide[]) => void;
+    toggleGuidesHidden: () => void;
+    toggleGuidesLocked: () => void;
+    setHoverGuide: (id: number | null) => void;
+    /** Replaces hanging height and guides with a version's stored layout. */
+    loadWallLayout: (layout: WallLayout) => void;
+    /** A temporary wall got its database id. */
+    renameWallGuides: (fromWallId: number, toWallId: number) => void;
+    dropWallGuides: (wallId: number) => void;
+    /** Clears per-wall view state (measurements) when another wall/side is opened. */
     resetForWall: () => void;
 }
 
@@ -125,10 +169,13 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
     showFloorDistances: false,
     showGaps: false,
     showHangingLine: true,
-    hangingHeight: readHangingHeight(),
+    hangingHeight: DEFAULT_HANGING_HEIGHT,
 
     measurements: [],
-    guides: [],
+    guidesByFace: {},
+    guidesHidden: initialGuidesView.hidden,
+    guidesLocked: initialGuidesView.locked,
+    hoverGuideId: null,
 
     roomFaces: [],
     setRoomFaces: (roomFaces) => set({ roomFaces }),
@@ -176,28 +223,65 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
 
     setTool: (tool) => set({ tool }),
     toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<WallEditorViewState>),
-    setHangingHeight: (metres) => {
-        const value = Math.min(9.99, Math.max(0.01, metres));
-        try {
-            window.localStorage.setItem(HANGING_HEIGHT_KEY, String(value));
-        } catch {
-            // storage unavailable — keep the value for this session only
-        }
-        set({ hangingHeight: value });
-    },
+    setHangingHeight: (metres) => set({ hangingHeight: Math.min(MAX_HANGING_HEIGHT, Math.max(MIN_HANGING_HEIGHT, metres)) }),
 
     addMeasurement: (m) => set((s) => ({ measurements: [...s.measurements, { ...m, id: nextId++ }] })),
     removeMeasurement: (id) => set((s) => ({ measurements: s.measurements.filter((m) => m.id !== id) })),
     clearMeasurements: () => set({ measurements: [] }),
 
-    addGuide: (axis, value) => {
+    addGuide: (faceKey, axis, value) => {
         const id = nextId++;
-        set((s) => ({ guides: [...s.guides, { id, axis, value }] }));
+        const { guidesHidden, guidesLocked } = get();
+        // A new guide is always visible, also when the guides were hidden.
+        if (guidesHidden) storeGuidesView({ hidden: false, locked: guidesLocked });
+        set((s) => ({
+            guidesByFace: { ...s.guidesByFace, [faceKey]: [...(s.guidesByFace[faceKey] ?? []), { id, axis, value }] },
+            guidesHidden: false,
+        }));
         return id;
     },
-    moveGuide: (id, value) => set((s) => ({ guides: s.guides.map((g) => (g.id === id ? { ...g, value } : g)) })),
-    removeGuide: (id) => set((s) => ({ guides: s.guides.filter((g) => g.id !== id) })),
-    resetForWall: () => set({ measurements: [], guides: [] }),
+    updateGuide: (faceKey, id, patch) => set((s) => {
+        const list = s.guidesByFace[faceKey];
+        if (!list) return s;
+        return { guidesByFace: { ...s.guidesByFace, [faceKey]: list.map((g) => (g.id === id ? { ...g, ...patch } : g)) } };
+    }),
+    removeGuide: (faceKey, id) => set((s) => {
+        const list = s.guidesByFace[faceKey];
+        if (!list) return s;
+        return {
+            guidesByFace: { ...s.guidesByFace, [faceKey]: list.filter((g) => g.id !== id) },
+            hoverGuideId: s.hoverGuideId === id ? null : s.hoverGuideId,
+        };
+    }),
+    setFaceGuides: (faceKey, guides) => set((s) => ({ guidesByFace: { ...s.guidesByFace, [faceKey]: guides } })),
+    toggleGuidesHidden: () => set((s) => {
+        storeGuidesView({ hidden: !s.guidesHidden, locked: s.guidesLocked });
+        return { guidesHidden: !s.guidesHidden };
+    }),
+    toggleGuidesLocked: () => set((s) => {
+        storeGuidesView({ hidden: s.guidesHidden, locked: !s.guidesLocked });
+        return { guidesLocked: !s.guidesLocked };
+    }),
+    setHoverGuide: (id) => {
+        if (get().hoverGuideId !== id) set({ hoverGuideId: id });
+    },
+    loadWallLayout: (layout) => set({
+        hangingHeight: layout.hangingHeight,
+        guidesByFace: Object.fromEntries(Object.entries(layout.guides).map(([key, list]) => [
+            key,
+            list.map((g) => ({ id: nextId++, axis: g.axis, value: g.value })),
+        ])),
+        hoverGuideId: null,
+    }),
+    renameWallGuides: (fromWallId, toWallId) => set((s) => {
+        const guidesByFace = renameWallKeys(s.guidesByFace, fromWallId, toWallId);
+        return guidesByFace === s.guidesByFace ? s : { guidesByFace };
+    }),
+    dropWallGuides: (wallId) => set((s) => {
+        const guidesByFace = dropWallKeys(s.guidesByFace, wallId);
+        return guidesByFace === s.guidesByFace ? s : { guidesByFace };
+    }),
+    resetForWall: () => set({ measurements: [], hoverGuideId: null }),
 }));
 
 /** Screen ↔ wall coordinate mapping for a view snapshot. */

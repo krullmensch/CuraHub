@@ -3,11 +3,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { gooeyToast } from 'goey-toast';
 import { useEditorStore, instanceRefMap } from '@/store/editorStore';
 import {
+    EMPTY_GUIDES,
     makeViewTransform,
     RULER_SIZE,
     useWallEditorView,
     type WallEditorTool,
 } from '@/store/wallEditorViewStore';
+import { guideToWall, wallToGuideValue, type GuideAxis } from '@/lib/wallEditor/guides';
 import { wallToWorld } from '@/lib/wallEditor/geometry';
 import { wallEditorBridge } from '@/lib/wallEditor/bridge';
 import {
@@ -62,7 +64,7 @@ type Interaction =
     | { kind: 'marquee'; pointerId: number; startU: number; startV: number; u: number; v: number; base: number[] }
     | { kind: 'pan'; pointerId: number; lastX: number; lastY: number }
     | { kind: 'measure'; pointerId: number; x1: number; y1: number; x2: number; y2: number }
-    | { kind: 'guide'; pointerId: number; id: number; axis: Axis; overRuler: boolean }
+    | { kind: 'guide'; pointerId: number; id: number; axis: GuideAxis; overRuler: boolean }
     | {
         kind: 'spacing';
         pointerId: number;
@@ -131,15 +133,17 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         showHangingLine: s.showHangingLine,
         hangingHeight: s.hangingHeight,
         measurements: s.measurements,
-        guides: s.guides,
+        guidesHidden: s.guidesHidden,
+        guidesLocked: s.guidesLocked,
+        hoverGuideId: s.hoverGuideId,
     })));
+    const guides = useWallEditorView((s) => s.guidesByFace[face.key] ?? EMPTY_GUIDES);
     const selection = useEditorStore((s) => s.wallEditorSelection);
     const setSelection = useEditorStore((s) => s.setWallEditorSelection);
 
     const [interaction, setInteraction] = useState<Interaction | null>(null);
     const interactionRef = useRef<Interaction | null>(null);
     const [hoverId, setHoverId] = useState<number | null>(null);
-    const [hoverGuide, setHoverGuide] = useState<number | null>(null);
     const [pointer, setPointer] = useState<{ u: number; v: number } | null>(null);
     const [altDown, setAltDown] = useState(false);
     const [spaceDown, setSpaceDown] = useState(false);
@@ -207,8 +211,9 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         return o ? translate(item.rect, o.dx, o.dy) : item.rect;
     }, [draft]);
 
-    const guidesX = view.guides.filter((g) => g.axis === 'x').map((g) => g.value);
-    const guidesY = view.guides.filter((g) => g.axis === 'y').map((g) => g.value);
+    const visibleGuides = view.guidesHidden ? EMPTY_GUIDES : guides;
+    const guidesX = visibleGuides.filter((g) => g.axis === 'v').map((g) => guideToWall(g, wallRect));
+    const guidesY = visibleGuides.filter((g) => g.axis === 'h').map((g) => guideToWall(g, wallRect));
     const hangY = wallRect.y + view.hangingHeight;
     if (view.showHangingLine) guidesY.push(hangY);
 
@@ -224,19 +229,24 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         return null;
     };
 
-    const hitGuide = (x: number, y: number) => view.guides.find((g) => (
-        g.axis === 'x'
-            ? Math.abs(vt.toScreenX(g.value) - x) <= GUIDE_HIT_PX && y > RULER_SIZE
-            : Math.abs(vt.toScreenY(g.value) - y) <= GUIDE_HIT_PX && x > rulerLeft + RULER_SIZE
-    )) ?? null;
-    const isOverRuler = (axis: Axis, x: number, y: number) => (axis === 'x'
+    const hitGuide = (x: number, y: number) => {
+        if (view.guidesLocked) return null;
+        return visibleGuides.find((g) => (
+            g.axis === 'v'
+                ? Math.abs(vt.toScreenX(guideToWall(g, wallRect)) - x) <= GUIDE_HIT_PX && y > RULER_SIZE
+                : Math.abs(vt.toScreenY(guideToWall(g, wallRect)) - y) <= GUIDE_HIT_PX && x > rulerLeft + RULER_SIZE
+        )) ?? null;
+    };
+    // Horizontal guides come out of (and go back into) the top ruler, vertical ones the left ruler.
+    const isOverRuler = (axis: GuideAxis, x: number, y: number) => (axis === 'h'
         ? y < RULER_SIZE
         : x > rulerLeft - 8 && x < rulerLeft + RULER_SIZE);
 
-    const snapGuideValue = (axis: Axis, value: number) => {
+    /** Snaps a guide position (wall coordinates) to the wall's edges and centre and to artwork edges. */
+    const snapGuideValue = (axis: GuideAxis, value: number) => {
         if (!view.snapping) return roundMm(value);
         const threshold = SNAP_PX / vt.pxPerM;
-        const candidates = axis === 'x'
+        const candidates = axis === 'v'
             ? [wallRect.x, centerX(wallRect), right(wallRect), ...items.flatMap((i) => [i.rect.x, centerX(i.rect), right(i.rect)])]
             : [wallRect.y, top(wallRect), ...items.flatMap((i) => [i.rect.y, centerY(i.rect), top(i.rect)])];
         let best: number | null = null;
@@ -315,13 +325,14 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         setInter({ kind: 'marquee', pointerId: e.pointerId, startU: u, startV: v, u, v, base });
     };
 
-    const handleRulerPointerDown = (axis: Axis, e: React.PointerEvent) => {
+    const handleRulerPointerDown = (ruler: 'top' | 'left', e: React.PointerEvent) => {
         if (e.button !== 0 || interactionRef.current) return;
         e.stopPropagation();
         rootRef.current?.setPointerCapture(e.pointerId);
         const { x, y } = toLocal(e);
-        const value = axis === 'x' ? vt.toWallU(x) : vt.toWallV(y);
-        const id = useWallEditorView.getState().addGuide(axis, roundMm(value));
+        const axis: GuideAxis = ruler === 'top' ? 'h' : 'v';
+        const wallValue = axis === 'h' ? vt.toWallV(y) : vt.toWallU(x);
+        const id = useWallEditorView.getState().addGuide(face.key, axis, roundMm(wallToGuideValue(axis, wallValue, wallRect)));
         setInter({ kind: 'guide', pointerId: e.pointerId, id, axis, overRuler: true });
     };
 
@@ -348,7 +359,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             const hit = effectiveTool === 'hand' ? null : hitItem(u, v);
             if ((hit?.id ?? null) !== hoverId) setHoverId(hit?.id ?? null);
             const guide = effectiveTool === 'select' && !hit ? hitGuide(x, y) : null;
-            if ((guide?.id ?? null) !== hoverGuide) setHoverGuide(guide?.id ?? null);
+            useWallEditorView.getState().setHoverGuide(guide?.id ?? null);
             return;
         }
         if (e.pointerId !== it.pointerId) return;
@@ -386,8 +397,8 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             }
             case 'guide': {
                 const overRuler = isOverRuler(it.axis, x, y);
-                const value = snapGuideValue(it.axis, it.axis === 'x' ? u : v);
-                useWallEditorView.getState().moveGuide(it.id, value);
+                const wallValue = snapGuideValue(it.axis, it.axis === 'v' ? u : v);
+                useWallEditorView.getState().updateGuide(face.key, it.id, { value: roundMm(wallToGuideValue(it.axis, wallValue, wallRect)) });
                 if (overRuler !== it.overRuler) setInter({ ...it, overRuler });
                 return;
             }
@@ -465,7 +476,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 }
                 break;
             case 'guide':
-                if (it.overRuler) useWallEditorView.getState().removeGuide(it.id);
+                if (it.overRuler) useWallEditorView.getState().removeGuide(face.key, it.id);
                 break;
             default:
                 break;
@@ -752,14 +763,14 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     let cursor = 'default';
     if (interaction?.kind === 'pan') cursor = 'grabbing';
     else if (interaction?.kind === 'spacing') cursor = interaction.axis === 'x' ? 'ew-resize' : 'ns-resize';
-    else if (interaction?.kind === 'guide') cursor = interaction.axis === 'x' ? 'col-resize' : 'row-resize';
+    else if (interaction?.kind === 'guide') cursor = interaction.axis === 'v' ? 'col-resize' : 'row-resize';
     else if (effectiveTool === 'hand') cursor = 'grab';
     else if (effectiveTool === 'measure') cursor = 'crosshair';
     else if (interaction?.kind === 'move') cursor = 'move';
     else if (hoverId !== null) cursor = 'move';
-    else if (hoverGuide !== null) {
-        const g = view.guides.find((gg) => gg.id === hoverGuide);
-        cursor = g?.axis === 'x' ? 'col-resize' : 'row-resize';
+    else if (view.hoverGuideId !== null) {
+        const g = guides.find((gg) => gg.id === view.hoverGuideId);
+        if (g) cursor = g.axis === 'v' ? 'col-resize' : 'row-resize';
     }
 
     const floorY = sy(wallRect.y);
@@ -778,7 +789,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         width: Math.abs(interaction.u - interaction.startU) * vt.pxPerM,
         height: Math.abs(interaction.v - interaction.startV) * vt.pxPerM,
     } : null;
-    const draggedGuide = interaction?.kind === 'guide' ? view.guides.find((g) => g.id === interaction.id) : null;
+    const draggedGuide = interaction?.kind === 'guide' ? guides.find((g) => g.id === interaction.id) ?? null : null;
 
     return (
         <div
@@ -790,7 +801,13 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
-            onPointerLeave={() => { if (!interactionRef.current) { setPointer(null); setHoverId(null); } }}
+            onPointerLeave={() => {
+                if (!interactionRef.current) {
+                    setPointer(null);
+                    setHoverId(null);
+                    useWallEditorView.getState().setHoverGuide(null);
+                }
+            }}
             onContextMenu={(e) => e.preventDefault()}
         >
             <svg width={W} height={H} className="absolute inset-0 select-none" style={{ overflow: 'hidden' }}>
@@ -871,12 +888,13 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 )}
 
                 {/* Ruler guides */}
-                {view.guides.map((g) => {
-                    const active = g.id === hoverGuide || g.id === draggedGuide?.id;
-                    return g.axis === 'x' ? (
-                        <line key={g.id} x1={sx(g.value)} x2={sx(g.value)} y1={0} y2={H} stroke={WE_COLORS.guide} strokeWidth={active ? 1.5 : 1} opacity={active ? 1 : 0.75} pointerEvents="none" />
+                {visibleGuides.map((g) => {
+                    const active = g.id === view.hoverGuideId || g.id === draggedGuide?.id;
+                    const pos = guideToWall(g, wallRect);
+                    return g.axis === 'v' ? (
+                        <line key={g.id} x1={sx(pos)} x2={sx(pos)} y1={0} y2={H} stroke={WE_COLORS.guide} strokeWidth={active ? 1.5 : 1} opacity={active ? 1 : 0.75} pointerEvents="none" />
                     ) : (
-                        <line key={g.id} x1={0} x2={W} y1={sy(g.value)} y2={sy(g.value)} stroke={WE_COLORS.guide} strokeWidth={active ? 1.5 : 1} opacity={active ? 1 : 0.75} pointerEvents="none" />
+                        <line key={g.id} x1={0} x2={W} y1={sy(pos)} y2={sy(pos)} stroke={WE_COLORS.guide} strokeWidth={active ? 1.5 : 1} opacity={active ? 1 : 0.75} pointerEvents="none" />
                     );
                 })}
 
@@ -962,18 +980,20 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                         height={H}
                         selection={selectionBox}
                         pointer={pointer}
-                        guides={view.guides}
+                        guides={visibleGuides.map((g) => ({ id: g.id, axis: g.axis, pos: guideToWall(g, wallRect) }))}
                         left={rulerLeft}
                         onRulerPointerDown={handleRulerPointerDown}
                     />
                 )}
 
                 {/* Value of the guide being dragged */}
-                {draggedGuide && (
-                    draggedGuide.axis === 'x'
-                        ? <Pill x={sx(draggedGuide.value)} y={RULER_SIZE + 14} text={interaction?.kind === 'guide' && interaction.overRuler ? 'Entfernen' : formatCm(draggedGuide.value)} color={WE_COLORS.guide} textColor="#083344" />
-                        : <Pill x={rulerLeft + RULER_SIZE + 8} y={sy(draggedGuide.value)} align="start" text={interaction?.kind === 'guide' && interaction.overRuler ? 'Entfernen' : formatCm(draggedGuide.value - wallRect.y)} color={WE_COLORS.guide} textColor="#083344" />
-                )}
+                {draggedGuide && (() => {
+                    const pos = guideToWall(draggedGuide, wallRect);
+                    const text = interaction?.kind === 'guide' && interaction.overRuler ? 'Entfernen' : formatCm(draggedGuide.value);
+                    return draggedGuide.axis === 'v'
+                        ? <Pill x={sx(pos)} y={RULER_SIZE + 14} text={text} color={WE_COLORS.guide} textColor="#083344" />
+                        : <Pill x={rulerLeft + RULER_SIZE + 8} y={sy(pos)} align="start" text={text} color={WE_COLORS.guide} textColor="#083344" />;
+                })()}
             </svg>
 
             {/* Tooltip for hovered artwork */}
