@@ -186,7 +186,7 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 
 ### Maßstabsfigur (scale figure)
 
-- Black low-poly person, exactly 1.73 m (`SCALE_FIGURE_HEIGHT` = `PLAYER_STATURE`, `src/lib/playerDimensions.ts`), model `public/models/scale-figure.glb` (mesh `ScaleFigure`, built by `scripts/build-scale-figure.py` (headless Blender, skin-modifier skeleton; run command in the file header)).
+- Black person, exactly 1.73 m (`SCALE_FIGURE_HEIGHT` = `PLAYER_STATURE`, `src/lib/playerDimensions.ts`), model `public/models/scale-figure.glb` (mesh `ScaleFigure`, 3270 triangles, faces +Z, half-span 0.30 m). It is the `Character` of SHUTDOWN.gallery's "Quarantine Diary" scene, extracted, scaled and centred by `scripts/build-scale-figure.py` (Python stdlib; run command in the file header).
 - Table `ScaleFigure` per version (`position_x/z`, `rotation_y`, `isPublic`), route `/scale-figures`, copied with versions and merges; `/public` returns only `isPublic` figures.
 - Store: `localScaleFigures`, `selectedFigureId` (exclusive with instance/wall/zone selection), auto-sync diff block like walls, no undo.
 - `ScaleFigures.tsx`: one shared geometry + two shared materials, `TransformControls` (X/Z move, Y turn, tilt removed in `onChange`), hidden in the wall editor, no collider. New figures: toolbar button → `scaleFigureBridge.spawnPose()` (screen-centre ray on the floor, facing the camera).
