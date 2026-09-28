@@ -25,12 +25,15 @@ import {
     Volume2,
     VolumeX,
     PanelsTopLeft,
+    Eye,
+    EyeOff,
 } from 'lucide-react';
 import { WallEditorPanel } from './wall-editor/WallEditorPanel';
 import { sideOfInstance, WALL_SIDES, WALL_SIDE_LABELS, type WallSide } from '@/lib/wallEditor/geometry';
 import { targetForInstance, type WallEditorTarget } from '@/lib/wallEditor/faces';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
 import { useFaceDirectory } from '@/hooks/use-face-directory';
+import { SCALE_FIGURE_HEIGHT } from '@/lib/scaleFigure';
 import {
     DEFAULT_FRAME_STYLE,
     DEFAULT_PASSEPARTOUT_WIDTH_CM,
@@ -61,6 +64,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const [activeTab, setActiveTab] = useState<RightTab>('controls');
     const selectedId = useEditorStore((state) => state.selectedInstanceId);
     const selectedWallId = useEditorStore((state) => state.selectedWallId);
+    const selectedFigureId = useEditorStore((state) => state.selectedFigureId);
     const transformMode = useEditorStore((state) => state.transformMode);
     const setTransformMode = useEditorStore((state) => state.setTransformMode);
     const selectInstance = useEditorStore((state) => state.selectInstance);
@@ -72,14 +76,14 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
     // Sync active tab to properties when something is selected
     useEffect(() => {
-        if (selectedId || selectedWallId) {
+        if (selectedId || selectedWallId || selectedFigureId !== null) {
             // Use setTimeout to avoid synchronous setState warning in some linters/react versions
             const timer = setTimeout(() => {
                 setActiveTab('properties');
             }, 0);
             return () => clearTimeout(timer);
         }
-    }, [selectedId, selectedWallId]);
+    }, [selectedId, selectedWallId, selectedFigureId]);
 
     const [transform, setTransform] = useState<TransformData>({
         position: { x: 0, y: 0, z: 0 },
@@ -362,7 +366,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         { mode: 'scale', icon: Maximize2, label: 'Scale (S)' },
     ];
 
-    const hasPropertiesContent = selectedId || selectedWallId;
+    const hasPropertiesContent = selectedId || selectedWallId || selectedFigureId !== null;
     const headerAccent = 'bg-blue-600';
 
     return (
@@ -390,6 +394,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
                 {activeTab === 'properties' && (
                     hasPropertiesContent ? (
+                        selectedFigureId !== null ? <ScaleFigurePropertiesContent /> :
                         selectedWallId ? <WallPropertiesContent /> :
                         <ArtworkPropertiesContent
                             transform={displayTransform}
@@ -802,6 +807,63 @@ const WallPropertiesContent = () => {
                     ? <><Lock className="h-4 w-4 mr-2" /> Locked{hasArtworks ? ` (${artworksOnWall.length} artwork${artworksOnWall.length > 1 ? 's' : ''})` : ''}</>
                     : <><Unlock className="h-4 w-4 mr-2" /> Unlocked</>
                 }
+            </Button>
+        </div>
+    );
+};
+
+const ScaleFigurePropertiesContent = () => {
+    const figure = useEditorStore((state) => state.localScaleFigures.find(f => f.id === state.selectedFigureId));
+    const updateScaleFigure = useEditorStore((state) => state.updateScaleFigure);
+    const deleteScaleFigure = useEditorStore((state) => state.deleteScaleFigure);
+    if (!figure) return null;
+    const toDeg = (rad: number) => ((rad * 180) / Math.PI).toFixed(1);
+    return (
+        <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
+            <div className="text-xs text-zinc-500 italic">
+                Maßstabsfigur — {SCALE_FIGURE_HEIGHT.toFixed(2).replace('.', ',')} m
+            </div>
+            <div className="space-y-2">
+                <Label className="text-xs text-zinc-400 uppercase tracking-wider">Position</Label>
+                <div className="grid grid-cols-2 gap-2">
+                    {(['x', 'z'] as const).map((axis) => (
+                        <div key={axis} className="space-y-1">
+                            <Label className="text-[10px] text-zinc-500 uppercase">{axis}</Label>
+                            <NumericInput step="0.01" value={figure[`position_${axis}`].toFixed(3)} onChange={(raw) => {
+                                const v = parseFloat(raw);
+                                if (!isNaN(v)) updateScaleFigure(figure.id, axis === 'x' ? { position_x: v } : { position_z: v });
+                            }} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
+                        </div>
+                    ))}
+                </div>
+            </div>
+            <div className="space-y-2">
+                <Label className="text-xs text-zinc-400 uppercase tracking-wider">Rotation (°)</Label>
+                <NumericInput step="1" value={toDeg(figure.rotation_y)} onChange={(raw) => {
+                    const deg = parseFloat(raw);
+                    if (!isNaN(deg)) updateScaleFigure(figure.id, { rotation_y: (deg * Math.PI) / 180 });
+                }} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100 w-1/3" />
+            </div>
+            <Separator className="bg-zinc-800" />
+            <Button
+                variant="secondary"
+                size="sm"
+                aria-pressed={figure.isPublic}
+                onClick={() => updateScaleFigure(figure.id, { isPublic: !figure.isPublic })}
+                className={cn("w-full text-xs", figure.isPublic ? "bg-emerald-600/20 text-emerald-400" : "bg-zinc-800 text-zinc-100")}
+                title="Legt fest, ob Besucher die Figur im öffentlichen Viewer sehen"
+            >
+                {figure.isPublic
+                    ? <><Eye className="h-4 w-4 mr-2" /> Im Viewer sichtbar</>
+                    : <><EyeOff className="h-4 w-4 mr-2" /> Nur im Editor</>}
+            </Button>
+            <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => deleteScaleFigure(figure.id)}
+                className="w-full text-xs bg-red-600/20 text-red-400 hover:bg-red-600/30"
+            >
+                <Trash2 className="h-4 w-4 mr-2" /> Entfernen
             </Button>
         </div>
     );

@@ -184,9 +184,17 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 - WebGPU: three.js `GaussianSplat`, parsed in `src/workers/splatParse.worker.ts`, geometry cached per URL. WebGL: Spark (`src/lib/sparkSupport.ts`, one `SparkRenderer` per renderer, `onDirty` → `invalidate`).
 - `GaussianSplat` smears splats in render targets — hide splats (`hideSplats`) during offscreen captures such as the glass reflection.
 
+### Maßstabsfigur (scale figure)
+
+- Black low-poly person, exactly 1.73 m (`SCALE_FIGURE_HEIGHT` = `PLAYER_STATURE`, `src/lib/playerDimensions.ts`), model `public/models/scale-figure.glb` (mesh `ScaleFigure`, built by `scripts/build-scale-figure.py` (headless Blender, skin-modifier skeleton; run command in the file header)).
+- Table `ScaleFigure` per version (`position_x/z`, `rotation_y`, `isPublic`), route `/scale-figures`, copied with versions and merges; `/public` returns only `isPublic` figures.
+- Store: `localScaleFigures`, `selectedFigureId` (exclusive with instance/wall/zone selection), auto-sync diff block like walls, no undo.
+- `ScaleFigures.tsx`: one shared geometry + two shared materials, `TransformControls` (X/Z move, Y turn, tilt removed in `onChange`), hidden in the wall editor, no collider. New figures: toolbar button → `scaleFigureBridge.spawnPose()` (screen-centre ray on the floor, facing the camera).
+- Artwork drops ignore figures (`userData.scaleFigure`).
+
 ### Backend API
 
-Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
+Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/scale-figures`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
 
 ### Database Schema (key models)
 
@@ -318,7 +326,7 @@ Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/pr
 - Camera modes: `'orthographic' | 'perspective' | 'firstPerson'` (type: `PlannerViewMode`)
 - **Video performance** — VideoTexture updates every frame by default. For first-person mode, throttle `videoTexture.needsUpdate` to every 2nd frame, or use `requestVideoFrameCallback` (see Known Issues)
 
-**Player constants:** `PLAYER_HEIGHT = 1.8`, `PLAYER_SPEED = 5`. Always use delta time: `velocity * delta`.
+**Player constants** (`src/lib/playerDimensions.ts`): stature 1.73 m, eye height 1.62 m, capsule radius 0.3 / half height 0.565 (body centre 0.865). Import them from the lib, not from `Player.tsx` (Rapier chunk). Always use delta time: `velocity * delta`.
 
 ---
 

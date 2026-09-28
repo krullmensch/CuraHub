@@ -102,6 +102,7 @@ model ExhibitionVersion {
 
   instances           ArtworkInstance[]
   walls               ModularWall[]
+  scaleFigures        ScaleFigure[]
 }
 
 model Artwork {
@@ -218,6 +219,23 @@ model ModularWall {
 
   // Artworks placed on this wall
   instances   ArtworkInstance[]
+
+  createdAt   DateTime          @default(now())
+}
+
+// 1.73 m scale figure standing on the floor (client: src/components/ScaleFigures.tsx).
+model ScaleFigure {
+  id          Int               @id @default(autoincrement())
+
+  version     ExhibitionVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  versionId   Int
+
+  position_x  Float             @default(0)
+  position_z  Float             @default(0)
+  rotation_y  Float             @default(0)
+
+  // Shown in the public viewer
+  isPublic    Boolean           @default(false)
 
   createdAt   DateTime          @default(now())
 }

@@ -14,7 +14,7 @@ import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { useEditorStore, nextTempId, isFloorAssetType, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
-import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings } from 'lucide-react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings, PersonStanding } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
@@ -24,6 +24,7 @@ import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
+import { MAX_SCALE_FIGURES_PER_VERSION, scaleFigureBridge } from '../lib/scaleFigure';
 import { startWallLayoutSync } from '../lib/wallEditor/layoutSync';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
@@ -250,6 +251,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const showTraverses = useEditorStore((state) => state.showTraverses);
   const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
   const selectedInstanceId = useEditorStore((state) => state.selectedInstanceId);
+  const selectedFigureId = useEditorStore((state) => state.selectedFigureId);
   const isMonitorSelected = useEditorStore((state) => {
     if (!state.selectedInstanceId) return false;
     const inst = state.localInstances.find(i => i.id === state.selectedInstanceId);
@@ -484,6 +486,23 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     };
   }, [setDragPosition, setDragging]);
 
+  // Scale figure: placed on the floor where the view hits it (or in front of the wall it hits),
+  // facing the camera, then selected.
+  const placeScaleFigure = () => {
+    const store = useEditorStore.getState();
+    // The server refuses more; a POST it rejects would be retried forever by the auto-sync.
+    if (store.localScaleFigures.length >= MAX_SCALE_FIGURES_PER_VERSION) {
+      gooeyToast.error(`Maximal ${MAX_SCALE_FIGURES_PER_VERSION} Maßstabsfiguren pro Version`);
+      return;
+    }
+    const pose = scaleFigureBridge.spawnPose();
+    if (!pose) return;
+    const id = nextTempId();
+    store.addScaleFigure({ id, ...pose, isPublic: false });
+    store.selectFigure(id);
+    store.setTransformMode('translate');
+  };
+
   // Blender-style keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -554,6 +573,18 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         } else if (key === 'g') {
           e.preventDefault();
           setTransformMode('translate');
+        }
+        return;
+      }
+
+      // Scale figure: G/R pick the gizmo mode, Entf/Backspace removes it
+      if (store.selectedFigureId !== null) {
+        if (key === 'r' || key === 'g') {
+          e.preventDefault();
+          setTransformMode(key === 'r' ? 'rotate' : 'translate');
+        } else if (key === 'delete' || key === 'backspace') {
+          e.preventDefault();
+          store.deleteScaleFigure(store.selectedFigureId);
         }
         return;
       }
@@ -706,8 +737,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           backdropFilter: 'blur(12px)',
         }}>
           {/* Transform modes */}
-          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!selectedInstanceId} />
-          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!selectedInstanceId} />
+          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!selectedInstanceId && selectedFigureId === null} />
+          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!selectedInstanceId && selectedFigureId === null} />
           <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!selectedInstanceId || isMonitorSelected} />
 
           <ToolSeparator />
@@ -729,6 +760,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
           {/* First-person preview */}
           <ToolButton icon={<Footprints size={16} />} tooltip="Ego-Perspektive (V)" onClick={() => setPlannerViewMode('firstPerson')} />
+
+          {/* Scale figure (1.73 m) */}
+          <ToolButton icon={<PersonStanding size={16} />} tooltip="Maßstabsfigur hinzufügen (1,73 m)" onClick={placeScaleFigure} />
 
           <ToolSeparator />
 

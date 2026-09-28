@@ -5,7 +5,8 @@ import * as THREE from 'three';
 import type { GLTF } from 'three-stdlib';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../../store/editorStore';
 import { SATELLIT_MODEL_URL } from '../../lib/modelUrls';
-import { Player, PlayerController, PLAYER_EYE_OFFSET } from '../Player';
+import { Player, PlayerController } from '../Player';
+import { PLAYER_EYE_OFFSET } from '../../lib/playerDimensions';
 
 /**
  * RND-08: everything that needs @react-three/rapier. Loaded lazily (Rapier is a ~2.3 MB chunk
