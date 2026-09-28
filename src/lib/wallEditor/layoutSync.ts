@@ -37,9 +37,18 @@ export function startWallLayoutSync(): () => void {
     let applying = false;
     let stopped = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
-    let pending: (() => void) | null = null;
+    /** Pending PATCH; called with `keepalive` to flush it on page unload. */
+    let pending: ((keepalive: boolean) => void) | null = null;
     let queue: Promise<void> = Promise.resolve();
     let lastErrorToast = 0;
+
+    const errorToast = (title: string, description: string) => {
+        const now = Date.now();
+        if (now - lastErrorToast > ERROR_TOAST_INTERVAL_MS) {
+            lastErrorToast = now;
+            gooeyToast.error(title, { description });
+        }
+    };
 
     const apply = (layout: WallLayout) => {
         applying = true;
@@ -54,6 +63,10 @@ export function startWallLayoutSync(): () => void {
         loadedVersionId = null;
         apply({ hangingHeight: DEFAULT_HANGING_HEIGHT, guides: {} });
         if (!useAuthStore.getState().token) return;
+        // Wait for any save of the previously active version to land first, so switching
+        // A → B → A can't load A's layout before A's own pending PATCH has been sent.
+        await queue;
+        if (stopped || useEditorStore.getState().activeVersionId !== versionId) return;
         try {
             const res = await fetch(layoutUrl(exhibitionId, versionId), { headers: authHeaders() });
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -65,45 +78,40 @@ export function startWallLayoutSync(): () => void {
         } catch (err) {
             // Without the stored layout nothing is saved, so it can't be overwritten.
             console.warn('[WallLayout] Failed to load hanging height and guides:', err);
+            errorToast('Hängehöhe/Hilfslinien konnten nicht geladen werden', 'Änderungen daran werden erst nach erneutem Laden gespeichert.');
         }
     };
 
-    const send = (exhibitionId: number, versionId: number) => {
+    const send = (exhibitionId: number, versionId: number, keepalive = false) => {
         const view = useWallEditorView.getState();
         const body = JSON.stringify({ hangingHeight: view.hangingHeight, guides: serializeGuides(view.guidesByFace) });
         queue = queue.then(async () => {
             try {
-                const res = await fetch(layoutUrl(exhibitionId, versionId), { method: 'PATCH', headers: authHeaders(), body });
+                const res = await fetch(layoutUrl(exhibitionId, versionId), { method: 'PATCH', headers: authHeaders(), body, keepalive });
                 // No write access or the version is gone: keep the changes local, quietly.
                 if (res.status === 401 || res.status === 403 || res.status === 404) return;
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
             } catch (err) {
                 console.error('[WallLayout] Failed to save hanging height and guides:', err);
-                const now = Date.now();
-                if (now - lastErrorToast > ERROR_TOAST_INTERVAL_MS) {
-                    lastErrorToast = now;
-                    gooeyToast.error('Hängehöhe/Hilfslinien konnten nicht gespeichert werden', {
-                        description: 'Die nächste Änderung versucht es erneut.',
-                    });
-                }
+                errorToast('Hängehöhe/Hilfslinien konnten nicht gespeichert werden', 'Die nächste Änderung versucht es erneut.');
             }
         });
     };
 
-    const flush = () => {
+    const flush = (keepalive = false) => {
         clearTimeout(timer);
         timer = undefined;
         const run = pending;
         pending = null;
-        run?.();
+        run?.(keepalive);
     };
 
     const schedule = () => {
         const { activeExhibitionId, activeVersionId } = useEditorStore.getState();
         if (activeExhibitionId == null || activeVersionId == null || activeVersionId !== loadedVersionId) return;
-        pending = () => send(activeExhibitionId, activeVersionId);
+        pending = (keepalive) => send(activeExhibitionId, activeVersionId, keepalive);
         clearTimeout(timer);
-        timer = setTimeout(flush, SAVE_DEBOUNCE_MS);
+        timer = setTimeout(() => flush(), SAVE_DEBOUNCE_MS);
     };
 
     const unsubscribeView = useWallEditorView.subscribe((state, prev) => {
@@ -122,11 +130,24 @@ export function startWallLayoutSync(): () => void {
         }
     });
 
+    // A failed load only retries automatically once the wall editor is (re)opened.
+    const unsubscribeWallEditorOpen = useEditorStore.subscribe((state, prev) => {
+        if (state.wallEditor === null || prev.wallEditor !== null) return;
+        const { activeExhibitionId, activeVersionId } = state;
+        if (activeExhibitionId != null && activeVersionId != null && loadedVersionId !== activeVersionId) {
+            void load(activeExhibitionId, activeVersionId);
+        }
+    });
+
     const unsubscribeWalls = onWallEvent((event) => {
         const view = useWallEditorView.getState();
         if (event.type === 'replaced') view.renameWallGuides(event.from, event.to);
         else view.dropWallGuides(event.id);
     });
+
+    // Best-effort save when the tab is being hidden/closed/navigated away from.
+    const onPageHide = () => flush(true);
+    window.addEventListener('pagehide', onPageHide);
 
     const { activeExhibitionId, activeVersionId } = useEditorStore.getState();
     if (activeExhibitionId != null && activeVersionId != null) void load(activeExhibitionId, activeVersionId);
@@ -137,6 +158,8 @@ export function startWallLayoutSync(): () => void {
         loadedVersionId = null;
         unsubscribeView();
         unsubscribeEditor();
+        unsubscribeWallEditorOpen();
         unsubscribeWalls();
+        window.removeEventListener('pagehide', onPageHide);
     };
 }
