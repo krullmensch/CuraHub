@@ -49,6 +49,12 @@ export function baseArtworkSize(inst: ArtworkInstanceData): { w: number; h: numb
     return { w: (asset.width / dpi) * 0.0254, h: (asset.height / dpi) * 0.0254 };
 }
 
+/** Current picture size (without frame) in metres. */
+export function pictureSize(inst: ArtworkInstanceData): { w: number; h: number } {
+    const base = baseArtworkSize(inst);
+    return { w: base.w * safeScale(inst.scale_x), h: base.h * safeScale(inst.scale_y) };
+}
+
 const symmetric = (w: number, h: number, exact: boolean): Footprint => ({
     left: -w / 2, right: w / 2, bottom: -h / 2, top: h / 2, exact,
 });

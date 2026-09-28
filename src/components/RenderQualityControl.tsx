@@ -14,7 +14,7 @@ const RENDERER_LABELS: Record<RendererBackend, string> = {
     webgl: 'WebGL',
 };
 
-const labelClass = 'flex items-center gap-2 text-[11px] font-medium uppercase tracking-[0.15em] text-white/60';
+const labelClass = 'flex items-center justify-between gap-3 text-[11px] font-medium uppercase tracking-[0.15em] text-white/60';
 const selectClass = 'cursor-pointer rounded-md border border-white/10 bg-black/60 px-2 py-1 text-xs normal-case tracking-normal text-white outline-none focus:border-white/30';
 
 /** RND-11: manual override for the render preset and the renderer (both remembered per browser). */

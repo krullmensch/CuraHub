@@ -8,12 +8,13 @@ import { SceneLoadingIndicator } from '../components/SceneLoadingIndicator';
 import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
 import { CANVAS_SHADOWS, createRendererFactory } from '../lib/rendererBackend';
 import { RenderQualityControl } from '../components/RenderQualityControl';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { useEditorStore, nextTempId, isFloorAssetType, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
-import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft } from 'lucide-react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
@@ -23,6 +24,7 @@ import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
+import { startWallLayoutSync } from '../lib/wallEditor/layoutSync';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
 const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
@@ -110,6 +112,68 @@ const ToolSeparator = () => (
   <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
 );
 
+/** Gear in the tool bar: keeps the render settings out of the way until they are needed. */
+const RenderSettingsButton = () => {
+  const [open, setOpen] = useState(false);
+  const [hovered, setHovered] = useState(false);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <div style={{ position: 'relative' }}>
+        <PopoverTrigger asChild>
+          <button
+            onMouseEnter={() => setHovered(true)}
+            onMouseLeave={() => setHovered(false)}
+            style={{
+              width: 32,
+              height: 32,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              borderRadius: 8,
+              border: 'none',
+              background: open ? 'rgba(59,130,246,0.7)' : hovered ? 'rgba(255,255,255,0.08)' : 'transparent',
+              color: open ? '#fff' : 'rgba(255,255,255,0.7)',
+              cursor: 'pointer',
+              transition: 'background 0.15s ease, color 0.15s ease',
+            }}
+          >
+            <Settings size={16} />
+          </button>
+        </PopoverTrigger>
+        {hovered && !open && (
+          <div style={{
+            position: 'absolute',
+            bottom: 'calc(100% + 8px)',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            padding: '4px 10px',
+            borderRadius: 6,
+            background: 'rgba(0,0,0,0.92)',
+            border: '1px solid rgba(255,255,255,0.1)',
+            color: '#fff',
+            fontSize: 11,
+            fontWeight: 500,
+            whiteSpace: 'nowrap',
+            pointerEvents: 'none',
+            fontFamily: '"Albert Sans", sans-serif',
+          }}>
+            Darstellung
+          </div>
+        )}
+      </div>
+      <PopoverContent
+        side="top"
+        align="end"
+        sideOffset={12}
+        className="w-auto rounded-xl border-white/10 bg-black/80 p-4 backdrop-blur-xl"
+      >
+        <RenderQualityControl className="flex-col items-stretch gap-3" />
+      </PopoverContent>
+    </Popover>
+  );
+};
+
 /**
  * Opens the 2D wall editor for the selected wall (on the face the camera looks at), or for the wall
  * and face the selected artwork hangs on (with that artwork selected). Returns false if neither applies.
@@ -196,6 +260,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
   const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
+  // Hanging height and ruler guides of the 2D wall editor, per exhibition version
+  useEffect(() => startWallLayoutSync(), []);
   // 2D wall editor: the selected wall, or the wall the selected artwork hangs on
   const canOpenWallEditor = useEditorStore((state) => {
     if (state.selectedWallId !== null) return true;
@@ -666,7 +732,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
           <ToolSeparator />
 
-          <RenderQualityControl className="px-2" />
+          <RenderSettingsButton />
         </div>
       )}
 
