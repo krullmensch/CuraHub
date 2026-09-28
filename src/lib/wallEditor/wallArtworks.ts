@@ -5,6 +5,7 @@ import { artworkFrameLayout, baseArtworkSize, computeFootprint, footprintRect, t
 import { instanceOnFace, openFaceOf, type ResolvedFace } from './faces';
 import type { RoomFace, RoomOpening } from './roomFaces';
 import type { LayoutItem, Offset, Rect } from './layout';
+import { cornerShift, type Corner } from './scale';
 
 /** An artwork on the open wall face, in wall coordinates. */
 export interface WallArtwork extends LayoutItem {
@@ -159,10 +160,11 @@ function placeScaled(face: WallFace, item: WallArtwork, inst: ArtworkInstanceDat
 
 /**
  * Scales artworks of the face by `factor` (x, y and z, so the aspect ratio stays) about their
- * picture centres. With `pivot` (a single artwork dragged at a corner with Alt) the anchor moves
- * as if scaled about that wall point instead. Monitors are skipped.
+ * picture centres. With `fixedCorner` (a single artwork dragged at a corner with Alt) that corner
+ * of its footprint (frame and passepartout included) is kept exactly where it was instead. Monitors
+ * are skipped.
  */
-export function scaleArtworks(face: WallFace, ids: number[], factor: number, pivot?: { u: number; v: number }): Map<number, ScaledArtwork> {
+export function scaleArtworks(face: WallFace, ids: number[], factor: number, fixedCorner?: Corner): Map<number, ScaledArtwork> {
     const wanted = new Set(ids);
     const out = new Map<number, ScaledArtwork>();
     for (const item of face.items) {
@@ -173,8 +175,8 @@ export function scaleArtworks(face: WallFace, ids: number[], factor: number, piv
             scale_y: item.inst.scale_y * factor,
             scale_z: item.inst.scale_z * factor,
         };
-        const shift = pivot
-            ? { dx: (item.anchor.u - pivot.u) * (factor - 1), dy: (item.anchor.v - pivot.v) * (factor - 1) }
+        const shift = fixedCorner
+            ? cornerShift(item.rect, footprintRect(footprintAt(item, inst), item.anchor.u, item.anchor.v), fixedCorner)
             : NO_SHIFT;
         out.set(item.id, placeScaled(face, item, inst, shift));
     }

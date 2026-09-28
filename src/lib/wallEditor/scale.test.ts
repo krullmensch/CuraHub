@@ -3,6 +3,7 @@ import {
     OPPOSITE_CORNER,
     clampScaleFactor,
     cornerPoint,
+    cornerShift,
     fineFactor,
     handleScaleFactor,
     modalScaleFactor,
@@ -22,6 +23,16 @@ describe('cornerPoint', () => {
     it('pairs opposite corners', () => {
         expect(OPPOSITE_CORNER.nw).toBe('se');
         expect(OPPOSITE_CORNER.sw).toBe('ne');
+    });
+});
+
+describe('cornerShift', () => {
+    const before = { x: 1, y: 2, w: 3, h: 4 };
+    const after = { x: 0.5, y: 1.5, w: 4, h: 5 };
+
+    it('puts the fixed corner back where it was', () => {
+        expect(cornerShift(before, after, 'sw')).toEqual({ dx: 0.5, dy: 0.5 });
+        expect(cornerShift(before, after, 'ne')).toEqual({ dx: -0.5, dy: -0.5 });
     });
 });
 

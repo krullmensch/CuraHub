@@ -1,4 +1,4 @@
-import type { Rect } from './layout';
+import type { Offset, Rect } from './layout';
 
 /** Scale gestures of the 2D wall editor — pure math in wall units (metres, y up). */
 
@@ -31,6 +31,13 @@ export function modalScaleFactor(pivot: Point, start: Point, current: Point): nu
     const d0 = Math.hypot(start.x - pivot.x, start.y - pivot.y);
     if (d0 < 1e-9) return 1;
     return Math.hypot(current.x - pivot.x, current.y - pivot.y) / d0;
+}
+
+/** Offset that puts `corner` of `after` back where it was on `before`. */
+export function cornerShift(before: Rect, after: Rect, corner: Corner): Offset {
+    const a = cornerPoint(before, corner);
+    const b = cornerPoint(after, corner);
+    return { dx: a.x - b.x, dy: a.y - b.y };
 }
 
 /** Corner handle: the pointer projected onto the line from the pivot through the grab point. */

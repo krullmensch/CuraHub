@@ -27,12 +27,19 @@ export const DEFAULT_HANGING_HEIGHT = 1.45;
 export const MIN_HANGING_HEIGHT = 0.01;
 export const MAX_HANGING_HEIGHT = 9.99;
 export const MAX_GUIDES_PER_FACE = 200;
+/** Guide values (metres) stay within ±this — same as the server's −100…100. */
+export const GUIDE_VALUE_LIMIT = 100;
 
 const hangingHeightSchema = z.number().min(MIN_HANGING_HEIGHT).max(MAX_HANGING_HEIGHT);
 const wallGuidesSchema = z.record(
     z.string(),
-    z.array(z.object({ axis: z.enum(['h', 'v']), value: z.number().min(-100).max(100) })).max(MAX_GUIDES_PER_FACE),
+    z.array(z.object({ axis: z.enum(['h', 'v']), value: z.number().min(-GUIDE_VALUE_LIMIT).max(GUIDE_VALUE_LIMIT) })).max(MAX_GUIDES_PER_FACE),
 );
+
+/** Keeps a guide value within ±GUIDE_VALUE_LIMIT. */
+export function limitGuideValue(value: number): number {
+    return Math.min(GUIDE_VALUE_LIMIT, Math.max(-GUIDE_VALUE_LIMIT, value));
+}
 
 /** Validates a wall-layout response field by field; broken fields fall back to the defaults. */
 export function parseWallLayout(json: unknown): WallLayout {

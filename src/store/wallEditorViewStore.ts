@@ -3,9 +3,11 @@ import type { Rect } from '../lib/wallEditor/layout';
 import type { RoomFace } from '../lib/wallEditor/roomFaces';
 import {
     DEFAULT_HANGING_HEIGHT,
+    MAX_GUIDES_PER_FACE,
     MAX_HANGING_HEIGHT,
     MIN_HANGING_HEIGHT,
     dropWallKeys,
+    limitGuideValue,
     renameWallKeys,
     type GuideAxis,
     type StoredGuide,
@@ -145,7 +147,8 @@ interface WallEditorViewState {
     removeMeasurement: (id: number) => void;
     clearMeasurements: () => void;
 
-    addGuide: (faceKey: string, axis: GuideAxis, value: number) => number;
+    /** null when the face already has MAX_GUIDES_PER_FACE guides — nothing is added. */
+    addGuide: (faceKey: string, axis: GuideAxis, value: number) => number | null;
     updateGuide: (faceKey: string, id: number, patch: Partial<StoredGuide>) => void;
     removeGuide: (faceKey: string, id: number) => void;
     setFaceGuides: (faceKey: string, guides: RulerGuide[]) => void;
@@ -242,12 +245,14 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
     clearMeasurements: () => set({ measurements: [] }),
 
     addGuide: (faceKey, axis, value) => {
+        const { guidesHidden, guidesLocked, guidesByFace } = get();
+        if ((guidesByFace[faceKey]?.length ?? 0) >= MAX_GUIDES_PER_FACE) return null;
         const id = nextId++;
-        const { guidesHidden, guidesLocked } = get();
+        const clamped = limitGuideValue(value);
         // A new guide is always visible, also when the guides were hidden.
         if (guidesHidden) storeGuidesView({ hidden: false, locked: guidesLocked });
         set((s) => ({
-            guidesByFace: { ...s.guidesByFace, [faceKey]: [...(s.guidesByFace[faceKey] ?? []), { id, axis, value }] },
+            guidesByFace: { ...s.guidesByFace, [faceKey]: [...(s.guidesByFace[faceKey] ?? []), { id, axis, value: clamped }] },
             guidesHidden: false,
         }));
         return id;
@@ -255,7 +260,8 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
     updateGuide: (faceKey, id, patch) => set((s) => {
         const list = s.guidesByFace[faceKey];
         if (!list) return s;
-        return { guidesByFace: { ...s.guidesByFace, [faceKey]: list.map((g) => (g.id === id ? { ...g, ...patch } : g)) } };
+        const clampedPatch = patch.value !== undefined ? { ...patch, value: limitGuideValue(patch.value) } : patch;
+        return { guidesByFace: { ...s.guidesByFace, [faceKey]: list.map((g) => (g.id === id ? { ...g, ...clampedPatch } : g)) } };
     }),
     removeGuide: (faceKey, id) => set((s) => {
         const list = s.guidesByFace[faceKey];

@@ -2,11 +2,13 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Rect } from './layout';
 import {
     DEFAULT_HANGING_HEIGHT,
+    GUIDE_VALUE_LIMIT,
     clampGuideValue,
     dropWallKeys,
     flipGuide,
     guideToWall,
     hasGuideAt,
+    limitGuideValue,
     newGuideValue,
     parseWallLayout,
     renameWallKeys,
@@ -34,6 +36,18 @@ describe('guide ↔ wall coordinates', () => {
         expect(clampGuideValue('h', 5, wall)).toBe(3);
         expect(clampGuideValue('v', -1, wall)).toBe(0);
         expect(clampGuideValue('v', 3.5, wall)).toBe(3.5);
+    });
+});
+
+describe('limitGuideValue', () => {
+    it('leaves values inside the range alone', () => {
+        expect(limitGuideValue(2)).toBe(2);
+        expect(limitGuideValue(-2)).toBe(-2);
+    });
+
+    it('clamps to ±GUIDE_VALUE_LIMIT', () => {
+        expect(limitGuideValue(GUIDE_VALUE_LIMIT + 5)).toBe(GUIDE_VALUE_LIMIT);
+        expect(limitGuideValue(-GUIDE_VALUE_LIMIT - 5)).toBe(-GUIDE_VALUE_LIMIT);
     });
 });
 

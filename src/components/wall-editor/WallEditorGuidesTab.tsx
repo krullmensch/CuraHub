@@ -3,9 +3,10 @@ import { ArrowLeftRight, Eye, EyeOff, Lock, Plus, Trash2, Unlock } from 'lucide-
 import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
+import { useEditorStore } from '@/store/editorStore';
 import { EMPTY_GUIDES, useWallEditorView } from '@/store/wallEditorViewStore';
 import { roundMm } from '@/lib/wallEditor/format';
-import { clampGuideValue, flipGuide, hasGuideAt, newGuideValue, sortGuides, type GuideAxis } from '@/lib/wallEditor/guides';
+import { MAX_GUIDES_PER_FACE, clampGuideValue, flipGuide, hasGuideAt, newGuideValue, sortGuides, type GuideAxis } from '@/lib/wallEditor/guides';
 import type { WallFace } from '@/lib/wallEditor/wallArtworks';
 import { CmInput, Section } from './PanelPrimitives';
 
@@ -50,21 +51,31 @@ export const WallEditorGuidesTab = ({ face }: { face: WallFace }) => {
     const wall = face.wallRect;
     const store = useWallEditorView.getState;
 
+    const guideLimitToast = () => gooeyToast.error(`Höchstens ${MAX_GUIDES_PER_FACE} Hilfslinien pro Wandseite`);
+
     const add = (axis: GuideAxis) => {
         const s = store();
-        setFocusId(s.addGuide(face.key, axis, newGuideValue(axis, { u: s.centerU, v: s.centerV }, wall)));
+        const id = s.addGuide(face.key, axis, newGuideValue(axis, { u: s.centerU, v: s.centerV }, wall));
+        if (id === null) { guideLimitToast(); return; }
+        setFocusId(id);
     };
     const addWallCentre = () => {
         const value = roundMm(wall.w / 2);
-        if (!hasGuideAt(guides, 'v', value)) store().addGuide(face.key, 'v', value);
+        if (hasGuideAt(guides, 'v', value)) return;
+        if (store().addGuide(face.key, 'v', value) === null) guideLimitToast();
     };
     const clearAll = () => {
         const removed = guides;
+        const versionId = useEditorStore.getState().activeVersionId;
         store().setFaceGuides(face.key, []);
         gooeyToast.success(removed.length === 1 ? 'Hilfslinie gelöscht' : `${removed.length} Hilfslinien gelöscht`, {
             action: {
                 label: 'Rückgängig',
-                onClick: () => store().setFaceGuides(face.key, [...removed, ...(store().guidesByFace[face.key] ?? [])]),
+                onClick: () => {
+                    // The active version changed since (e.g. a new version was created) — don't restore into it.
+                    if (useEditorStore.getState().activeVersionId !== versionId) return;
+                    store().setFaceGuides(face.key, [...removed, ...(store().guidesByFace[face.key] ?? [])]);
+                },
             },
         });
     };

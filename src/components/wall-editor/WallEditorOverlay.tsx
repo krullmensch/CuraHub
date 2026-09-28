@@ -9,7 +9,7 @@ import {
     useWallEditorView,
     type WallEditorTool,
 } from '@/store/wallEditorViewStore';
-import { guideToWall, MAX_HANGING_HEIGHT, MIN_HANGING_HEIGHT, wallToGuideValue, type GuideAxis } from '@/lib/wallEditor/guides';
+import { guideToWall, MAX_GUIDES_PER_FACE, MAX_HANGING_HEIGHT, MIN_HANGING_HEIGHT, wallToGuideValue, type GuideAxis } from '@/lib/wallEditor/guides';
 import { wallToWorld } from '@/lib/wallEditor/geometry';
 import { wallEditorBridge } from '@/lib/wallEditor/bridge';
 import {
@@ -329,9 +329,13 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         if (mods.shift) factor = fineFactor(factor);
         const first = itemsById.get(it.ids[0]);
         if (first && view.snapping !== mods.cmd) factor = snapFactorToCm(factor, pictureSize(first.inst).w);
-        factor = clampScaleFactor(factor, it.ids.map((id) => pictureSize(itemsById.get(id)!.inst)));
-        const pivot = it.fixedCorner ? { u: it.pivot.x, v: it.pivot.y } : undefined;
-        return { ...it, factor, scaled: scaleArtworks(face, it.ids, factor, pivot) };
+        const sizes = it.ids.flatMap((id) => {
+            const item = itemsById.get(id);
+            return item ? [pictureSize(item.inst)] : [];
+        });
+        factor = clampScaleFactor(factor, sizes);
+        const fixedCorner = it.fixedCorner && it.corner ? OPPOSITE_CORNER[it.corner] : undefined;
+        return { ...it, factor, scaled: scaleArtworks(face, it.ids, factor, fixedCorner) };
     };
 
     const handleScaleHandlePointerDown = (corner: Corner, e: React.PointerEvent) => {
@@ -433,6 +437,11 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         const axis: GuideAxis = ruler === 'top' ? 'h' : 'v';
         const wallValue = axis === 'h' ? vt.toWallV(y) : vt.toWallU(x);
         const id = useWallEditorView.getState().addGuide(face.key, axis, roundMm(wallToGuideValue(axis, wallValue, wallRect)));
+        if (id === null) {
+            if (rootRef.current?.hasPointerCapture(e.pointerId)) rootRef.current.releasePointerCapture(e.pointerId);
+            gooeyToast.error(`Höchstens ${MAX_GUIDES_PER_FACE} Hilfslinien pro Wandseite`);
+            return;
+        }
         setInter({ kind: 'guide', pointerId: e.pointerId, id, axis, overRuler: true });
     };
 
@@ -774,6 +783,11 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         if (it?.kind === 'move') applyDraft(face, it.ids, new Map());
         if (it?.kind === 'spacing') applyDraft(face, it.order.map((o) => o.id), new Map());
     }, [face]);
+
+    // Ends a live scale gesture when the artworks change under it (panel action, ⌘Z, removal).
+    useEffect(() => {
+        if (interactionRef.current?.kind === 'scale') setInter(null);
+    }, [items, setInter]);
 
     // ── Derived drawing data ─────────────────────────────────────────────
     const W = view.viewportW;
