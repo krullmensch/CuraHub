@@ -10,7 +10,7 @@ export const SCALE_FIGURE_MESH = 'ScaleFigure';
 const MAX_SPAWN_DISTANCE = 100;
 /** Distance in front of the camera when the view doesn't reach the floor. */
 const FALLBACK_SPAWN_DISTANCE = 3;
-/** Distance kept from a wall the view ray hits (figure half-span 0.34 m plus a margin). */
+/** Distance kept from a wall the view ray hits (figure half-span 0.30 m plus a margin). */
 const WALL_CLEARANCE = 0.45;
 
 /** Server limits (server/src/routes/scaleFigures.ts): figures per version, |x|, |z| in metres. */
