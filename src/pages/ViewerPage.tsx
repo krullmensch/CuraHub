@@ -10,7 +10,7 @@ import { RenderQualityControl } from '../components/RenderQualityControl';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { ArrowLeft } from 'lucide-react';
-import type { ArtworkInstanceData, ModularWallData } from '../store/editorStore';
+import type { ArtworkInstanceData, ModularWallData, ScaleFigureData } from '../store/editorStore';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { useArtworkLoadProgress } from '../lib/artworkLoadProgress';
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
@@ -41,6 +41,7 @@ interface ExhibitionData {
     version: { id: number; comment: string; published_at: string | null };
     instances: ArtworkInstanceData[];
     walls: ModularWallData[];
+    scaleFigures?: ScaleFigureData[];
 }
 
 // RND-08: physics (Rapier) + player live in a lazy chunk; the download starts on mount.
@@ -231,6 +232,7 @@ export const ViewerPage = () => {
                                     isEditor={false}
                                     viewerInstances={data.instances}
                                     viewerWalls={data.walls}
+                                    viewerScaleFigures={data.scaleFigures ?? []}
                                     onShadersReady={handleShadersReady}
                                 />
                             </Suspense>
