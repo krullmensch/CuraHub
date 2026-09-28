@@ -4,9 +4,7 @@ import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { TransformControls, useGLTF } from '@react-three/drei';
 import { useEditorStore, type ScaleFigureData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
-import { SCALE_FIGURE_MESH, SCALE_FIGURE_URL, scaleFigureBridge, spawnPoseFromCamera } from '@/lib/scaleFigure';
-
-useGLTF.preload(SCALE_FIGURE_URL);
+import { SCALE_FIGURE_MESH, SCALE_FIGURE_URL, scaleFigureBridge, spawnPoseFromCamera, spawnPoseFromHit, type FigurePose } from '@/lib/scaleFigure';
 
 // Shared by every figure: matte black, faceted. Selected: dark blue.
 const FIGURE_MATERIAL = new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.9, metalness: 0, flatShading: true });
@@ -14,6 +12,48 @@ const SELECTED_MATERIAL = new THREE.MeshStandardMaterial({ color: '#1e3a8a', rou
 
 const _euler = new THREE.Euler();
 const _direction = new THREE.Vector3();
+const _normal = new THREE.Vector3();
+const _raycaster = new THREE.Raycaster();
+const SCREEN_CENTRE = new THREE.Vector2(0, 0);
+
+type TransformControlsFlags = {
+    isTransformControls?: boolean;
+    isTransformControlsRoot?: boolean;
+    isTransformControlsGizmo?: boolean;
+    isTransformControlsPlane?: boolean;
+};
+
+/** Hits a new figure may stand on/in front of: not the drag ghost, figures, hidden objects or gizmos. */
+const isSpawnSurface = (hit: THREE.Intersection): boolean => {
+    let obj: THREE.Object3D | null = hit.object;
+    while (obj) {
+        if (obj.name === '__ghost__') return false;
+        if (obj.userData.scaleFigure) return false;
+        if (!obj.visible) return false;
+        const flags = obj as THREE.Object3D & TransformControlsFlags;
+        if (flags.isTransformControls || flags.isTransformControlsRoot || flags.isTransformControlsGizmo || flags.isTransformControlsPlane) return false;
+        obj = obj.parent;
+    }
+    return true;
+};
+
+/**
+ * Where a new figure goes: the first floor or wall the view ray through the screen centre
+ * hits (spawnPoseFromHit), else where it meets the plane y = 0 (spawnPoseFromCamera).
+ */
+const spawnPoseInScene = (camera: THREE.Camera, scene: THREE.Scene): FigurePose => {
+    _raycaster.setFromCamera(SCREEN_CENTRE, camera);
+    const rayDirection = _raycaster.ray.direction;
+    for (const hit of _raycaster.intersectObjects(scene.children, true)) {
+        if (!hit.face || !isSpawnSurface(hit)) continue;
+        _normal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld);
+        if (_normal.dot(rayDirection) > 0) _normal.negate(); // face the camera
+        const pose = spawnPoseFromHit(camera.position, hit.point, _normal);
+        if (pose) return pose;
+    }
+    camera.getWorldDirection(_direction);
+    return spawnPoseFromCamera(camera.position, _direction);
+};
 
 /** Turn around the vertical axis, in the full ±π range (XYZ Euler folds it into ±π/2). */
 const yawOf = (object: THREE.Object3D): number => _euler.setFromQuaternion(object.quaternion, 'YXZ').y;
@@ -54,10 +94,13 @@ export const ScaleFigures = ({ viewerFigures, isEditor = true }: ScaleFiguresPro
     const { nodes } = useGLTF(SCALE_FIGURE_URL);
     const geometry = (nodes[SCALE_FIGURE_MESH] as THREE.Mesh).geometry;
     const camera = useThree((s) => s.camera);
+    const scene = useThree((s) => s.scene);
 
     const localFigures = useEditorStore((s) => s.localScaleFigures);
     const selectedFigureId = useEditorStore((s) => (isEditor ? s.selectedFigureId : null));
     const wallEditorOpen = useEditorStore((s) => isEditor && !!s.wallEditor);
+    // First person keeps the selection but shows no highlight and no gizmo (like PlacedArtworks)
+    const firstPerson = useEditorStore((s) => isEditor && s.plannerViewMode === 'firstPerson');
     const transformMode = useEditorStore((s) => s.transformMode);
     const activeVersionId = useEditorStore((s) => s.activeVersionId);
     const selectFigure = useEditorStore((s) => s.selectFigure);
@@ -73,10 +116,9 @@ export const ScaleFigures = ({ viewerFigures, isEditor = true }: ScaleFiguresPro
     // Editor: load the version's figures
     useEffect(() => {
         if (!interactive) return;
-        if (!hasToken || !activeVersionId) {
-            setLocalScaleFigures([]);
-            return;
-        }
+        // Drop the previous version's figures (and selection) right away, not when the fetch resolves
+        setLocalScaleFigures([]);
+        if (!hasToken || !activeVersionId) return;
         let cancelled = false;
         (async () => {
             try {
@@ -96,16 +138,15 @@ export const ScaleFigures = ({ viewerFigures, isEditor = true }: ScaleFiguresPro
     // Editor: the toolbar asks here where a new figure goes
     useEffect(() => {
         if (!interactive) return;
-        scaleFigureBridge.spawnPose = () => {
-            camera.getWorldDirection(_direction);
-            return spawnPoseFromCamera(camera.position, _direction);
-        };
+        scaleFigureBridge.spawnPose = () => spawnPoseInScene(camera, scene);
         return () => { scaleFigureBridge.spawnPose = () => null; };
-    }, [interactive, camera]);
+    }, [interactive, camera, scene]);
 
     const handleTransformChange = useCallback(() => {
         if (!selectedObject) return;
-        // Figures stand upright on the floor: drop any tilt the free rotation ring adds.
+        // Figures stand upright on the floor. With only showY set, the gizmo offers just the Y
+        // ring (three-stdlib hides the view-axis "E" and free rings unless all axes are shown);
+        // this is a safeguard in case a tilt gets in anyway (e.g. a different gizmo build).
         const yaw = yawOf(selectedObject);
         selectedObject.position.y = 0;
         selectedObject.rotation.set(0, yaw, 0);
@@ -129,15 +170,15 @@ export const ScaleFigures = ({ viewerFigures, isEditor = true }: ScaleFiguresPro
         <group visible={!wallEditorOpen}>
             {figures.map((figure) => (
                 <Figure
-                    key={figure.id}
+                    key={figure.clientKey ?? figure.id}
                     figure={figure}
                     geometry={geometry}
-                    selected={figure.id === selectedFigureId}
+                    selected={!firstPerson && figure.id === selectedFigureId}
                     onSelect={interactive ? selectFigure : undefined}
                     groupRef={figure.id === selectedFigureId ? setSelectedObject : undefined}
                 />
             ))}
-            {interactive && !wallEditorOpen && selectedObject && (
+            {interactive && !wallEditorOpen && !firstPerson && selectedObject && (
                 <TransformControls
                     object={selectedObject}
                     mode={rotating ? 'rotate' : 'translate'}

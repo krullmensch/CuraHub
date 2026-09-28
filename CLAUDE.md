@@ -191,7 +191,7 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 
 ### Backend API
 
-Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
+Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/scale-figures`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
 
 ### Database Schema (key models)
 

@@ -99,8 +99,15 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                 <Suspense fallback={null}>
                     <PlacedArtworks viewerInstances={viewerInstances} isEditor={isEditor} />
                     <ModularWallsController viewerWalls={viewerWalls} isEditor={isEditor} />
-                    <ScaleFigures viewerFigures={viewerScaleFigures} isEditor={isEditor} />
                 </Suspense>
+
+                {/* Own boundary: the figure model doesn't hold back the artworks. The viewer
+                    only loads it when the version has public figures. */}
+                {(isEditor || (viewerScaleFigures && viewerScaleFigures.length > 0)) && (
+                    <Suspense fallback={null}>
+                        <ScaleFigures viewerFigures={viewerScaleFigures} isEditor={isEditor} />
+                    </Suspense>
+                )}
 
                 <FPVArtworkRaycaster isEditor={isEditor} />
 

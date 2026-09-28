@@ -24,7 +24,7 @@ import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
-import { scaleFigureBridge } from '../lib/scaleFigure';
+import { MAX_SCALE_FIGURES_PER_VERSION, scaleFigureBridge } from '../lib/scaleFigure';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
 const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
@@ -483,12 +483,18 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     };
   }, [setDragPosition, setDragging]);
 
-  // Scale figure: placed where the view meets the floor, facing the camera, then selected.
+  // Scale figure: placed on the floor where the view hits it (or in front of the wall it hits),
+  // facing the camera, then selected.
   const placeScaleFigure = () => {
+    const store = useEditorStore.getState();
+    // The server refuses more; a POST it rejects would be retried forever by the auto-sync.
+    if (store.localScaleFigures.length >= MAX_SCALE_FIGURES_PER_VERSION) {
+      gooeyToast.error(`Maximal ${MAX_SCALE_FIGURES_PER_VERSION} Maßstabsfiguren pro Version`);
+      return;
+    }
     const pose = scaleFigureBridge.spawnPose();
     if (!pose) return;
     const id = nextTempId();
-    const store = useEditorStore.getState();
     store.addScaleFigure({ id, ...pose, isPublic: false });
     store.selectFigure(id);
     store.setTransformMode('translate');

@@ -7,6 +7,7 @@ import type { WallSide } from '../lib/wallEditor/geometry';
 import type { WallEditorTarget } from '../lib/wallEditor/faces';
 import { DEFAULT_FRAME_STYLE, frameStyleOf, type FrameStyleId, type PassepartoutPlacement } from '../lib/frameStyles';
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
+import { sanitiseFigurePose } from '../lib/scaleFigure';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -137,6 +138,11 @@ export interface ScaleFigureData {
   rotation_y: number;
   /** Shown in the public viewer. */
   isPublic: boolean;
+  /**
+   * Client only, never sent to the server: stable React key that survives the temp → real id
+   * swap after the POST (a remount would drop a drag started right after adding the figure).
+   */
+  clientKey?: string;
 }
 
 interface OrbitCameraState {
@@ -518,7 +524,7 @@ export const useEditorStore = create<EditorState>((set) => ({
     // The 2D wall editor only survives a re-activation of the same version.
     ...(versionId !== state.activeVersionId ? { wallEditor: null, wallEditorSelection: [] } : {}),
   })),
-  setActiveVersion: (id) => set({ activeVersionId: id, selectedInstanceId: null, wallEditor: null, wallEditorSelection: [] }),
+  setActiveVersion: (id) => set({ activeVersionId: id, selectedInstanceId: null, selectedFigureId: null, wallEditor: null, wallEditorSelection: [] }),
 
   // Phase 6 actions
   setLocalInstances: (instances) => {
@@ -618,7 +624,9 @@ export const useEditorStore = create<EditorState>((set) => ({
     }));
   },
 
-  // Scale figure actions (auto-sync persists them, like walls; no undo — walls have none either)
+  // Scale figure actions (auto-sync persists them, like walls; no undo — walls have none either).
+  // add/update keep the values inside the server's limits (sanitiseFigurePose): a value it
+  // rejects would fail every automatic retry of the sync for good.
   setLocalScaleFigures: (figures) => {
     // Only real ids count as persisted; temp ids stay "new" so auto-sync POSTs them.
     prevScaleFigures = figures.filter(f => f.id > 0);
@@ -627,14 +635,25 @@ export const useEditorStore = create<EditorState>((set) => ({
   addScaleFigure: (figure) => {
     localEditSeq++;
     return set((state) => ({
-      localScaleFigures: [...state.localScaleFigures, figure],
+      localScaleFigures: [...state.localScaleFigures, {
+        ...figure,
+        position_x: 0,
+        position_z: 0,
+        rotation_y: 0,
+        ...sanitiseFigurePose(figure),
+        clientKey: figure.clientKey ?? randomId(),
+      }],
       hasUnsavedChanges: true,
     }));
   },
   updateScaleFigure: (id, updates) => {
     localEditSeq++;
     return set((state) => ({
-      localScaleFigures: state.localScaleFigures.map(f => f.id === id ? { ...f, ...updates } : f),
+      localScaleFigures: state.localScaleFigures.map(f => {
+        if (f.id !== id) return f;
+        const { position_x, position_z, rotation_y, ...rest } = updates;
+        return { ...f, ...rest, ...sanitiseFigurePose({ position_x, position_z, rotation_y }) };
+      }),
       hasUnsavedChanges: true,
     }));
   },
@@ -717,6 +736,10 @@ export const useEditorStore = create<EditorState>((set) => ({
 //    retries the PATCH. A failed delete leaves the entry in place → the next diff sees it's
 //    still "missing from curr" and retries the DELETE. This is what makes failed changes
 //    recoverable instead of silently dropped.
+//
+// Scale figures follow the same rules as walls: `prevScaleFigures` is their "believed
+// persisted" snapshot (#3), `syncingFigureTempIds` their temp-id guard (#2), and the figure
+// POST sends an Idempotency-Key like instance/wall POSTs (#5).
 // 4. Edits made by the user WHILE a batch is in flight are not lost: they mutate
 //    `localInstances`/`localWalls` (and hasUnsavedChanges + localEditSeq) immediately as
 //    always; the subscribe listener below calls scheduleSync(), which — since isSyncing is
@@ -1290,8 +1313,9 @@ useEditorStore.subscribe((state, prevState) => {
   }
 });
 
-// Reset prev snapshots when version changes — setLocalInstances/setLocalWalls
-// will re-snapshot when the fetched data arrives, so no timeout needed.
+// Reset prev snapshots when version changes — setLocalInstances/setLocalWalls/
+// setLocalScaleFigures will re-snapshot when the fetched data arrives, so no timeout needed.
+// The figure counterparts (prevScaleFigures, syncingFigureTempIds) are reset with the rest.
 useEditorStore.subscribe((state, prevState) => {
   if (state.activeVersionId !== prevState.activeVersionId) {
     prevInstances = [];
