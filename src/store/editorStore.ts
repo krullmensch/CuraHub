@@ -6,6 +6,7 @@ import { readStoredRenderQualitySetting, storeRenderQualitySetting, type RenderQ
 import type { WallSide } from '../lib/wallEditor/geometry';
 import type { WallEditorTarget } from '../lib/wallEditor/faces';
 import { DEFAULT_FRAME_STYLE, frameStyleOf, type FrameStyleId, type PassepartoutPlacement } from '../lib/frameStyles';
+import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -309,9 +310,9 @@ export const useEditorStore = create<EditorState>((set) => ({
     zoom: 40
   },
   // Updated when leaving the first-person preview; the player respawns here on the next entry.
-  // Default = the player's spawn point (body at y 0.8 + eye offset 0.8), looking into the room.
+  // Default = the player's spawn point at eye height (lib/playerDimensions), looking into the room.
   firstPersonCameraState: {
-    position: [-5.99, 1.6, 2.6],
+    position: [-5.99, PLAYER_EYE_HEIGHT, 2.6],
     rotation: [0, -1.1, 0]
   },
 

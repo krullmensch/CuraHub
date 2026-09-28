@@ -13,6 +13,7 @@ import { ArrowLeft } from 'lucide-react';
 import type { ArtworkInstanceData, ModularWallData } from '../store/editorStore';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { useArtworkLoadProgress } from '../lib/artworkLoadProgress';
+import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
 import { Grid } from 'ldrs/react';
 import 'ldrs/react/Grid.css';
 
@@ -209,7 +210,7 @@ export const ViewerPage = () => {
                 <Canvas
                     dpr={lowDpr ? [1, 1] : renderSettings.dpr}
                     frameloop={frameloop}
-                    camera={{ position: [0, 1.7, 0], fov: 60 }}
+                    camera={{ position: [0, PLAYER_EYE_HEIGHT, 0], fov: 60 }}
                     style={{ width: '100vw', height: '100vh' }}
                     gl={glConfig}
                     shadows={CANVAS_SHADOWS}
