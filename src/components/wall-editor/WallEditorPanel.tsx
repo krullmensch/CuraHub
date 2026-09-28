@@ -49,6 +49,9 @@ const ALIGN_ACTIONS: { mode: AlignMode; label: string; icon: ReactNode }[] = [
 
 const SHORTCUTS: [string, string][] = [
     ['V / H / M', 'Auswahl / Hand / Messen'],
+    ['S', 'Skalieren (Klick/Enter übernimmt)'],
+    ['⇧ beim Skalieren', 'Fein'],
+    ['Alt an Eck-Griff', 'Gegenüberliegende Ecke fest'],
     ['⇧ + Klick', 'Mehrfachauswahl'],
     ['⇧ beim Ziehen', 'Nur waagrecht/senkrecht'],
     ['⌘/Strg beim Ziehen', 'Einrasten umkehren'],

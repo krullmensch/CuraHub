@@ -39,11 +39,32 @@ import {
 } from '@/lib/wallEditor/layout';
 import { formatCm, roundMm } from '@/lib/wallEditor/format';
 import { fitWallEditorView } from '@/lib/wallEditor/view';
-import { commitWallOffsets, removeInstances, type WallArtwork, type WallFace } from '@/lib/wallEditor/wallArtworks';
+import { pictureSize } from '@/lib/wallEditor/footprint';
+import {
+    OPPOSITE_CORNER,
+    clampScaleFactor,
+    cornerPoint,
+    fineFactor,
+    handleScaleFactor,
+    modalScaleFactor,
+    snapFactorToCm,
+    type Corner,
+    type Point,
+} from '@/lib/wallEditor/scale';
+import {
+    commitScaledArtworks,
+    commitWallOffsets,
+    isScalable,
+    removeInstances,
+    scaleArtworks,
+    type ScaledArtwork,
+    type WallArtwork,
+    type WallFace,
+} from '@/lib/wallEditor/wallArtworks';
 import { FloorChain, MeasureLine, Pill } from './OverlayPrimitives';
 import { textWidth } from './textMetrics';
 import { WallEditorRulers } from './WallEditorRulers';
-import { GUIDE_HIT_PX, SNAP_PX, WE_COLORS, WE_FONT } from './theme';
+import { GUIDE_HIT_PX, HANDLE_PX, SNAP_PX, WE_COLORS, WE_FONT } from './theme';
 
 type Draft = Map<number, Offset>;
 
@@ -76,7 +97,26 @@ type Interaction =
         startGap: number;
         gap: number;
         offsets: Draft;
+    }
+    | {
+        kind: 'scale';
+        /** null: modal S gesture that follows the mouse without a pressed button. */
+        pointerId: number | null;
+        ids: number[];
+        /** Wall point the factor is measured from: the selection centre, or the fixed corner (Alt). */
+        pivot: Point;
+        start: Point;
+        /** Corner handle being dragged; null for S. */
+        corner: Corner | null;
+        /** Alt on a corner handle of a single artwork: it scales about the opposite corner. */
+        fixedCorner: boolean;
+        factor: number;
+        scaled: Map<number, ScaledArtwork>;
     };
+
+type ScaleInteraction = Extract<Interaction, { kind: 'scale' }>;
+
+const SCALE_CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se'];
 
 const ZERO: Offset = { dx: 0, dy: 0 };
 const NUDGE_M = 0.01;
@@ -147,6 +187,8 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     const [hoverId, setHoverId] = useState<number | null>(null);
     const [hoverHanging, setHoverHanging] = useState(false);
     const [pointer, setPointer] = useState<{ u: number; v: number } | null>(null);
+    // Last pointer position in wall coordinates, for starting S from the keyboard.
+    const pointerRef = useRef<{ u: number; v: number } | null>(null);
     const [altDown, setAltDown] = useState(false);
     const [spaceDown, setSpaceDown] = useState(false);
     // The vertical ruler sits right of the floating asset sidebar (if open).
@@ -208,10 +250,13 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     }, [selectedIds, selection, setSelection]);
 
     const draft: Draft | null = interaction?.kind === 'move' || interaction?.kind === 'spacing' ? interaction.offsets : null;
+    const scaled = interaction?.kind === 'scale' ? interaction.scaled : null;
     const rectOf = useCallback((item: WallArtwork): Rect => {
+        const s = scaled?.get(item.id);
+        if (s) return s.rect;
         const o = draft?.get(item.id);
         return o ? translate(item.rect, o.dx, o.dy) : item.rect;
-    }, [draft]);
+    }, [draft, scaled]);
 
     const visibleGuides = view.guidesHidden ? EMPTY_GUIDES : guides;
     const guidesX = visibleGuides.filter((g) => g.axis === 'v').map((g) => guideToWall(g, wallRect));
@@ -271,11 +316,51 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         setInter(null);
     }, [face, setInter]);
 
+    const finishScale = useCallback((it: ScaleInteraction) => {
+        commitScaledArtworks(face, it.scaled);
+        setInter(null);
+    }, [face, setInter]);
+
+    const scalableIds = selectedIds.filter((id) => isScalable(itemsById.get(id)!.inst));
+
+    /** New factor and preview for the pointer at `p` (wall coordinates). */
+    const updateScale = (it: ScaleInteraction, p: Point, mods: { shift: boolean; cmd: boolean }): ScaleInteraction => {
+        let factor = it.corner ? handleScaleFactor(it.pivot, it.start, p) : modalScaleFactor(it.pivot, it.start, p);
+        if (mods.shift) factor = fineFactor(factor);
+        const first = itemsById.get(it.ids[0]);
+        if (first && view.snapping !== mods.cmd) factor = snapFactorToCm(factor, pictureSize(first.inst).w);
+        factor = clampScaleFactor(factor, it.ids.map((id) => pictureSize(itemsById.get(id)!.inst)));
+        const pivot = it.fixedCorner ? { u: it.pivot.x, v: it.pivot.y } : undefined;
+        return { ...it, factor, scaled: scaleArtworks(face, it.ids, factor, pivot) };
+    };
+
+    const handleScaleHandlePointerDown = (corner: Corner, e: React.PointerEvent) => {
+        if (e.button !== 0 || interactionRef.current || scalableIds.length === 0) return;
+        e.stopPropagation();
+        rootRef.current?.setPointerCapture(e.pointerId);
+        const { x, y } = toLocal(e);
+        const box = unionRect(scalableIds.map((id) => itemsById.get(id)!.rect))!;
+        const fixedCorner = e.altKey && scalableIds.length === 1;
+        const pivot = fixedCorner ? cornerPoint(box, OPPOSITE_CORNER[corner]) : { x: centerX(box), y: centerY(box) };
+        setInter({
+            kind: 'scale', pointerId: e.pointerId, ids: scalableIds, pivot, start: { x: vt.toWallU(x), y: vt.toWallV(y) },
+            corner, fixedCorner, factor: 1, scaled: scaleArtworks(face, scalableIds, 1),
+        });
+    };
+
     // ── Pointer input ───────────────────────────────────────────────────────
 
     const effectiveTool: WallEditorTool = spaceDown ? 'hand' : view.tool;
 
     const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        // Modal S: left click confirms, any other button cancels.
+        const current = interactionRef.current;
+        if (current?.kind === 'scale' && current.pointerId === null) {
+            e.preventDefault();
+            if (e.button === 0) finishScale(current);
+            else setInter(null);
+            return;
+        }
         if (interactionRef.current) return;
         const { x, y } = toLocal(e);
         const u = vt.toWallU(x);
@@ -368,7 +453,13 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         const u = vt.toWallU(x);
         const v = vt.toWallV(y);
         setPointer({ u, v });
+        pointerRef.current = { u, v };
         const it = interactionRef.current;
+
+        if (it?.kind === 'scale' && it.pointerId === null) {
+            setInter(updateScale(it, { x: u, y: v }, { shift: e.shiftKey, cmd: e.metaKey || e.ctrlKey }));
+            return;
+        }
 
         if (!it) {
             const hit = effectiveTool === 'hand' ? null : hitItem(u, v);
@@ -480,6 +571,10 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 setInter({ ...it, gap, offsets });
                 return;
             }
+            case 'scale': {
+                setInter(updateScale(it, { x: u, y: v }, { shift: e.shiftKey, cmd: e.metaKey || e.ctrlKey }));
+                return;
+            }
         }
     };
 
@@ -505,6 +600,9 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 break;
             case 'hanging':
                 useWallEditorView.getState().setHangingHeight(it.value);
+                break;
+            case 'scale':
+                commitScaledArtworks(face, it.scaled);
                 break;
             default:
                 break;
@@ -585,6 +683,14 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 store.closeWallEditor();
                 return;
             }
+            const active = interactionRef.current;
+            if (active?.kind === 'scale') {
+                if (key === 'Enter' && active.pointerId === null) {
+                    e.preventDefault();
+                    finishScale(active);
+                }
+                return; // no other shortcuts while scaling
+            }
             if (cmd && lower === 'a') {
                 e.preventDefault();
                 store.setWallEditorSelection(items.map((i) => i.id));
@@ -597,6 +703,22 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 e.preventDefault();
                 const sel = unionRect(ids.map((id) => itemsById.get(id)!.rect));
                 if (sel) fitWallEditorView(sel, 0.25);
+                return;
+            }
+            if (lower === 's' && !e.shiftKey && !e.altKey && !active) {
+                const scalable = ids.filter((id) => isScalable(itemsById.get(id)!.inst));
+                if (scalable.length === 0) return;
+                e.preventDefault();
+                const box = unionRect(scalable.map((id) => itemsById.get(id)!.rect))!;
+                const pivot = { x: centerX(box), y: centerY(box) };
+                const p = pointerRef.current;
+                // From the pointer; from the box corner when the pointer is outside or on the centre.
+                const onCentre = !p || Math.hypot(p.u - pivot.x, p.v - pivot.y) * view.pxPerM < 8;
+                const start = onCentre ? { x: right(box), y: top(box) } : { x: p.u, y: p.v };
+                setInter({
+                    kind: 'scale', pointerId: null, ids: scalable, pivot, start,
+                    corner: null, fixedCorner: false, factor: 1, scaled: scaleArtworks(face, scalable, 1),
+                });
                 return;
             }
             if (lower === 'v') { view.setTool('select'); return; }
@@ -644,7 +766,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             window.removeEventListener('keyup', onKeyUp);
             window.removeEventListener('blur', onBlur);
         };
-    }, [face, items, itemsById, wallRect, cancelInteraction]);
+    }, [face, items, itemsById, wallRect, cancelInteraction, finishScale, setInter]);
 
     // Leaving the editor mid-drag: put the artworks back.
     useEffect(() => () => {
@@ -670,17 +792,17 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         const overlapping = new Set<number>();
         const eps = 0.0005;
         for (const a of items) {
-            const r = a.rect;
+            const r = rectOf(a);
             if (r.x < wallRect.x - eps || right(r) > right(wallRect) + eps || r.y < wallRect.y - eps || top(r) > top(wallRect) + eps) outside.add(a.id);
             for (const b of items) {
                 if (a.id >= b.id) continue;
                 const shrink = (q: Rect): Rect => ({ x: q.x + eps, y: q.y + eps, w: q.w - 2 * eps, h: q.h - 2 * eps });
-                if (rectsIntersect(shrink(r), shrink(b.rect))) { overlapping.add(a.id); overlapping.add(b.id); }
+                if (rectsIntersect(shrink(r), shrink(rectOf(b)))) { overlapping.add(a.id); overlapping.add(b.id); }
             }
             if (openings.some((o) => rectsIntersect(r, o))) overlapping.add(a.id);
         }
         return { outside, overlapping };
-    }, [items, wallRect, openings]);
+    }, [items, wallRect, openings, rectOf]);
 
     const annotations: ReactNode[] = [];
     const measureColor = WE_COLORS.measure;
@@ -790,6 +912,9 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
 
     let cursor = 'default';
     if (interaction?.kind === 'pan') cursor = 'grabbing';
+    else if (interaction?.kind === 'scale') {
+        cursor = interaction.corner === null ? 'crosshair' : interaction.corner === 'nw' || interaction.corner === 'se' ? 'nwse-resize' : 'nesw-resize';
+    }
     else if (interaction?.kind === 'spacing') cursor = interaction.axis === 'x' ? 'ew-resize' : 'ns-resize';
     else if (interaction?.kind === 'guide') cursor = interaction.axis === 'v' ? 'col-resize' : 'row-resize';
     else if (interaction?.kind === 'hanging') cursor = 'row-resize';
@@ -821,6 +946,18 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     } : null;
     const draggedGuide = interaction?.kind === 'guide' ? guides.find((g) => g.id === interaction.id) ?? null : null;
 
+    let scaleLabel: string | null = null;
+    if (interaction?.kind === 'scale') {
+        const first = itemsById.get(interaction.ids[0]);
+        if (first) {
+            const size = pictureSize(first.inst);
+            scaleLabel = `${formatCm(size.w * interaction.factor, false)} × ${formatCm(size.h * interaction.factor)} · ${Math.round(interaction.factor * 100)} %`;
+        }
+    }
+    const scaleBox = unionRect(scalableIds.map((id) => rectOf(itemsById.get(id)!)));
+    const showScaleHandles = effectiveTool === 'select' && !!scaleBox
+        && (!interaction || (interaction.kind === 'scale' && interaction.corner !== null));
+
     return (
         <div
             ref={rootRef}
@@ -834,6 +971,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             onPointerLeave={() => {
                 if (!interactionRef.current) {
                     setPointer(null);
+                    pointerRef.current = null;
                     setHoverId(null);
                     setHoverHanging(false);
                     useWallEditorView.getState().setHoverGuide(null);
@@ -975,7 +1113,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                         <Pill
                             x={sx(centerX(selectionBox))}
                             y={sy(selectionBox.y) + 14}
-                            text={`${formatCm(selectionBox.w, false)} × ${formatCm(selectionBox.h)}`}
+                            text={scaleLabel ?? `${formatCm(selectionBox.w, false)} × ${formatCm(selectionBox.h)}`}
                             color={WE_COLORS.select}
                         />
                         {selectedIds.length === 1 && (
@@ -999,6 +1137,26 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 )}
 
                 {spacingHandles}
+
+                {/* Corner handles: scale about the centre (Alt: opposite corner fixed) */}
+                {showScaleHandles && scaleBox && SCALE_CORNERS.map((corner) => {
+                    const p = cornerPoint(scaleBox, corner);
+                    return (
+                        <rect
+                            key={corner}
+                            x={sx(p.x) - HANDLE_PX / 2}
+                            y={sy(p.y) - HANDLE_PX / 2}
+                            width={HANDLE_PX}
+                            height={HANDLE_PX}
+                            fill="#fff"
+                            stroke={WE_COLORS.select}
+                            strokeWidth={1.5}
+                            pointerEvents="auto"
+                            style={{ cursor: corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize' }}
+                            onPointerDown={(e) => handleScaleHandlePointerDown(corner, e)}
+                        />
+                    );
+                })}
 
                 {marquee && (
                     <rect {...marquee} fill="rgba(59,130,246,0.08)" stroke={WE_COLORS.select} strokeWidth={1} pointerEvents="none" />
