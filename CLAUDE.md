@@ -16,6 +16,7 @@ This file gives Claude Code full context about the project — its architecture,
 - `npm run dev` — Vite dev server on port 5173, proxies `/api`, `/auth`, `/upload`, `/uploads`, `/public` to backend
 - `npm run build` — TypeScript check + Vite build
 - `npm run lint` — ESLint
+- `npm run test` — Vitest (pure logic in `src/lib/**/*.test.ts`)
 
 ### Backend (`server/` directory)
 - `cd server && npm run dev` — nodemon + ts-node on port 3000
@@ -142,6 +143,8 @@ Frontal, Figma-like editing of one wall face (`src/components/wall-editor/`, `sr
 - Layout math (align, distribute, spacing, snapping, measuring) is pure and lives in `lib/wallEditor/layout.ts`; commands on the selection in `lib/wallEditor/operations.ts`.
 - `artworkTextureManager` also sizes textures for orthographic cameras (on-screen size = `sizeM × pxPerM`).
 - EditorPage's keyboard handler ignores everything but undo/redo while the editor is open; the overlay handles its own keys.
+- Hanging height and ruler guides are stored per exhibition version (`ExhibitionVersion.hanging_height`, default 1.45 m, and `wall_guides`, keyed by `targetKey`). `lib/wallEditor/layoutSync.ts` (started by EditorPage) loads them from `GET …/versions/:vid/wall-layout` and PATCHes the full state 300 ms after a change; it never dispatches editor actions. Guides: `axis 'h'` = horizontal, value above the face's floor; `'v'` = vertical, value from its left edge (`lib/wallEditor/guides.ts`). Top ruler → horizontal guide, left ruler → vertical guide. Temporary → real wall ids and deleted walls reach the guides through `lib/wallEvents.ts`; the server rewrites the keys when versions are copied or merged (`server/src/lib/wallGuides.ts`).
+- The panel has tabs Anordnen / Werk / Linien (`panelTab` in wallEditorViewStore; a selection switches to Werk until a tab is picked by hand). Scaling (S modal, corner handles, ±5 %, W×H fields) is always about the picture centre (Alt on a handle: opposite corner fixed), monitors excluded; math in `lib/wallEditor/scale.ts`, the preview is drawn by the overlay and committed once (`scaleArtworks` → `commitScaledArtworks`), because frame profiles come from instance data and a scaled group would stretch them.
 
 ### Picture Frames & Passepartouts
 
