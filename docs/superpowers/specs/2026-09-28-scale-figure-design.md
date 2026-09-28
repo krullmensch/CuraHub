@@ -18,7 +18,7 @@ Out of scope: the figure in the 2D wall editor, collisions with the figure in fi
 ## 1. The model
 
 - Built in Blender (Blender MCP): one faceted, neutral standing figure, arms slightly away from the body, **exactly 1.73 m** from the soles to the top of the head, feet at y = 0, centred on x/z = 0, facing +Z. About 400–800 triangles, flat normals, one mesh, no materials that matter (the client assigns its own).
-- Exported as `public/models/scale-figure.glb`, Draco-compressed (decoder already served from `public/draco/`).
+- Exported as `public/models/scale-figure.glb`, no Draco (a few hundred triangles; not worth the decoder).
 - Verified after export: bounding box height 1.73 m ± 5 mm, triangle count, file size (target < 50 KB).
 
 ---
@@ -108,13 +108,13 @@ export interface ScaleFigureData {
 
 ### Toolbar (`src/pages/EditorPage.tsx`)
 
-New `ToolButton` with Lucide `PersonStanding`, tooltip "Maßstabsfigur hinzufügen", placed after the first-person button. On click: create a figure 2 m in front of the current orbit target along the camera's horizontal view direction, `rotation_y` so it faces the camera, `isPublic: false`, then select it. The G/R buttons are enabled when a figure is selected (they currently check `selectedInstanceId`); X/Y/Z axis lock and S stay disabled for figures.
+New `ToolButton` with Lucide `PersonStanding`, tooltip "Maßstabsfigur hinzufügen", placed after the first-person button. On click: create a figure where the view ray through the screen centre meets the floor (else 3 m in front of the camera), `rotation_y` so it faces the camera, `isPublic: false`, then select it. The pose comes from the canvas via `scaleFigureBridge` (`src/lib/scaleFigure.ts`), because `orbitCameraState` is only updated on view-mode changes. The G/R buttons are enabled when a figure is selected (they currently check `selectedInstanceId`); X/Y/Z axis lock and S stay disabled for figures.
 
 ### Properties panel (`src/components/PropertiesPanel.tsx`)
 
 When `selectedFigureId` is set, a section "Maßstabsfigur (1,73 m)":
 - Position X / Z (m) and Rotation (°) number inputs, like the wall section
-- Switch **"Im Viewer sichtbar"** → `isPublic`
+- Toggle button (`aria-pressed`) **"Im Viewer sichtbar"** / "Nur im Editor" → `isPublic` (no Switch primitive in `components/ui`)
 - Button **"Entfernen"** → `deleteScaleFigure`
 
 ### Viewer (`src/pages/ViewerPage.tsx`)
@@ -125,7 +125,7 @@ Renders `<ScaleFigures figures={publicFigures} interactive={false} />`.
 
 ## 4. First-person eye height
 
-In `src/components/Player.tsx`:
+Constants live in `src/lib/playerDimensions.ts` (Player.tsx pulls in Rapier, which must stay in the lazy physics chunk, so the store and ViewerPage import the constants from the lib). `Player.tsx` re-exports `PLAYER_EYE_OFFSET` for PhysicsWorld.
 
 ```ts
 /** Eye height of a 1.73 m tall person (≈ 93.5 % of stature). */
@@ -138,7 +138,7 @@ export const PLAYER_EYE_OFFSET = PLAYER_EYE_HEIGHT - PLAYER_BODY_CENTER;    // 0
 
 - `CapsuleCollider args={[PLAYER_CAPSULE_HALF_HEIGHT, PLAYER_CAPSULE_RADIUS]}`.
 - `DEFAULT_SPAWN` y = `PLAYER_BODY_CENTER`.
-- `editorStore` default `firstPersonCameraState.position` y = `1.62` (literal with a comment pointing at `PLAYER_EYE_HEIGHT`, avoiding a store → component import).
+- `editorStore` default `firstPersonCameraState.position` y = `PLAYER_EYE_HEIGHT`.
 - `ViewerPage` Canvas camera start y 1.7 → `PLAYER_EYE_HEIGHT`.
 - `PhysicsWorld` already derives the body from `PLAYER_EYE_OFFSET` — no change.
 - Saved first-person poses from before (eye at 1.60 m) spawn the body 2 cm low; the capsule is pushed out of the floor by the solver. Acceptable, no data migration.
@@ -172,4 +172,7 @@ export const PLAYER_EYE_OFFSET = PLAYER_EYE_HEIGHT - PLAYER_BODY_CENTER;    // 0
 | `src/pages/EditorPage.tsx` | toolbar button, delete key, G/R enablement |
 | `src/pages/ViewerPage.tsx` | public figures, camera start height |
 | `src/components/Player.tsx` | capsule + eye height |
+| `src/lib/playerDimensions.ts` | player/figure height constants |
+| `src/lib/scaleFigure.ts` | model URL, spawn pose, canvas bridge |
+| `src/components/ArtworkPlacement.tsx` | drop raycast ignores figures |
 | `CLAUDE.md` | short "Maßstabsfigur" note + eye height |
