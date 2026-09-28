@@ -1,10 +1,12 @@
 import {
+    MAX_GUIDE_FACES,
     MAX_GUIDES_PER_FACE,
     dropWallGuides,
     guidesFromIndexKeys,
     guidesToIndexKeys,
     parseWallGuides,
     remapWallGuides,
+    wallGuidesSchema,
     wallLayoutPatchSchema,
     type WallGuides,
 } from '../lib/wallGuides';
@@ -56,6 +58,22 @@ describe('dropWallGuides', () => {
     it('returns the same object when the wall had no guides', () => {
         const guides: WallGuides = { 'wall:12:front': [h(3)] };
         expect(dropWallGuides(guides, 1)).toBe(guides);
+    });
+});
+
+describe('wallGuidesSchema face cap', () => {
+    it('accepts up to MAX_GUIDE_FACES keys', () => {
+        const guides: WallGuides = Object.fromEntries(
+            Array.from({ length: MAX_GUIDE_FACES }, (_, i) => [`room:x:${i}`, [h(1)]]),
+        );
+        expect(() => wallGuidesSchema.parse(guides)).not.toThrow();
+    });
+
+    it('rejects more than MAX_GUIDE_FACES keys', () => {
+        const guides: WallGuides = Object.fromEntries(
+            Array.from({ length: MAX_GUIDE_FACES + 1 }, (_, i) => [`room:x:${i}`, [h(1)]]),
+        );
+        expect(() => wallGuidesSchema.parse(guides)).toThrow();
     });
 });
 

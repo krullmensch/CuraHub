@@ -20,9 +20,11 @@ const createVersionSchema = z.object({
     comment: z.string().min(1).max(500),
     branch_name: z.string().min(1).max(100).default('main'),
     sourceVersionId: z.number().optional(), // Version to optionally link as parent
-    // 2D wall editor layout; wallGuides keys use the `id` of the walls below.
-    hangingHeight: hangingHeightSchema.optional(),
-    wallGuides: wallGuidesSchema.optional(),
+    // 2D wall editor layout; wallGuides keys use the `id` of the walls below. Validated separately
+    // below (safeParse) so a bad value falls back to the source layout instead of rejecting the
+    // whole snapshot.
+    hangingHeight: z.unknown().optional(),
+    wallGuides: z.unknown().optional(),
     instances: z.array(z.object({
         artworkId: z.number().optional(),
         assetId: z.number().optional(),
@@ -255,13 +257,17 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
 
         // Hanging height and ruler guides travel with the snapshot (lib/wallGuides.ts).
         const sourceLayout = sourceVersionId
-            ? await prisma.exhibitionVersion.findUnique({
-                where: { id: sourceVersionId },
+            ? await prisma.exhibitionVersion.findFirst({
+                where: { id: sourceVersionId, exhibition_id: exhibitionId },
                 select: { hanging_height: true, wall_guides: true },
             })
             : null;
-        const hangingHeight = data.hangingHeight ?? sourceLayout?.hanging_height ?? DEFAULT_HANGING_HEIGHT;
-        const sourceGuides: WallGuides = data.wallGuides ?? parseWallGuides(sourceLayout?.wall_guides);
+        // A bad hangingHeight/wallGuides must never fail the whole snapshot — fall back exactly
+        // like an omitted field (source layout, then the default).
+        const parsedHangingHeight = hangingHeightSchema.safeParse(data.hangingHeight);
+        const hangingHeight = parsedHangingHeight.success ? parsedHangingHeight.data : (sourceLayout?.hanging_height ?? DEFAULT_HANGING_HEIGHT);
+        const parsedWallGuides = wallGuidesSchema.safeParse(data.wallGuides);
+        const sourceGuides: WallGuides = parsedWallGuides.success ? parsedWallGuides.data : parseWallGuides(sourceLayout?.wall_guides);
         // Old wall id → position in wallsToCreate; set where the walls are chosen below.
         let guideWallIndex = new Map<number, number>();
 

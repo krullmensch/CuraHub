@@ -10,13 +10,18 @@ import { z } from 'zod';
 
 export const DEFAULT_HANGING_HEIGHT = 1.45;
 export const MAX_GUIDES_PER_FACE = 200;
+/** Upper bound on the number of wall faces a layout can carry guides for. */
+export const MAX_GUIDE_FACES = 500;
 
 export const guideSchema = z.object({
     axis: z.enum(['h', 'v']),
     // Guides may lie outside the wall face.
     value: z.number().min(-100).max(100),
 });
-export const wallGuidesSchema = z.record(z.string().min(1).max(200), z.array(guideSchema).max(MAX_GUIDES_PER_FACE));
+export const wallGuidesSchema = z.record(z.string().min(1).max(200), z.array(guideSchema).max(MAX_GUIDES_PER_FACE))
+    .refine((guides) => Object.keys(guides).length <= MAX_GUIDE_FACES, {
+        message: `At most ${MAX_GUIDE_FACES} wall faces`,
+    });
 export const hangingHeightSchema = z.number().min(0.01).max(9.99);
 export const wallLayoutPatchSchema = z.object({
     hangingHeight: hangingHeightSchema.optional(),
