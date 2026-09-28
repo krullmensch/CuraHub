@@ -8,6 +8,7 @@ import type { WallEditorTarget } from '../lib/wallEditor/faces';
 import { DEFAULT_FRAME_STYLE, frameStyleOf, type FrameStyleId, type PassepartoutPlacement } from '../lib/frameStyles';
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
 import { sanitiseFigurePose } from '../lib/scaleFigure';
+import { emitWallEvent } from '../lib/wallEvents';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -603,7 +604,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   },
   deleteWall: (id) => {
     localEditSeq++;
-    return set((state) => ({
+    set((state) => ({
       localWalls: state.localWalls.filter(w => w.id !== id),
       // Detach artworks from deleted wall
       localInstances: state.localInstances.map(inst =>
@@ -613,6 +614,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       ...(state.wallEditor?.kind === 'wall' && state.wallEditor.wallId === id ? { wallEditor: null, wallEditorSelection: [] } : {}),
       hasUnsavedChanges: true,
     }));
+    emitWallEvent({ type: 'deleted', id });
   },
   toggleWallLock: (id) => {
     localEditSeq++;
@@ -1100,6 +1102,8 @@ const syncToBackend = async () => {
           }
 
           const created = await res.json();
+          // Before the store update, so data keyed by the temp id moves along (ruler guides).
+          emitWallEvent({ type: 'replaced', from: wall.id, to: created.id });
           const current = useEditorStore.getState();
           useEditorStore.setState({
             localWalls: current.localWalls.map(w => w.id === wall.id ? { ...created } : w),

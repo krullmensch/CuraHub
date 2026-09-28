@@ -1,8 +1,9 @@
 import { Router, type Request } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
+import { dropWallGuides, parseWallGuides } from '../lib/wallGuides';
 
 export const wallsRouter = Router();
 const prisma = new PrismaClient();
@@ -175,6 +176,20 @@ wallsRouter.delete('/:id', authenticate, async (req: Request, res) => {
         await prisma.modularWall.delete({
             where: { id: wallId },
         });
+
+        // The deleted wall's ruler guides go with it (lib/wallGuides.ts).
+        const version = await prisma.exhibitionVersion.findUnique({
+            where: { id: existing.versionId },
+            select: { wall_guides: true },
+        });
+        const guides = parseWallGuides(version?.wall_guides);
+        const remaining = dropWallGuides(guides, wallId);
+        if (remaining !== guides) {
+            await prisma.exhibitionVersion.update({
+                where: { id: existing.versionId },
+                data: { wall_guides: remaining as Prisma.InputJsonValue },
+            });
+        }
 
         res.json({ success: true, message: 'Wall deleted, artworks detached' });
     } catch (e) {

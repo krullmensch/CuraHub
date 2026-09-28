@@ -3,6 +3,15 @@ import { PrismaClient, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, requireAdmin, requireCurator, exhibitionAccessFilter } from '../lib/middleware';
 import { DEFAULT_FRAME_STYLE, frameStyleSchema, passepartoutPlacementSchema, passepartoutWidthSchema } from '../lib/frameStyles';
+import {
+    DEFAULT_HANGING_HEIGHT,
+    hangingHeightSchema,
+    parseWallGuides,
+    remapWallGuides,
+    wallGuidesSchema,
+    wallLayoutPatchSchema,
+    type WallGuides,
+} from '../lib/wallGuides';
 
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
@@ -26,6 +35,11 @@ const createVersionSchema = z.object({
     comment: z.string().min(1).max(500),
     branch_name: z.string().min(1).max(100).default('main'),
     sourceVersionId: z.number().optional(), // Version to optionally link as parent
+    // 2D wall editor layout; wallGuides keys use the `id` of the walls below. Validated separately
+    // below (safeParse) so a bad value falls back to the source layout instead of rejecting the
+    // whole snapshot.
+    hangingHeight: z.unknown().optional(),
+    wallGuides: z.unknown().optional(),
     instances: z.array(z.object({
         artworkId: z.number().optional(),
         assetId: z.number().optional(),
@@ -46,6 +60,7 @@ const createVersionSchema = z.object({
         scale_z: z.number(),
     })).optional(),
     walls: z.array(z.object({
+        id: z.number().optional(), // the client's wall id (maybe temporary), maps wallGuides keys
         label: z.string().max(100).optional().nullable(),
         position_x: z.number(),
         position_y: z.number(),
@@ -154,6 +169,64 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticat
     }
 });
 
+// A version's wall layout, if the user may access its exhibition.
+function findVersionLayout(req: Request, exhibitionId: number, versionId: number) {
+    const isAdmin = req.user!.role === 'admin';
+    return prisma.exhibitionVersion.findFirst({
+        where: {
+            id: versionId,
+            exhibition_id: exhibitionId,
+            exhibition: exhibitionAccessFilter(req.user!.userId, isAdmin),
+        },
+        select: { id: true, hanging_height: true, wall_guides: true },
+    });
+}
+
+// GET /exhibitions/:exhibitionId/versions/:versionId/wall-layout — hanging height and ruler guides
+versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId/wall-layout', authenticate, async (req: Request, res) => {
+    try {
+        const exhibitionId = parseInt(req.params.exhibitionId, 10);
+        const versionId = parseInt(req.params.versionId, 10);
+        if (isNaN(exhibitionId) || isNaN(versionId)) return res.status(400).json({ error: 'Invalid ID' });
+
+        const version = await findVersionLayout(req, exhibitionId, versionId);
+        if (!version) return res.status(404).json({ error: 'Version not found' });
+        res.json({ hangingHeight: version.hanging_height, guides: parseWallGuides(version.wall_guides) });
+    } catch (e) {
+        console.error(e);
+        res.status(500).json({ error: 'Failed to fetch wall layout' });
+    }
+});
+
+// PATCH /exhibitions/:exhibitionId/versions/:versionId/wall-layout — replaces the given fields
+versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/wall-layout', authenticate, async (req: Request, res) => {
+    try {
+        const exhibitionId = parseInt(req.params.exhibitionId, 10);
+        const versionId = parseInt(req.params.versionId, 10);
+        if (isNaN(exhibitionId) || isNaN(versionId)) return res.status(400).json({ error: 'Invalid ID' });
+
+        const data = wallLayoutPatchSchema.parse(req.body);
+        const version = await findVersionLayout(req, exhibitionId, versionId);
+        if (!version) return res.status(404).json({ error: 'Version not found' });
+
+        const updated = await prisma.exhibitionVersion.update({
+            where: { id: versionId },
+            data: {
+                ...(data.hangingHeight !== undefined ? { hanging_height: data.hangingHeight } : {}),
+                ...(data.guides !== undefined ? { wall_guides: data.guides as Prisma.InputJsonValue } : {}),
+            },
+            select: { hanging_height: true, wall_guides: true },
+        });
+        res.json({ hangingHeight: updated.hanging_height, guides: parseWallGuides(updated.wall_guides) });
+    } catch (e) {
+        console.error(e);
+        if (e instanceof z.ZodError) {
+            return res.status(400).json({ error: 'Validation Error', details: e.issues });
+        }
+        res.status(500).json({ error: 'Failed to save wall layout' });
+    }
+});
+
 // POST /exhibitions/:exhibitionId/versions — create a new version (snapshot current instances)
 versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (req: Request, res) => {
     try {
@@ -198,6 +271,22 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
             });
             sourceVersionId = latestVersion?.id;
         }
+
+        // Hanging height and ruler guides travel with the snapshot (lib/wallGuides.ts).
+        const sourceLayout = sourceVersionId
+            ? await prisma.exhibitionVersion.findFirst({
+                where: { id: sourceVersionId, exhibition_id: exhibitionId },
+                select: { hanging_height: true, wall_guides: true },
+            })
+            : null;
+        // A bad hangingHeight/wallGuides must never fail the whole snapshot — fall back exactly
+        // like an omitted field (source layout, then the default).
+        const parsedHangingHeight = hangingHeightSchema.safeParse(data.hangingHeight);
+        const hangingHeight = parsedHangingHeight.success ? parsedHangingHeight.data : (sourceLayout?.hanging_height ?? DEFAULT_HANGING_HEIGHT);
+        const parsedWallGuides = wallGuidesSchema.safeParse(data.wallGuides);
+        const sourceGuides: WallGuides = parsedWallGuides.success ? parsedWallGuides.data : parseWallGuides(sourceLayout?.wall_guides);
+        // Old wall id → position in wallsToCreate; set where the walls are chosen below.
+        let guideWallIndex = new Map<number, number>();
 
         // Use frontend instances, or fallback to deep-copying if not provided (backwards compat)
         let instancesToCreate: InstanceToCreate[] = [];
@@ -321,6 +410,9 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                 color: w.color,
                 isLocked: w.isLocked,
             }));
+            guideWallIndex = new Map(
+                data.walls.flatMap((w, i): [number, number][] => (w.id != null ? [[w.id, i]] : [])),
+            );
         } else if (sourceVersionId) {
             // Same order as oldWallIdToIndex in the deep-copy branch above
             const sourceWalls = await prisma.modularWall.findMany({
@@ -341,6 +433,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                 color: w.color,
                 isLocked: w.isLocked,
             }));
+            guideWallIndex = new Map(sourceWalls.map((w, i) => [w.id, i]));
         }
 
         // Scale figures: from the client, else copied from the source version
@@ -366,6 +459,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                     branch_name: data.branch_name,
                     comment: data.comment,
                     is_published: false,
+                    hanging_height: hangingHeight,
                     walls: {
                         create: wallsToCreate
                     },
@@ -378,6 +472,12 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
 
             // 2. Build wall index → new wall ID mapping
             const newWallIds = version.walls.map(w => w.id); // walls created in order
+
+            // 2b. Guides follow their walls to the new ids
+            await tx.exhibitionVersion.update({
+                where: { id: version.id },
+                data: { wall_guides: remapWallGuides(sourceGuides, guideWallIndex, newWallIds) as Prisma.InputJsonValue },
+            });
 
             // 3. Remap wallId on instances via _wallIndex (from the frontend's wallIndex or the deep-copy)
             const instancesWithWallIds = instancesToCreate.map(({ _wallIndex, ...cleanInst }) => {
@@ -625,6 +725,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
                     branch_name: 'main',
                     comment: `Merge: ${sourceVersion.branch_name} → main`,
                     is_published: false,
+                    hanging_height: sourceVersion.hanging_height,
                     walls: { create: wallsToCreate },
                     scaleFigures: { create: figuresToCreate }
                 },
@@ -632,6 +733,12 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
             });
 
             const newWallIds = version.walls.map(w => w.id);
+            await tx.exhibitionVersion.update({
+                where: { id: version.id },
+                data: {
+                    wall_guides: remapWallGuides(parseWallGuides(sourceVersion.wall_guides), oldWallIdToIndex, newWallIds) as Prisma.InputJsonValue,
+                },
+            });
             const instancesWithWallIds = instancesToCreate.map(({ _wallIndex, ...cleanInst }) => {
                 const wallId = (_wallIndex != null && _wallIndex >= 0 && _wallIndex < newWallIds.length)
                     ? newWallIds[_wallIndex]

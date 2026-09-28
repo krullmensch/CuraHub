@@ -25,6 +25,7 @@ import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
 import { MAX_SCALE_FIGURES_PER_VERSION, scaleFigureBridge } from '../lib/scaleFigure';
+import { startWallLayoutSync } from '../lib/wallEditor/layoutSync';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
 const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
@@ -261,6 +262,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
   const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
+  // Hanging height and ruler guides of the 2D wall editor, per exhibition version
+  useEffect(() => startWallLayoutSync(), []);
   // 2D wall editor: the selected wall, or the wall the selected artwork hangs on
   const canOpenWallEditor = useEditorStore((state) => {
     if (state.selectedWallId !== null) return true;

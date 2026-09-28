@@ -93,8 +93,13 @@ model ExhibitionVersion {
   published_at        DateTime?
 
   // Content JSON for legacy/cache, but using relational for Phase 3
-  data                Json?      
-  
+  data                Json?
+
+  // 2D wall editor: picture-centre height above the floor (metres) and ruler guides per wall
+  // face ({ "<faceKey>": [{ axis: 'h' | 'v', value }] }, see src/lib/wallGuides.ts).
+  hanging_height      Float      @default(1.45)
+  wall_guides         Json?
+
   instances           ArtworkInstance[]
   walls               ModularWall[]
   scaleFigures        ScaleFigure[]
