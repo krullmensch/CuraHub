@@ -150,7 +150,7 @@ if (process.env.NODE_ENV === 'production') {
     // every unmatched API URL still returns the JSON 404.
     const API_NAMESPACE_SEGMENTS = new Set([
         'api', 'auth', 'upload', 'uploads', 'public', 'assets',
-        'folders', 'artworks', 'instances', 'projects', 'walls', 'admin',
+        'folders', 'artworks', 'instances', 'projects', 'walls', 'scale-figures', 'admin',
     ]);
 
     // Frontend route patterns, mirroring src/App.tsx <Route path="..."> entries

@@ -7,6 +7,21 @@ import { DEFAULT_FRAME_STYLE, frameStyleSchema, passepartoutPlacementSchema, pas
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
 
+// Scale figures are copied as plain snapshots (no ids) into a new version.
+const scaleFigureSnapshotSchema = z.object({
+    position_x: z.number().min(-500).max(500),
+    position_z: z.number().min(-500).max(500),
+    rotation_y: z.number().min(-100).max(100),
+    isPublic: z.boolean(),
+});
+type ScaleFigureSnapshot = z.infer<typeof scaleFigureSnapshotSchema>;
+const snapshotFigure = (f: ScaleFigureSnapshot): ScaleFigureSnapshot => ({
+    position_x: f.position_x,
+    position_z: f.position_z,
+    rotation_y: f.rotation_y,
+    isPublic: f.isPublic,
+});
+
 const createVersionSchema = z.object({
     comment: z.string().min(1).max(500),
     branch_name: z.string().min(1).max(100).default('main'),
@@ -43,7 +58,8 @@ const createVersionSchema = z.object({
         thickness: z.number(),
         color: z.string(),
         isLocked: z.boolean(),
-    })).optional()
+    })).optional(),
+    scaleFigures: z.array(scaleFigureSnapshotSchema).optional(),
 });
 
 // Instance snapshot used when creating/merging versions. `_wallIndex` points into the
@@ -123,6 +139,7 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions/:versionId', authenticat
                     }
                 },
                 walls: true,
+                scaleFigures: true,
                 creator: {
                     select: { id: true, email: true }
                 }
@@ -326,6 +343,18 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
             }));
         }
 
+        // Scale figures: from the client, else copied from the source version
+        let figuresToCreate: ScaleFigureSnapshot[] = [];
+        if (data.scaleFigures) {
+            figuresToCreate = data.scaleFigures.map(snapshotFigure);
+        } else if (sourceVersionId) {
+            const sourceFigures = await prisma.scaleFigure.findMany({
+                where: { versionId: sourceVersionId },
+                orderBy: { id: 'asc' },
+            });
+            figuresToCreate = sourceFigures.map(snapshotFigure);
+        }
+
         // Create version with walls first, then instances with remapped wallIds
         const newVersion = await prisma.$transaction(async (tx) => {
             // 1. Create version with walls (no instances yet)
@@ -339,7 +368,10 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                     is_published: false,
                     walls: {
                         create: wallsToCreate
-                    }
+                    },
+                    scaleFigures: {
+                        create: figuresToCreate
+                    },
                 },
                 include: { walls: { orderBy: { id: 'asc' } } }
             });
@@ -375,6 +407,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                         }
                     },
                     walls: true,
+                    scaleFigures: true,
                     creator: {
                         select: { id: true, email: true }
                     }
@@ -537,6 +570,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
             include: {
                 instances: true,
                 walls: true,
+                scaleFigures: true,
             }
         });
         if (!sourceVersion) return res.status(404).json({ error: 'Version not found' });
@@ -580,6 +614,8 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
             scale_z: inst.scale_z,
         }));
 
+        const figuresToCreate = sourceVersion.scaleFigures.map(snapshotFigure);
+
         const newVersion = await prisma.$transaction(async (tx) => {
             const version = await tx.exhibitionVersion.create({
                 data: {
@@ -589,7 +625,8 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
                     branch_name: 'main',
                     comment: `Merge: ${sourceVersion.branch_name} → main`,
                     is_published: false,
-                    walls: { create: wallsToCreate }
+                    walls: { create: wallsToCreate },
+                    scaleFigures: { create: figuresToCreate }
                 },
                 include: { walls: { orderBy: { id: 'asc' } } }
             });
@@ -611,6 +648,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
                 include: {
                     instances: { include: { artwork: { include: { asset: true } } } },
                     walls: true,
+                    scaleFigures: true,
                     creator: { select: { id: true, email: true } }
                 }
             });

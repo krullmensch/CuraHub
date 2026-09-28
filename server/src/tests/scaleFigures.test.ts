@@ -102,3 +102,63 @@ describe('scale figures API', () => {
         expect(exhibitionSlug).toContain(SUFFIX);
     });
 });
+
+describe('scale figures in versions and the public viewer', () => {
+    beforeAll(async () => {
+        await prisma.scaleFigure.createMany({
+            data: [
+                { versionId, position_x: 1, position_z: 1, rotation_y: 0, isPublic: true },
+                { versionId, position_x: 2, position_z: 2, rotation_y: 1, isPublic: false },
+            ],
+        });
+    });
+
+    it('returns figures with a version', async () => {
+        const res = await request(app).get(`/exhibitions/${exhibitionId}/versions/${versionId}`).set(auth(ownerToken));
+        expect(res.status).toBe(200);
+        expect(res.body.scaleFigures).toHaveLength(2);
+    });
+
+    it('copies the source version\'s figures when the client sends none', async () => {
+        const res = await request(app).post(`/exhibitions/${exhibitionId}/versions`).set(auth(ownerToken))
+            .send({ comment: 'copy', sourceVersionId: versionId });
+        expect(res.status).toBe(201);
+        expect(res.body.scaleFigures.map((f: { position_x: number }) => f.position_x).sort()).toEqual([1, 2]);
+    });
+
+    it('takes the figures the client sends', async () => {
+        const res = await request(app).post(`/exhibitions/${exhibitionId}/versions`).set(auth(ownerToken))
+            .send({
+                comment: 'client',
+                sourceVersionId: versionId,
+                scaleFigures: [{ position_x: 5, position_z: 6, rotation_y: 0.25, isPublic: true }],
+            });
+        expect(res.status).toBe(201);
+        expect(res.body.scaleFigures).toEqual([
+            expect.objectContaining({ position_x: 5, position_z: 6, rotation_y: 0.25, isPublic: true }),
+        ]);
+    });
+
+    it('copies figures when a branch is merged', async () => {
+        const branch = await prisma.exhibitionVersion.create({
+            data: {
+                exhibition_id: exhibitionId,
+                created_by_user_id: ownerId,
+                parent_version_id: versionId,
+                branch_name: `${SUFFIX}-branch`,
+                comment: 'branch',
+                scaleFigures: { create: [{ position_x: 7, position_z: 7, rotation_y: 0, isPublic: false }] },
+            },
+        });
+        const res = await request(app).post(`/exhibitions/${exhibitionId}/versions/${branch.id}/merge`).set(auth(ownerToken));
+        expect(res.status).toBe(201);
+        expect(res.body.scaleFigures).toEqual([expect.objectContaining({ position_x: 7, isPublic: false })]);
+    });
+
+    it('shows only public figures of the published version', async () => {
+        await prisma.exhibitionVersion.update({ where: { id: versionId }, data: { is_published: true } });
+        const res = await request(app).get(`/public/exhibition/${exhibitionSlug}`);
+        expect(res.status).toBe(200);
+        expect(res.body.scaleFigures).toEqual([expect.objectContaining({ position_x: 1, isPublic: true })]);
+    });
+});
