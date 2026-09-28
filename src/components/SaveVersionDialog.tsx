@@ -72,7 +72,13 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
             thickness: w.thickness,
             color: w.color,
             isLocked: w.isLocked,
-          }))
+          })),
+          scaleFigures: useEditorStore.getState().localScaleFigures.map(f => ({
+            position_x: f.position_x,
+            position_z: f.position_z,
+            rotation_y: f.rotation_y,
+            isPublic: f.isPublic,
+          })),
         }),
       });
 

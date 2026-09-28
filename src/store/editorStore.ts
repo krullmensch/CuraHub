@@ -128,6 +128,17 @@ export interface ModularWallData {
   isLocked: boolean;
 }
 
+/** A 1.73 m scale figure standing on the floor (components/ScaleFigures.tsx). */
+export interface ScaleFigureData {
+  id: number;
+  versionId?: number;
+  position_x: number;
+  position_z: number;
+  rotation_y: number;
+  /** Shown in the public viewer. */
+  isPublic: boolean;
+}
+
 interface OrbitCameraState {
   position: [number, number, number];
   target: [number, number, number];
@@ -170,6 +181,7 @@ interface EditorState {
   selectedInstanceId: number | null;
   selectedWallId: number | null;
   selectedZoneId: number | null;
+  selectedFigureId: number | null;
   transformMode: TransformMode;
   isTransforming: boolean;
   liveTransform: { position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } } | null;
@@ -211,6 +223,9 @@ interface EditorState {
   // Modular Walls State
   localWalls: ModularWallData[];
 
+  // Scale figures (1.73 m people for judging scale)
+  localScaleFigures: ScaleFigureData[];
+
   // FPV Artwork Info
   fpvHoveredInfo: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null;
 
@@ -244,6 +259,7 @@ interface EditorState {
   selectInstance: (id: number | null) => void;
   selectWall: (id: number | null) => void;
   selectZone: (id: number | null) => void;
+  selectFigure: (id: number | null) => void;
   setTransformMode: (mode: TransformMode) => void;
   setIsTransforming: (v: boolean) => void;
   setLiveTransform: (t: EditorState['liveTransform']) => void;
@@ -273,6 +289,12 @@ interface EditorState {
   updateWall: (id: number, updates: Partial<ModularWallData>) => void;
   deleteWall: (id: number) => void;
   toggleWallLock: (id: number) => void;
+
+  // Scale figure actions
+  setLocalScaleFigures: (figures: ScaleFigureData[]) => void;
+  addScaleFigure: (figure: ScaleFigureData) => void;
+  updateScaleFigure: (id: number, updates: Partial<Omit<ScaleFigureData, 'id'>>) => void;
+  deleteScaleFigure: (id: number) => void;
 
   // FPV Actions
   setFpvHoveredInfo: (info: { title: string; artist: string; year: string; description: string; instanceId: number; assetType: string } | null) => void;
@@ -330,6 +352,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   selectedInstanceId: null,
   selectedWallId: null,
   selectedZoneId: null,
+  selectedFigureId: null,
   transformMode: 'translate',
   isTransforming: false,
   liveTransform: null,
@@ -361,6 +384,9 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Modular Walls defaults
   localWalls: [],
+
+  // Scale figure defaults
+  localScaleFigures: [],
 
   // FPV
   fpvHoveredInfo: null,
@@ -396,9 +422,10 @@ export const useEditorStore = create<EditorState>((set) => ({
   triggerInstancesRefresh: () => set((state) => ({ instancesVersion: state.instancesVersion + 1 })),
 
   // Phase 4.2 actions
-  selectInstance: (id) => set({ selectedInstanceId: id, selectedWallId: null, selectedZoneId: null }),
-  selectWall: (id) => set({ selectedWallId: id, selectedInstanceId: null, selectedZoneId: null }),
-  selectZone: (id) => set({ selectedZoneId: id, selectedInstanceId: null, selectedWallId: null }),
+  selectInstance: (id) => set({ selectedInstanceId: id, selectedWallId: null, selectedZoneId: null, selectedFigureId: null }),
+  selectWall: (id) => set({ selectedWallId: id, selectedInstanceId: null, selectedZoneId: null, selectedFigureId: null }),
+  selectZone: (id) => set({ selectedZoneId: id, selectedInstanceId: null, selectedWallId: null, selectedFigureId: null }),
+  selectFigure: (id) => set({ selectedFigureId: id, selectedInstanceId: null, selectedWallId: null, selectedZoneId: null }),
   setTransformMode: (mode) => set({ transformMode: mode }),
   setIsTransforming: (v) => set({ isTransforming: v }),
   setLiveTransform: (t) => set({ liveTransform: t }),
@@ -591,6 +618,35 @@ export const useEditorStore = create<EditorState>((set) => ({
     }));
   },
 
+  // Scale figure actions (auto-sync persists them, like walls; no undo — walls have none either)
+  setLocalScaleFigures: (figures) => {
+    // Only real ids count as persisted; temp ids stay "new" so auto-sync POSTs them.
+    prevScaleFigures = figures.filter(f => f.id > 0);
+    return set({ localScaleFigures: figures, selectedFigureId: null });
+  },
+  addScaleFigure: (figure) => {
+    localEditSeq++;
+    return set((state) => ({
+      localScaleFigures: [...state.localScaleFigures, figure],
+      hasUnsavedChanges: true,
+    }));
+  },
+  updateScaleFigure: (id, updates) => {
+    localEditSeq++;
+    return set((state) => ({
+      localScaleFigures: state.localScaleFigures.map(f => f.id === id ? { ...f, ...updates } : f),
+      hasUnsavedChanges: true,
+    }));
+  },
+  deleteScaleFigure: (id) => {
+    localEditSeq++;
+    return set((state) => ({
+      localScaleFigures: state.localScaleFigures.filter(f => f.id !== id),
+      selectedFigureId: state.selectedFigureId === id ? null : state.selectedFigureId,
+      hasUnsavedChanges: true,
+    }));
+  },
+
   // FPV actions
   setFpvHoveredInfo: (info) => set({ fpvHoveredInfo: info }),
 
@@ -613,6 +669,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       selectedInstanceId: null,
       selectedWallId: null,
       selectedZoneId: null,
+      selectedFigureId: null,
       transformAxisLock: 'none',
       modalTransformActive: false,
       isTransforming: false,
@@ -705,7 +762,7 @@ const SYNC_SESSION_ID = randomId();
 // reused by fetchWithRetry's retries and by later batches re-POSTing the same still-unsynced temp
 // id, deleted as soon as that POST succeeds, cleared on version change.
 const createIdempotencyKeys = new Map<string, string>();
-const idempotencyKeyFor = (kind: 'inst' | 'wall', tempId: number): string => {
+const idempotencyKeyFor = (kind: 'inst' | 'wall' | 'figure', tempId: number): string => {
   const mapKey = `${kind}:${tempId}`;
   let key = createIdempotencyKeys.get(mapKey);
   if (!key) {
@@ -760,10 +817,12 @@ const getAuthHeaders = (): Record<string, string> | null => {
 // "Believed persisted in DB" snapshots, used for diffing (see invariant #3 above).
 let prevInstances: ArtworkInstanceData[] = [];
 let prevWalls: ModularWallData[] = [];
+let prevScaleFigures: ScaleFigureData[] = [];
 
 // Guards against duplicate POSTs: track temp IDs currently being synced
 const syncingInstanceTempIds = new Set<number>();
 const syncingWallTempIds = new Set<number>();
+const syncingFigureTempIds = new Set<number>();
 let isSyncing = false;
 
 // Debounce to batch rapid changes (e.g. multiple undo steps)
@@ -844,7 +903,7 @@ const syncToBackend = async () => {
     }
 
     const state = useEditorStore.getState();
-    const { localInstances, localWalls, activeVersionId } = state;
+    const { localInstances, localWalls, localScaleFigures, activeVersionId } = state;
     if (!activeVersionId) {
       useEditorStore.setState({ syncStatus: 'idle' });
       lastSyncStatus = 'idle';
@@ -854,6 +913,7 @@ const syncToBackend = async () => {
 
     const currInstances = localInstances;
     const currWalls = localWalls;
+    const currFigures = localScaleFigures;
 
     const tasks: Promise<void>[] = [];
 
@@ -1083,12 +1143,107 @@ const syncToBackend = async () => {
       })());
     }
 
+    // ── Scale figure sync (mirrors wall sync above) ──
+    const prevFigureMap = new Map(prevScaleFigures.map(f => [f.id, f]));
+    const currFigureMap = new Map(currFigures.map(f => [f.id, f]));
+    const nextFiguresMap = new Map(prevScaleFigures.map(f => [f.id, f]));
+
+    // New figures (temp negative IDs) → POST
+    for (const figure of currFigures) {
+      if (figure.id >= 0 || prevFigureMap.has(figure.id)) continue;
+      if (syncingFigureTempIds.has(figure.id)) continue;
+
+      syncingFigureTempIds.add(figure.id);
+      tasks.push((async () => {
+        try {
+          const res = await fetchWithRetry('/api/scale-figures', {
+            method: 'POST',
+            headers: { ...headers, 'Idempotency-Key': idempotencyKeyFor('figure', figure.id) },
+            body: JSON.stringify({
+              versionId: activeVersionId,
+              position_x: figure.position_x,
+              position_z: figure.position_z,
+              rotation_y: figure.rotation_y,
+              isPublic: figure.isPublic,
+            }),
+          });
+
+          if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (!res?.ok) {
+            anyFailure = true;
+            console.error('[AutoSync] Failed to create scale figure after retries:', figure.id, res?.status);
+            return;
+          }
+
+          const created: ScaleFigureData = await res.json();
+          const current = useEditorStore.getState();
+          // Only the id changes: edits made while the POST was in flight stay and are PATCHed
+          // by the next batch (the snapshot below holds the values that were POSTed).
+          useEditorStore.setState({
+            localScaleFigures: current.localScaleFigures.map(f =>
+              f.id === figure.id ? { ...f, id: created.id, versionId: created.versionId } : f
+            ),
+            selectedFigureId: current.selectedFigureId === figure.id ? created.id : current.selectedFigureId,
+          });
+          nextFiguresMap.set(created.id, { ...figure, id: created.id, versionId: created.versionId });
+          createIdempotencyKeys.delete(`figure:${figure.id}`);
+        } finally {
+          syncingFigureTempIds.delete(figure.id);
+        }
+      })());
+    }
+
+    // Deleted figures (real IDs only) → DELETE
+    for (const prev of prevScaleFigures) {
+      if (prev.id <= 0 || currFigureMap.has(prev.id)) continue;
+      tasks.push((async () => {
+        const res = await fetchWithRetry(`/api/scale-figures/${prev.id}`, { method: 'DELETE', headers });
+        if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (!res?.ok) {
+          anyFailure = true;
+          console.error('[AutoSync] Failed to delete scale figure after retries:', prev.id, res?.status);
+          return;
+        }
+        nextFiguresMap.delete(prev.id);
+      })());
+    }
+
+    // Updated figures → PATCH
+    for (const curr of currFigures) {
+      if (curr.id < 0) continue;
+      const prev = prevFigureMap.get(curr.id);
+      if (!prev) continue;
+      const changed = curr.position_x !== prev.position_x || curr.position_z !== prev.position_z ||
+        curr.rotation_y !== prev.rotation_y || curr.isPublic !== prev.isPublic;
+      if (!changed) {
+        nextFiguresMap.set(curr.id, curr);
+        continue;
+      }
+      tasks.push((async () => {
+        const res = await fetchWithRetry(`/api/scale-figures/${curr.id}`, {
+          method: 'PATCH', headers,
+          body: JSON.stringify({
+            position_x: curr.position_x, position_z: curr.position_z,
+            rotation_y: curr.rotation_y, isPublic: curr.isPublic,
+          }),
+        });
+        if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (!res?.ok) {
+          anyFailure = true;
+          console.error('[AutoSync] Failed to update scale figure after retries:', curr.id, res?.status);
+          return;
+        }
+        nextFiguresMap.set(curr.id, curr);
+      })());
+    }
+
     // Wait for every request in this batch (including its retries) to settle before touching
     // prev*/isSyncing/hasUnsavedChanges — see invariant #1.
     await Promise.allSettled(tasks);
 
     prevInstances = Array.from(nextInstancesMap.values());
     prevWalls = Array.from(nextWallsMap.values());
+    prevScaleFigures = Array.from(nextFiguresMap.values());
 
     const newSyncStatus: 'idle' | 'error' = anyFailure ? 'error' : 'idle';
     // Only toast on the transition INTO 'error' — repeated automatic retries that keep
@@ -1129,7 +1284,8 @@ const syncToBackend = async () => {
 
 // Subscribe to store changes
 useEditorStore.subscribe((state, prevState) => {
-  if (state.localInstances !== prevState.localInstances || state.localWalls !== prevState.localWalls) {
+  if (state.localInstances !== prevState.localInstances || state.localWalls !== prevState.localWalls ||
+      state.localScaleFigures !== prevState.localScaleFigures) {
     scheduleSync();
   }
 });
@@ -1140,8 +1296,10 @@ useEditorStore.subscribe((state, prevState) => {
   if (state.activeVersionId !== prevState.activeVersionId) {
     prevInstances = [];
     prevWalls = [];
+    prevScaleFigures = [];
     syncingInstanceTempIds.clear();
     syncingWallTempIds.clear();
+    syncingFigureTempIds.clear();
     createIdempotencyKeys.clear();
   }
 });
