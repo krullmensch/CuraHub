@@ -16,7 +16,6 @@ const IDLE_BOB_SPEED = 0.6;       // Breathing rhythm (Hz-ish)
 const IDLE_BOB_AMOUNT_Y = 0.003;  // Vertical sway amplitude
 const IDLE_BOB_AMOUNT_X = 0.002;  // Horizontal sway amplitude
 
-export { PLAYER_EYE_OFFSET };
 const DEFAULT_SPAWN: [number, number, number] = [-5.99, PLAYER_BODY_CENTER, 2.6];
 const DEFAULT_ROTATION: [number, number, number] = [0, -1.1, 0];
 
