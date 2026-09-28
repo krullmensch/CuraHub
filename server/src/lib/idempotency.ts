@@ -2,7 +2,7 @@ import type { Request, Response, NextFunction } from 'express';
 
 /**
  * Idempotency-Key middleware for non-idempotent POST endpoints (currently
- * `POST /instances` and `POST /walls`).
+ * `POST /instances`, `POST /walls` and `POST /scale-figures`).
  *
  * Problem: `editorStore.ts`'s auto-sync retries POSTs on network errors / 5xx / 408 / 429
  * (`fetchWithRetry`). If the server actually committed the insert but the client never saw
