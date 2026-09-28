@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 import {
     AlignCenterHorizontal,
     AlignCenterVertical,
@@ -35,6 +35,7 @@ import {
 } from '@/lib/wallEditor/operations';
 import { removeInstances, type WallFace } from '@/lib/wallEditor/wallArtworks';
 import { CmInput, IconAction, Section } from './PanelPrimitives';
+import { WallEditorArtworkTab } from './WallEditorArtworkTab';
 import { WallEditorGuidesTab } from './WallEditorGuidesTab';
 
 const ALIGN_ACTIONS: { mode: AlignMode; label: string; icon: ReactNode }[] = [
@@ -64,6 +65,7 @@ const SHORTCUTS: [string, string][] = [
 
 const PANEL_TABS: { id: WallEditorPanelTab; label: string }[] = [
     { id: 'arrange', label: 'Anordnen' },
+    { id: 'artwork', label: 'Werk' },
     { id: 'guides', label: 'Linien' },
 ];
 
@@ -280,6 +282,16 @@ export const WallEditorPanel = ({ onToggle }: WallEditorPanelProps) => {
     const setPanelTab = useWallEditorView((s) => s.setPanelTab);
     const guideCount = useWallEditorView((s) => (face ? s.guidesByFace[face.key]?.length ?? 0 : 0));
 
+    const selection = useEditorStore((s) => s.wallEditorSelection);
+    const selectedCount = face ? face.items.filter((i) => selection.includes(i.id)).length : 0;
+    const previousCount = useRef(selectedCount);
+    // Selecting something (from nothing) shows its properties — until a tab was picked by hand.
+    useEffect(() => {
+        const view = useWallEditorView.getState();
+        if (previousCount.current === 0 && selectedCount > 0 && !view.panelTabPinned) view.setPanelTab('artwork', false);
+        previousCount.current = selectedCount;
+    }, [selectedCount]);
+
     if (!face) return null;
 
     return (
@@ -310,7 +322,9 @@ export const WallEditorPanel = ({ onToggle }: WallEditorPanelProps) => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
-                {tab === 'guides' ? <WallEditorGuidesTab face={face} /> : <ArrangeTab face={face} />}
+                {tab === 'artwork' && <WallEditorArtworkTab face={face} />}
+                {tab === 'guides' && <WallEditorGuidesTab face={face} />}
+                {tab === 'arrange' && <ArrangeTab face={face} />}
             </div>
         </>
     );

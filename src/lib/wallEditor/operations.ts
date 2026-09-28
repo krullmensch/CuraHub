@@ -1,5 +1,7 @@
-import { useEditorStore } from '@/store/editorStore';
+import { useEditorStore, type ArtworkInstanceData, type MediumType } from '@/store/editorStore';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
+import { MAX_PASSEPARTOUT_WIDTH_CM, type FrameStyleId } from '@/lib/frameStyles';
+import type { PassepartoutValue } from '@/lib/passepartout';
 import {
     alignOffsets,
     centerGroupOffsets,
@@ -11,7 +13,18 @@ import {
     type Axis,
     type Offset,
 } from './layout';
-import { commitWallOffsets, getOpenWallFace, type WallArtwork } from './wallArtworks';
+import { pictureSize } from './footprint';
+import { clampScaleFactor, MIN_PICTURE_EDGE } from './scale';
+import {
+    commitScaledArtworks,
+    commitWallOffsets,
+    getOpenWallFace,
+    isPicture,
+    isScalable,
+    resizeArtwork,
+    scaleArtworks,
+    type WallArtwork,
+} from './wallArtworks';
 
 /** Layout commands of the 2D wall editor, applied to the current selection (one undo step each). */
 
@@ -107,4 +120,84 @@ export function hangSelection(mode: 'each' | 'group'): boolean {
 export function selectAllOnFace(): void {
     const face = getOpenWallFace();
     if (face) useEditorStore.getState().setWallEditorSelection(face.items.map((i) => i.id));
+}
+
+// ── Size, frame and passepartout of the selection ───────────────────────
+
+/** Scales the selection by `factor` about each picture centre (the −5 % / +5 % buttons). */
+export function scaleSelection(factor: number): boolean {
+    const ctx = selectionContext();
+    if (!ctx) return false;
+    const scalable = ctx.selected.filter((i) => isScalable(i.inst));
+    if (scalable.length === 0) return false;
+    const f = clampScaleFactor(factor, scalable.map((i) => pictureSize(i.inst)));
+    return commitScaledArtworks(ctx.face, scaleArtworks(ctx.face, scalable.map((i) => i.id), f));
+}
+
+/**
+ * Sets width or height (metres, without frame) of the one selected artwork. With `keepAspect`
+ * (always for beamers) the other side follows.
+ */
+export function setSelectionPictureSize(axis: 'w' | 'h', metres: number, keepAspect: boolean): boolean {
+    const ctx = selectionContext();
+    if (!ctx || ctx.selected.length !== 1) return false;
+    const item = ctx.selected[0];
+    if (!isScalable(item.inst)) return false;
+    const current = pictureSize(item.inst);
+    const target = Math.max(MIN_PICTURE_EDGE, metres);
+    if (keepAspect || item.inst.medium === 'beamer') {
+        const factor = clampScaleFactor(target / current[axis], [current]);
+        return commitScaledArtworks(ctx.face, scaleArtworks(ctx.face, [item.id], factor));
+    }
+    return commitScaledArtworks(ctx.face, resizeArtwork(ctx.face, item.id, { ...current, [axis]: target }));
+}
+
+/** Applies `change` to the given instances in one undo step. */
+function commitInstanceChange(ids: Set<number>, change: (inst: ArtworkInstanceData) => ArtworkInstanceData): boolean {
+    const store = useEditorStore.getState();
+    let changed = false;
+    const next = store.localInstances.map((inst) => {
+        if (!ids.has(inst.id)) return inst;
+        const updated = change(inst);
+        if (updated !== inst) changed = true;
+        return updated;
+    });
+    if (changed) store.commitLocalChange(next);
+    return changed;
+}
+
+function selectedPictureIds(): Set<number> {
+    const ctx = selectionContext();
+    return new Set(ctx ? ctx.selected.filter((i) => isPicture(i.inst)).map((i) => i.id) : []);
+}
+
+/** Frame style for every picture of the selection; new drops follow it (like the 3D panel). */
+export function setSelectionFrameStyle(frameStyle: FrameStyleId): boolean {
+    const ids = selectedPictureIds();
+    if (ids.size === 0) return false;
+    if (frameStyle !== 'none') useEditorStore.getState().setDefaultFrameStyle(frameStyle);
+    return commitInstanceChange(ids, (inst) => (inst.frameStyle === frameStyle ? inst : { ...inst, frameStyle }));
+}
+
+/** Passepartout for every picture of the selection; new drops follow it (like the 3D panel). */
+export function setSelectionPassepartout(value: PassepartoutValue): boolean {
+    const ids = selectedPictureIds();
+    if (ids.size === 0) return false;
+    const width = Math.min(Math.max(value.width, 0), MAX_PASSEPARTOUT_WIDTH_CM);
+    const placement = value.placement;
+    useEditorStore.getState().setDefaultPassepartout({ width, placement });
+    return commitInstanceChange(ids, (inst) => (
+        inst.passepartoutWidth === width && inst.passepartoutPlacement === placement
+            ? inst
+            : { ...inst, passepartoutWidth: width, passepartoutPlacement: placement }
+    ));
+}
+
+/** Monitor or beamer for the one selected video. */
+export function setSelectionMedium(medium: MediumType): boolean {
+    const ctx = selectionContext();
+    if (!ctx || ctx.selected.length !== 1) return false;
+    const item = ctx.selected[0];
+    if (item.inst.artwork.asset.type !== 'video') return false;
+    return commitInstanceChange(new Set([item.id]), (inst) => (inst.medium === medium ? inst : { ...inst, medium }));
 }
