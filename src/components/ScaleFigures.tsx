@@ -116,9 +116,10 @@ export const ScaleFigures = ({ viewerFigures, isEditor = true }: ScaleFiguresPro
     // Editor: load the version's figures
     useEffect(() => {
         if (!interactive) return;
-        // Drop the previous version's figures (and selection) right away, not when the fetch resolves
-        setLocalScaleFigures([]);
-        if (!hasToken || !activeVersionId) return;
+        if (!hasToken || !activeVersionId) {
+            setLocalScaleFigures([]);
+            return;
+        }
         let cancelled = false;
         (async () => {
             try {
