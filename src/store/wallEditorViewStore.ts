@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { Rect } from '../lib/wallEditor/layout';
 import type { RoomFace } from '../lib/wallEditor/roomFaces';
+import { browserStorage, readMeasureToggles, writeMeasureToggles } from '../lib/wallEditor/measureToggles';
 
 /**
  * View + tool state of the 2D wall editor (editorStore holds which wall is open and the selection).
@@ -122,9 +123,7 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
     tool: 'select',
     snapping: true,
     showRulers: true,
-    showFloorDistances: false,
-    showGaps: false,
-    showHangingLine: true,
+    ...readMeasureToggles(browserStorage()),
     hangingHeight: readHangingHeight(),
 
     measurements: [],
@@ -175,7 +174,19 @@ export const useWallEditorView = create<WallEditorViewState>((set, get) => ({
     }),
 
     setTool: (tool) => set({ tool }),
-    toggle: (key) => set((s) => ({ [key]: !s[key] }) as Partial<WallEditorViewState>),
+    toggle: (key) => set((s) => {
+        const next = { [key]: !s[key] } as Partial<WallEditorViewState>;
+        // The measure toggles also drive the 3D view and survive a reload.
+        if (key === 'showHangingLine' || key === 'showFloorDistances' || key === 'showGaps') {
+            writeMeasureToggles(browserStorage(), {
+                showHangingLine: s.showHangingLine,
+                showFloorDistances: s.showFloorDistances,
+                showGaps: s.showGaps,
+                [key]: !s[key],
+            });
+        }
+        return next;
+    }),
     setHangingHeight: (metres) => {
         const value = Math.min(9.99, Math.max(0.01, metres));
         try {
