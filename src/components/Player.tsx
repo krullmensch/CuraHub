@@ -3,7 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { PointerLockControls, KeyboardControls, useKeyboardControls } from '@react-three/drei';
 import { RigidBody, CapsuleCollider, RapierRigidBody } from '@react-three/rapier';
 import * as THREE from 'three';
-import { useEditorStore } from '../store/editorStore';
+import { useControlsLocked } from '../lib/controlsLock';
 import { firstPersonTransition } from '../lib/cameraTransition';
 import { PLAYER_BODY_CENTER, PLAYER_CAPSULE_HALF_HEIGHT, PLAYER_CAPSULE_RADIUS, PLAYER_EYE_OFFSET } from '../lib/playerDimensions';
 
@@ -131,7 +131,7 @@ export const PlayerController = ({ paused, spawn = DEFAULT_SPAWN, initialRotatio
 };
 
 export const Player = () => {
-    const isDialogOpen = useEditorStore((state) => state.isDialogOpen);
+    const locked = useControlsLocked();
 
     const map = [
         { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
@@ -145,8 +145,8 @@ export const Player = () => {
     // Only toggle PointerLockControls to free cursor.
     return (
         <KeyboardControls map={map}>
-            <PlayerController paused={isDialogOpen} />
-            {!isDialogOpen && <PointerLockControls selector="#root" />}
+            <PlayerController paused={locked} />
+            {!locked && <PointerLockControls selector="#root" />}
         </KeyboardControls>
     );
 };

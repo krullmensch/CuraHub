@@ -4,6 +4,7 @@ import { PerspectiveCamera, OrbitControls, PointerLockControls } from '@react-th
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { useEditorStore } from '../store/editorStore';
+import { isControlsLocked, useControlsLocked } from '../lib/controlsLock';
 import { firstPersonTransition } from '../lib/cameraTransition';
 import { measureViewportInsets, useWallEditorView } from '../store/wallEditorViewStore';
 import { wallToWorld, type WallFrame } from '../lib/wallEditor/geometry';
@@ -81,6 +82,7 @@ export const PlannerCameraSystem = () => {
     const isTransforming = useEditorStore(state => state.isTransforming);
     // ⇧ + left drag draws the selection marquee (SelectionMarquee) — the camera stays put.
     const shiftHeld = useEditorStore(state => state.shiftHeld);
+    const locked = useControlsLocked();
 
     const focusTarget = useEditorStore(state => state.focusTarget);
     const setFocusTarget = useEditorStore(state => state.setFocusTarget);
@@ -279,7 +281,7 @@ export const PlannerCameraSystem = () => {
     // released pointer lock is the Esc in first person: return to the orbit view right away.
     const handlePointerUnlock = useCallback(() => {
         const state = useEditorStore.getState();
-        if (state.plannerViewMode === 'firstPerson' && !state.isDialogOpen) {
+        if (state.plannerViewMode === 'firstPerson' && !isControlsLocked()) {
             setPlannerViewMode('perspective');
         }
     }, [setPlannerViewMode]);
@@ -437,7 +439,7 @@ export const PlannerCameraSystem = () => {
                     minDistance={CAMERA_LIMITS.PERSPECTIVE.minDistance}
                     maxDistance={CAMERA_LIMITS.PERSPECTIVE.maxDistance}
                     enableRotate={true}
-                    enabled={!isTransforming && wallPhase === 'idle' && !shiftHeld}
+                    enabled={!isTransforming && wallPhase === 'idle' && !shiftHeld && !locked}
                     mouseButtons={{
                         LEFT: THREE.MOUSE.ROTATE,
                         MIDDLE: THREE.MOUSE.ROTATE,
@@ -450,7 +452,7 @@ export const PlannerCameraSystem = () => {
             {viewMode === 'perspective' && <WallEditorCamera />}
 
             {/* Player body + keyboard movement: physics/PhysicsWorld.tsx, mounted by EditorPage (RND-08) */}
-            {viewMode === 'firstPerson' && <PointerLockControls selector="#root" onUnlock={handlePointerUnlock} />}
+            {viewMode === 'firstPerson' && !locked && <PointerLockControls selector="#root" onUnlock={handlePointerUnlock} />}
         </>
     );
 };

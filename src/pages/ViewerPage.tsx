@@ -11,6 +11,8 @@ import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { ArrowLeft } from 'lucide-react';
 import type { ArtworkInstanceData, ModularWallData, ScaleFigureData } from '../store/editorStore';
+import { BookViewerHost } from '../components/book/BookViewerHost';
+import { useBookViewerStore } from '../store/bookViewerStore';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { useArtworkLoadProgress } from '../lib/artworkLoadProgress';
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
@@ -76,6 +78,7 @@ export const ViewerPage = () => {
     const sceneReady = roomReady && shadersReady && texturesReady;
     const [loading, setLoading] = useState(true);
     const [showLoading, setShowLoading] = useState(true);
+    const bookOpen = useBookViewerStore((s) => s.book !== null);
     const [isLocked, setIsLocked] = useState(false);
     const [isTabVisible, setIsTabVisible] = useState(document.visibilityState === 'visible');
     const [error, setError] = useState<string | null>(null);
@@ -251,6 +254,7 @@ export const ViewerPage = () => {
 
             {/* FPV Crosshair + Artwork Info Overlay */}
             <ArtworkInfoOverlay />
+            <BookViewerHost />
 
             {/* Exhibition title overlay */}
             {data?.exhibition.title && (
@@ -276,7 +280,7 @@ export const ViewerPage = () => {
             </div>
 
             {/* Fading Loading Overlay (Unifies API and Asset loading) */}
-            {showLoading && (
+            {showLoading && !bookOpen && (
                 <div
                     className={`fixed inset-0 z-[1000] bg-black/30 backdrop-blur-sm flex flex-col items-center justify-center transition-opacity duration-400 ease-in-out ${
                         !loading && isLocked ? 'opacity-0 pointer-events-none' : 'opacity-100 cursor-pointer'

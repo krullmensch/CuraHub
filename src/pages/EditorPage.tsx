@@ -13,6 +13,8 @@ import { MeasurementsControl } from '../components/MeasurementsControl';
 import { SelectionOutlineSvg, SelectionOutlineTracker } from '../components/SelectionOutline';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
+import { BookViewerHost } from '../components/book/BookViewerHost';
+import { useBookViewerStore } from '../store/bookViewerStore';
 import { useEditorStore, nextTempId, isFloorAssetType, isFixedSizeMedium, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
@@ -470,7 +472,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      
+      if (useBookViewerStore.getState().book) return; // the book viewer handles its own keys
+
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
       const shift = e.shiftKey;
@@ -686,6 +689,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       <SceneLoadingIndicator />
       {/* Outline of the selected artwork (projected by SelectionOutlineTracker) */}
       <SelectionOutlineSvg />
+      <BookViewerHost />
       
       {/* ⇧ + drag: selection marquee over the 3D view */}
       {viewMode === 'perspective' && !wallEditorOpen && isVisible && <SelectionMarquee containerRef={containerRef} />}
