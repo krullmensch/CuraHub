@@ -11,7 +11,7 @@ interface ModelInstanceProps {
 }
 
 export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
-    ({ instance, selected }, ref) => {
+    ({ instance }, ref) => {
         const asset = instance.artwork.asset;
         const selectInstance = useEditorStore((state) => state.selectInstance);
 
@@ -70,20 +70,6 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
             return () => { modelBBoxMap.delete(instance.id); };
         }, [instance.id, bbox.size]);
 
-        // Selection highlight: apply emissive to all meshes
-        useMemo(() => {
-            clonedScene.traverse((child) => {
-                if ((child as THREE.Mesh).isMesh) {
-                    const mesh = child as THREE.Mesh;
-                    const material = mesh.material as THREE.MeshStandardMaterial;
-                    if (material && material.emissive) {
-                        material.emissive.set(selected ? '#1d4ed8' : '#000000');
-                        material.emissiveIntensity = selected ? 0.3 : 0;
-                    }
-                }
-            });
-        }, [clonedScene, selected]);
-
         const handleClick = (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
             selectInstance(instance.id);
@@ -100,20 +86,6 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
                 <primitive object={clonedScene} />
 
                 {/* First-person collider: physics/PhysicsWorld.tsx (RND-08) */}
-
-                {/* Bounding box wireframe — only when selected */}
-                {selected && (
-                    <mesh position={[bbox.center.x, bbox.center.y, bbox.center.z]}>
-                        <boxGeometry args={[bbox.size.x, bbox.size.y, bbox.size.z]} />
-                        <meshBasicMaterial
-                            color="#3b82f6"
-                            wireframe
-                            transparent
-                            opacity={0.6}
-                            depthTest={false}
-                        />
-                    </mesh>
-                )}
             </group>
         );
     }

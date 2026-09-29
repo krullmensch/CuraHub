@@ -19,7 +19,7 @@ interface VideoInstanceProps {
 }
 
 export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
-    ({ instance, selected, isEditor = true }, ref) => {
+    ({ instance, isEditor = true }, ref) => {
         const asset = instance.artwork.asset;
         const selectInstance = useEditorStore((state) => state.selectInstance);
         const gl = useThree((state) => state.gl);
@@ -231,7 +231,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
         // Monitor branch: load Monitor65.glb and map the video texture onto the VideoScreen mesh.
         // useGLTF is always called (rules of hooks) — the result is only mounted when medium === 'monitor'.
         const { scene: monitorGltfScene } = useGLTF('/models/Monitor65.glb');
-        const { monitorScene, monitorMaxZ, monitorSize, monitorCenter } = useMemo(() => {
+        const { monitorScene, monitorMaxZ } = useMemo(() => {
             const cloned = monitorGltfScene.clone(true);
             cloned.traverse((child) => {
                 if ((child as THREE.Mesh).isMesh) {
@@ -260,8 +260,6 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             return {
                 monitorScene: cloned,
                 monitorMaxZ: bbox.max.z,
-                monitorSize: bbox.getSize(new THREE.Vector3()),
-                monitorCenter: bbox.getCenter(new THREE.Vector3()),
             };
         }, [monitorGltfScene, texture]);
 
@@ -275,23 +273,23 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
             switch (medium) {
                 case 'projector':
                     return {
-                        color: selected ? '#3b82f6' : '#111',
-                        emissive: selected ? '#1d4ed8' : '#334155',
-                        emissiveIntensity: selected ? 0.5 : 0.15,
+                        color: '#111',
+                        emissive: '#334155',
+                        emissiveIntensity: 0.15,
                         frameSize: 0.01,
                     };
                 case 'display':
                     return {
-                        color: selected ? '#3b82f6' : '#111',
-                        emissive: selected ? '#1d4ed8' : '#000000',
-                        emissiveIntensity: selected ? 0.5 : 0,
+                        color: '#111',
+                        emissive: '#000000',
+                        emissiveIntensity: 0,
                         frameSize: 0.03,
                     };
                 default: // frame
                     return {
-                        color: selected ? '#3b82f6' : '#222',
-                        emissive: selected ? '#1d4ed8' : '#000000',
-                        emissiveIntensity: selected ? 0.5 : 0,
+                        color: '#222',
+                        emissive: '#000000',
+                        emissiveIntensity: 0,
                         frameSize: 0.04,
                     };
             }
@@ -322,14 +320,6 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                     >
                         <primitive object={monitorScene} />
                     </group>
-                    {selected && (
-                        // Selection box from the model's real bounds, following the portrait rotation
-                        // (Ry(π) then Rz(-π/2) maps the model's (x, y) to (-y, -x); landscape to (-x, y)).
-                        <mesh position={isPortrait ? [-monitorCenter.y, -monitorCenter.x, 0] : [-monitorCenter.x, monitorCenter.y, 0]}>
-                            <boxGeometry args={isPortrait ? [monitorSize.y, monitorSize.x, 0.1] : [monitorSize.x, monitorSize.y, 0.1]} />
-                            <meshBasicMaterial color="#3b82f6" wireframe transparent opacity={0.4} />
-                        </mesh>
-                    )}
                 </group>
             );
         }
@@ -353,12 +343,6 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                             toneMapped={false}
                         />
                     </mesh>
-                    {selected && (
-                        <mesh position={[0, 0, 0.002]}>
-                            <planeGeometry args={[beamerWidth + 0.02, beamerHeight + 0.02]} />
-                            <meshBasicMaterial color="#3b82f6" wireframe transparent opacity={0.6} />
-                        </mesh>
-                    )}
                 </group>
             );
         }

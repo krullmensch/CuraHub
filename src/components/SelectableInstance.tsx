@@ -122,19 +122,6 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
                             />
                         )}
                     </mesh>
-
-                    {/* Selection halo — backside-rendered enlarged box (same pattern as ModularWallMesh) */}
-                    {selected && (
-                        <mesh position={[(layout.left + layout.right) / 2, (layout.bottom + layout.top) / 2, FRAME_Z + layout.depth / 2]}>
-                            <boxGeometry args={[layout.right - layout.left + 0.05, layout.top - layout.bottom + 0.05, layout.depth + 0.01]} />
-                            <meshBasicMaterial
-                                color="#4488ff"
-                                transparent
-                                opacity={0.25}
-                                side={THREE.BackSide}
-                            />
-                        </mesh>
-                    )}
                 </group>
             </group>
         );

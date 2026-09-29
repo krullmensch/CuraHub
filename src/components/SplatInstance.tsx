@@ -28,7 +28,7 @@ const noRaycast = () => {};
  * WebGPU renders it with three.js' GaussianSplat, the WebGL fallback with Spark (lib/splats).
  */
 export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
-    ({ instance, selected, isEditor = true }, ref) => {
+    ({ instance, isEditor = true }, ref) => {
         const url = instance.artwork.asset.path;
         const selectInstance = useEditorStore((state) => state.selectInstance);
         const gl = useThree((state) => state.gl);
@@ -37,7 +37,12 @@ export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
         // Result per URL; a different path (asset replaced) counts as loading until its result arrives.
         const [result, setResult] = useState<{ url: string; state: LoadState } | null>(null);
         const load = result?.url === url ? result.state : LOADING;
-        const hitProxy = useMemo(() => new SplatHitProxy(), []);
+        const hitProxy = useMemo(() => {
+            const proxy = new SplatHitProxy();
+            // SelectionOutline measures the splat by this box
+            proxy.userData.selectionBounds = true;
+            return proxy;
+        }, []);
 
         useEffect(() => {
             let cancelled = false;
@@ -109,15 +114,14 @@ export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
                 <primitive object={hitProxy} />
 
                 {/* Placeholder while loading / after an error, and the selection box */}
-                {(load.status !== 'ready' || selected) && (
+                {load.status !== 'ready' && (
                     <mesh position={[0, size.y / 2, 0]} raycast={noRaycast}>
                         <boxGeometry args={[size.x, size.y, size.z]} />
                         <meshBasicMaterial
                             color={load.status === 'error' ? '#ef4444' : '#3b82f6'}
                             wireframe
                             transparent
-                            opacity={selected ? 0.6 : 0.35}
-                            depthTest={!selected}
+                            opacity={0.35}
                         />
                     </mesh>
                 )}
