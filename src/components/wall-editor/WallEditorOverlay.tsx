@@ -10,6 +10,7 @@ import {
 } from '@/store/wallEditorViewStore';
 import { wallToWorld } from '@/lib/wallEditor/geometry';
 import { wallEditorBridge } from '@/lib/wallEditor/bridge';
+import { floorLeaders } from '@/lib/wallEditor/annotations';
 import {
     centerX,
     centerY,
@@ -654,11 +655,17 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     }
     // Centre heights of all artworks
     if (view.showFloorDistances) {
-        for (const item of items) {
-            if (selectedSet.has(item.id)) continue;
-            const r = rectOf(item);
+        // Line from each artwork's bottom edge to the floor, its centre height half way down (same as 3D)
+        const unselected = items.filter((i) => !selectedSet.has(i.id)).map((i) => ({ id: i.id, rect: rectOf(i) }));
+        for (const l of floorLeaders(unselected, wallRect.y)) {
             annotations.push(
-                <Pill key={`fh${item.id}`} x={sx(centerX(r))} y={sy(centerY(r))} text={`Mitte ${formatCm(centerY(r) - wallRect.y)}`} color="rgba(24,24,27,0.85)" />,
+                <MeasureLine
+                    key={`fh${l.id}`}
+                    m={{ x1: l.u, y1: l.bottom, x2: l.u, y2: l.top, value: l.value }}
+                    vt={vt}
+                    color="rgba(24,24,27,0.85)"
+                    label={`Mitte ${formatCm(l.value)}`}
+                />,
             );
         }
         if (selectionBox) annotations.push(<FloorChain key="fsel" rect={selectionBox} vt={vt} viewportW={W} floorY={wallRect.y} />);
