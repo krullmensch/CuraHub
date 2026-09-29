@@ -2,14 +2,16 @@ import { useRef, useCallback } from 'react';
 import { TransformControls } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useEditorStore, artworkMinY } from '../store/editorStore';
+import { useEditorStore, artworkMinY, instanceRefMap } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
+import { finalizeGroupMember, finalizeInstanceTransform } from '../lib/instanceTransform';
+import { useSelectionPivot } from './SelectionPivot';
 
 // RND-07: the PropertiesPanel readout re-renders on every liveTransform update — 10 Hz is
 // plenty for numbers, the 3D object itself still moves every frame.
 const LIVE_TRANSFORM_INTERVAL_MS = 100;
 
-const readTransform = (group: THREE.Group) => ({
+const readTransform = (group: THREE.Object3D) => ({
     position: { x: group.position.x, y: group.position.y, z: group.position.z },
     rotation: { x: group.rotation.x, y: group.rotation.y, z: group.rotation.z },
     scale: { x: group.scale.x, y: group.scale.y, z: group.scale.z },
@@ -22,6 +24,10 @@ interface InstanceTransformControlsProps {
 
 export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformControlsProps) => {
     const selectedId = useEditorStore((state) => state.selectedInstanceId);
+    // More than one artwork: the gizmo drives the selection pivot and the group follows it.
+    const isGroup = useEditorStore((state) => state.selectedInstanceIds.length > 1);
+    const monitorInSelection = useEditorStore((state) =>
+        state.localInstances.some(i => i.medium === 'monitor' && state.selectedInstanceIds.includes(i.id)));
     const transformMode = useEditorStore((state) => state.transformMode);
     const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
     const setIsTransforming = useEditorStore((state) => state.setIsTransforming);
@@ -29,6 +35,9 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const controlsRef = useRef<any>(null);
     const lastLiveUpdate = useRef(-Infinity);
+    const selectionPivot = useSelectionPivot();
+    // A monitor keeps the size of its model — a group containing one cannot be scaled.
+    const groupMode = isGroup && monitorInSelection && transformMode === 'scale' ? 'translate' : transformMode;
 
     const selectedGroup = selectedId ? instanceRefs.current.get(selectedId) ?? null : null;
 
@@ -36,6 +45,13 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     useFrame(() => {
         const store = useEditorStore.getState();
         if (!store.isTransforming) return;
+
+        if (store.selectedInstanceIds.length > 1) {
+            selectionPivot.apply(groupMode);
+            invalidate();
+            return;
+        }
+
         const id = store.selectedInstanceId;
         if (!id) return;
         const group = instanceRefs.current.get(id);
@@ -64,87 +80,62 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     // Persist transform to backend on mouse up
     const handleMouseUp = useCallback(async () => {
         setIsTransforming(false);
-
-        const currentSelectedId = useEditorStore.getState().selectedInstanceId;
+        const store = useEditorStore.getState();
         const currentToken = useAuthStore.getState().token;
+
+        if (store.selectedInstanceIds.length > 1) {
+            selectionPivot.apply(groupMode);
+            const groups = selectionPivot.members();
+            if (!currentToken || groups.size === 0) return;
+            // One commit for the whole group → one undo step.
+            store.commitLocalChange(store.localInstances.map(inst => {
+                const group = instanceRefMap.get(inst.id);
+                return group && groups.has(group) ? finalizeGroupMember(inst, group, store.localWalls) : inst;
+            }));
+            return;
+        }
+
+        const currentSelectedId = store.selectedInstanceId;
         const group = currentSelectedId ? instanceRefs.current.get(currentSelectedId) : undefined;
         // The throttled live value can lag up to LIVE_TRANSFORM_INTERVAL_MS behind the object.
         // PropertiesPanel keeps the last live value when it is cleared, so publish the exact
         // final transform first and clear it in a separate render.
-        if (group) useEditorStore.getState().setLiveTransform(readTransform(group));
+        if (group) store.setLiveTransform(readTransform(group));
         setTimeout(() => useEditorStore.getState().setLiveTransform(null), 0);
 
         if (!currentSelectedId || !currentToken || !group) return;
 
-        const store = useEditorStore.getState();
         const currentMode = store.transformMode;
-        const updatedInstances = store.localInstances.map(inst => {
-            if (inst.id !== currentSelectedId) return inst;
-
-            // Clamp Y so the artwork bottom edge never goes below the floor
-            if (currentMode === 'translate') {
-                const minY = artworkMinY(inst, group.scale.y);
-                group.position.y = Math.max(minY, group.position.y);
-            }
-
-            const updated = {
-                ...inst,
-                position_x: currentMode === 'translate' ? group.position.x : inst.position_x,
-                position_y: currentMode === 'translate' ? group.position.y : inst.position_y,
-                position_z: currentMode === 'translate' ? group.position.z : inst.position_z,
-                rotation_x: currentMode === 'rotate' ? group.rotation.x : inst.rotation_x,
-                rotation_y: currentMode === 'rotate' ? group.rotation.y : inst.rotation_y,
-                rotation_z: currentMode === 'rotate' ? group.rotation.z : inst.rotation_z,
-                scale_x: currentMode === 'scale' ? group.scale.x : inst.scale_x,
-                scale_y: currentMode === 'scale' ? group.scale.y : inst.scale_y,
-                scale_z: currentMode === 'scale' ? group.scale.z : inst.scale_z,
-            };
-
-            // Detach from wall if moved away from its surface
-            if (updated.wallId && currentMode === 'translate') {
-                const wall = store.localWalls.find(w => w.id === updated.wallId);
-                if (wall) {
-                    // Check distance from artwork to wall center plane (in wall-local space)
-                    const dx = updated.position_x - wall.position_x;
-                    const dz = updated.position_z - wall.position_z;
-                    const cos = Math.cos(-wall.rotation_y);
-                    const sin = Math.sin(-wall.rotation_y);
-                    const localX = dx * cos - dz * sin;
-                    const localZ = dx * sin + dz * cos;
-                    const tolerance = wall.thickness / 2 + 0.15;
-                    const halfW = wall.width / 2 + 0.15;
-                    // If artwork is beyond the wall's thickness or width, detach
-                    if (Math.abs(localZ) > tolerance || Math.abs(localX) > halfW) {
-                        updated.wallId = null;
-                    }
-                }
-            }
-
-            return updated;
-        });
-
-        store.commitLocalChange(updatedInstances);
-    }, [setIsTransforming, instanceRefs]);
+        store.commitLocalChange(store.localInstances.map(inst =>
+            inst.id === currentSelectedId ? finalizeInstanceTransform(inst, group, currentMode, store.localWalls) : inst
+        ));
+    }, [setIsTransforming, instanceRefs, selectionPivot, groupMode]);
 
     const handleMouseDown = useCallback(() => {
+        if (useEditorStore.getState().selectedInstanceIds.length > 1) selectionPivot.begin();
         setIsTransforming(true);
-    }, [setIsTransforming]);
+    }, [setIsTransforming, selectionPivot]);
 
     // Attach event listeners to the TransformControls gizmo via props
 
-    if (!selectedGroup) return null;
+    const target = isGroup ? selectionPivot.pivot : selectedGroup;
 
     return (
-        <TransformControls
-            ref={controlsRef}
-            object={selectedGroup}
-            mode={transformMode}
-            size={0.75}
-            showX={transformAxisLock === 'none' || transformAxisLock === 'x'}
-            showY={transformAxisLock === 'none' || transformAxisLock === 'y'}
-            showZ={transformAxisLock === 'none' || transformAxisLock === 'z'}
-            onMouseDown={handleMouseDown}
-            onMouseUp={handleMouseUp}
-        />
+        <>
+            <primitive object={selectionPivot.pivot} />
+            {target && (
+                <TransformControls
+                    ref={controlsRef}
+                    object={target}
+                    mode={isGroup ? groupMode : transformMode}
+                    size={0.75}
+                    showX={transformAxisLock === 'none' || transformAxisLock === 'x'}
+                    showY={transformAxisLock === 'none' || transformAxisLock === 'y'}
+                    showZ={transformAxisLock === 'none' || transformAxisLock === 'z'}
+                    onMouseDown={handleMouseDown}
+                    onMouseUp={handleMouseUp}
+                />
+            )}
+        </>
     );
 };
