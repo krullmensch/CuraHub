@@ -108,7 +108,7 @@ Otherwise 404 (not 403 — don't confirm existence). File path from `metadata.pd
 
 ### 2.5 Public route
 
-`GET /public/exhibition/:slug` returns book instances with `artwork.publicReadable`. For books it never includes `metadata.pdfFile`; the client derives the PDF URL from the asset id.
+`GET /public/exhibition/:slug` returns all book instances (the book stands in the room); `artwork.publicReadable` only gates opening it. For books it never includes `metadata.pdfFile`; the client derives the PDF URL from the asset id.
 
 ---
 
@@ -196,7 +196,7 @@ interface BookViewerState {
 ### 5.3 `BookViewerOverlay` (lazy chunk)
 
 - `React.lazy`; `pdfjs-dist` only in this chunk, worker via `new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url)`. Nothing PDF-related is fetched until the overlay mounts.
-- `getDocument({ url: /api/books/:id/pdf, httpHeaders: token ? { Authorization } : undefined, isEvalSupported: false, disableAutoFetch: true, rangeChunkSize: 1 MB })`.
+- `getDocument({ url: /api/books/:id/pdf, httpHeaders: token ? { Authorization } : undefined, disableAutoFetch: true, rangeChunkSize: 1 MB })`.
 - Radix `Dialog` (focus trap, ESC → `close()`), full-screen dark backdrop, close button top right („Schließen").
 - Spread layout like a real book: cover alone on the right, then 2–3, 4–5, …; single page when the overlay is narrower than 900 px. Arrow keys, clicking the left/right half, buttons; counter „12–13 / 212".
 - Flip: CSS 3D `rotateY` of the turning page, 400 ms; none with `prefers-reduced-motion`.
@@ -240,3 +240,9 @@ interface BookViewerState {
 - **Books are fixed-size media** like monitors (`isFixedSizeMedium`): no scale gizmo, no `S`, skipped by group scaling and height alignment.
 - **`SplatHitProxy` becomes `BoxHitProxy`** in `src/lib/boxHitProxy.ts`, used by splats and books.
 - **Server `INSTANCE_MEDIA`** gains `book` (the instances route validates `medium`).
+- **Public-PDF check is scoped to the asset's own project** (`publishedPlacementWhere` in `server/src/lib/bookAccess.ts`): a published placement in another project's exhibition doesn't unlock the PDF.
+- **pdfjs-dist 5.7 has no `isEvalSupported` option and no eval** — the option was dropped from `getDocument`.
+- **Books in any selection (single or group)** get gizmo rotate Y only / translate without Y; commits force books upright on the floor, yaw read from the quaternion (`'YXZ'`, keeps yaw beyond 90°).
+- **Overlay ESC stops propagation** so the editor's escape handler doesn't also fire after the book closes.
+- **Book double-clicks don't pass through** to walls behind the pedestal.
+- **Public `/public` route** returns all book instances (only `pdfFile` stripped); `publicReadable` gates opening, not visibility.
