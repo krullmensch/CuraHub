@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { artworkMinY, isFloorAssetType, type ArtworkInstanceData, type ModularWallData, type TransformMode } from '@/store/editorStore';
 
 /** How far beyond a wall's surface or end an artwork may sit and still count as hanging on it. */
@@ -29,9 +29,18 @@ export function detachIfOffWall(inst: ArtworkInstanceData, walls: ModularWallDat
   return Math.abs(localZ) > tolerance || Math.abs(localX) > halfW ? { ...inst, wallId: null } : inst;
 }
 
-/** Books stand upright on the floor whatever a gizmo or group delta did to them. */
-const uprightOnFloor = (inst: ArtworkInstanceData): ArtworkInstanceData =>
-  inst.medium === 'book' ? { ...inst, position_y: 0, rotation_x: 0, rotation_z: 0 } : inst;
+const _yawEuler = new THREE.Euler();
+
+/**
+ * Books stand upright on the floor whatever a gizmo or group delta did to them. With `object` the
+ * yaw is re-read from its quaternion in YXZ order: object.rotation is XYZ order, whose Y is limited
+ * to ±π/2 (a yaw of 2 rad reads back as (π, 1.14, π)), so zeroing x and z alone would change it.
+ */
+function uprightOnFloor(inst: ArtworkInstanceData, object?: THREE.Object3D): ArtworkInstanceData {
+  if (inst.medium !== 'book') return inst;
+  const rotation_y = object ? _yawEuler.setFromQuaternion(object.quaternion, 'YXZ').y : inst.rotation_y;
+  return { ...inst, position_y: 0, rotation_x: 0, rotation_y, rotation_z: 0 };
+}
 
 /** Writes the transform of an artwork's group back to the instance, for the one gizmo mode used. */
 export function finalizeInstanceTransform(
@@ -51,7 +60,7 @@ export function finalizeInstanceTransform(
     scale_y: mode === 'scale' ? object.scale.y : inst.scale_y,
     scale_z: mode === 'scale' ? object.scale.z : inst.scale_z,
   };
-  return uprightOnFloor(mode === 'translate' ? detachIfOffWall(updated, walls) : updated);
+  return uprightOnFloor(mode === 'translate' ? detachIfOffWall(updated, walls) : updated, mode === 'rotate' ? object : undefined);
 }
 
 /**
@@ -74,5 +83,5 @@ export function finalizeGroupMember(
     scale_x: object.scale.x,
     scale_y: object.scale.y,
     scale_z: object.scale.z,
-  }, walls));
+  }, walls), object);
 }

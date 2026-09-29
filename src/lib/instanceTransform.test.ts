@@ -90,7 +90,8 @@ describe('books stay upright on the floor', () => {
     const out = finalizeGroupMember(book(), object, [], 'rotate');
     expect(out.rotation_x).toBe(0);
     expect(out.rotation_z).toBe(0);
-    expect(out.rotation_y).toBeCloseTo(0.4);
+    // yaw of a tilted object is its YXZ yaw
+    expect(out.rotation_y).toBeCloseTo(new THREE.Euler().setFromQuaternion(object.quaternion, 'YXZ').y);
     expect(out.position_y).toBe(0);
     expect(out.position_x).toBeCloseTo(0.5);
     // a picture in the same group still gets the delta
@@ -99,6 +100,22 @@ describe('books stay upright on the floor', () => {
     picObject.rotation.set(0.6, 0, 0);
     const picOut = finalizeGroupMember(pic(), picObject, [wall], 'rotate');
     expect(picOut.rotation_x).toBeCloseTo(0.6);
+  });
+
+  it.each([2.0, -2.5, 3.0])('keeps a yaw beyond ±90° (%s rad) after a rotate commit', (yaw) => {
+    const angleDiff = (a: number, b: number) => Math.abs(Math.atan2(Math.sin(a - b), Math.cos(a - b)));
+    const object = new THREE.Object3D();
+    object.position.set(0.5, 0, 1);
+    object.rotation.y = yaw;
+    // The XYZ Euler of a yaw beyond π/2 reads back as (π, y, π), the failure the guard must survive.
+    object.rotation.setFromQuaternion(object.quaternion);
+    const group = finalizeGroupMember(book(), object, [], 'rotate');
+    const single = finalizeInstanceTransform(book(), object, 'rotate', []);
+    for (const out of [group, single]) {
+      expect(out.rotation_x).toBe(0);
+      expect(out.rotation_z).toBe(0);
+      expect(angleDiff(out.rotation_y, yaw)).toBeLessThan(1e-6);
+    }
   });
 
   it('after a group move with dy > 0', () => {
@@ -118,6 +135,6 @@ describe('books stay upright on the floor', () => {
     const rotated = finalizeInstanceTransform(book(), object, 'rotate', []);
     expect(rotated.rotation_x).toBe(0);
     expect(rotated.rotation_z).toBe(0);
-    expect(rotated.rotation_y).toBeCloseTo(0.4);
+    expect(rotated.rotation_y).toBeCloseTo(new THREE.Euler().setFromQuaternion(object.quaternion, 'YXZ').y);
   });
 });

@@ -52,9 +52,6 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     // no tilt, no free-rotation ring / free-move handle / vertical planes.
     const showX = (transformAxisLock === 'none' || transformAxisLock === 'x') && !(bookSelected && effectiveMode === 'rotate');
     const showY = (transformAxisLock === 'none' || transformAxisLock === 'y') && !(bookSelected && effectiveMode === 'translate');
-    const floorOnly = bookSelected && effectiveMode !== 'scale';
-    // three's TransformControls props that drei's typings don't list; drei forwards them to the object.
-    const gizmoExtras: Record<string, boolean> = { showXY: !floorOnly, showYZ: !floorOnly, showXYZE: !floorOnly, showE: !floorOnly };
 
     const selectedGroup = selectedId ? instanceRefs.current.get(selectedId) ?? null : null;
 
@@ -155,7 +152,6 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
                     showX={showX}
                     showY={showY}
                     showZ={showZ}
-                    {...gizmoExtras}
                     onMouseDown={handleMouseDown}
                     onMouseUp={handleMouseUp}
                 />
