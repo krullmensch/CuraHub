@@ -17,11 +17,13 @@ import {
   ArrowRight,
   Copy,
   X,
+  FileX,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import { cn } from '@/lib/utils';
 import { preprocessImageForUpload, type PreprocessResult } from '@/lib/imageUtils';
 import { CHUNKED_UPLOAD_THRESHOLD, uploadFileInChunks } from '@/lib/chunkedUpload';
+import { SUPPORTED_FORMATS_HINT, type SkippedFile } from '@/lib/uploadFiles';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -49,6 +51,8 @@ interface UploadFileItem {
 
 interface UploadPreviewModalProps {
   files: File[];
+  /** Files of the drop/folder that are not uploaded because the format is not supported. */
+  skippedFiles?: SkippedFile[];
   projectId: number | null;
   folderId: number | null;
   open: boolean;
@@ -162,6 +166,7 @@ async function runWithConcurrency<T>(
 
 export const UploadPreviewModal = ({
   files,
+  skippedFiles = [],
   projectId,
   folderId,
   open,
@@ -388,6 +393,8 @@ export const UploadPreviewModal = ({
         </DialogHeader>
 
         <div className="flex flex-col gap-4 max-h-[30rem] overflow-y-auto pr-1">
+          {skippedFiles.length > 0 && <SkippedFilesNotice skipped={skippedFiles} />}
+
           {/* Regular file grid */}
           {regularItems.length > 0 && (
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -510,6 +517,34 @@ export const UploadPreviewModal = ({
     </>
   );
 };
+
+// ── SkippedFilesNotice sub-component ───────────────────────────────────────
+
+function SkippedFilesNotice({ skipped }: { skipped: SkippedFile[] }) {
+  return (
+    <details className="rounded-lg border border-amber-800/50 bg-amber-950/20 px-3 py-2 group">
+      <summary className="flex items-start gap-2 cursor-pointer list-none select-none">
+        <FileX className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />
+        <span className="text-xs text-amber-200 flex-1">
+          {skipped.length === 1
+            ? '1 Datei wird nicht hochgeladen, weil ihr Format nicht unterstützt wird.'
+            : `${skipped.length} Dateien werden nicht hochgeladen, weil ihr Format nicht unterstützt wird.`}
+          <span className="text-amber-400/80 group-open:hidden"> Anzeigen</span>
+          <span className="text-amber-400/80 hidden group-open:inline"> Ausblenden</span>
+        </span>
+      </summary>
+      <ul className="mt-2 ml-6 max-h-32 overflow-y-auto space-y-0.5">
+        {skipped.map((s) => (
+          <li key={s.path} className="text-[11px] text-zinc-400 flex gap-2 min-w-0">
+            <span className="truncate text-zinc-300" title={s.path}>{s.path}</span>
+            <span className="shrink-0 text-zinc-500">— {s.reason}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-2 ml-6 text-[10px] text-zinc-500">Unterstützt: {SUPPORTED_FORMATS_HINT}</p>
+    </details>
+  );
+}
 
 // ── FileCard sub-component ─────────────────────────────────────────────────
 

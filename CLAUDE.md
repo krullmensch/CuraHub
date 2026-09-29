@@ -185,7 +185,7 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 
 - Asset/medium type `splat` (`.ply`, `.sog`, `.spz`, `.splat`, `.ksplat`, max 1 GB). Server (`server/src/lib/splats.ts`) validates headers and tells splat PLYs from mesh PLYs.
 - **Every upload is converted to `.spz`** (`server/src/lib/spz.ts` + `splatReaders.ts`), roughly a tenth of a raw INRIA PLY, and the source file is deleted — like the GLB pipeline. `metadata.originalFormat`/`originalSize` keep what was uploaded. `.ksplat` has no reader and stays as it is; a `.sog` that cannot be converted is rejected (no backend of ours reads SOG directly). The encoders are the exact inverse of three.js r186's `SPZLoader`/`GaussianSplatPLYLoader`, so a converted capture renders like its source (verified attribute by attribute in `server/src/tests/splatConvert.test.ts`).
-- SOG v2 (`.sog`, PlayCanvas/SuperSplat) is read as what it is: a zip (fflate) of `meta.json` plus lossless WebP planes (decoded with sharp), dequantised into SPZ's arrays.
+- SOG v2 (`.sog`, PlayCanvas/SuperSplat) is read as what it is: a zip (fflate) of `meta.json` plus lossless WebP planes (decoded with sharp), dequantised into SPZ's arrays. An *unbundled* SOG export (a folder of `meta.json` + WebPs) is zipped into a `.sog` in the browser (`src/lib/uploadFiles.ts`) before upload, so its WebPs never become image assets.
 - Asset-browser thumbnails are rasterised on the CPU during the upload (`server/src/lib/splatThumbnail.ts`): splats sorted back to front and composited as round Gaussians, written as the usual `-thumb-512/256.webp` pair. `SplatPreviewTile` shows it; captures from before fall back to the badge.
 - `node dist/scripts/backfill-splats.js --apply` converts and thumbnails existing splat assets (dry run by default).
 - `SplatInstance` stands on the floor like `model3d`: capture flipped upright (`SPLAT_UP_FLIP`), anchored at the bottom centre of its robust (1–99 %) bounds. Clicks hit a box proxy (`SplatHitProxy`), not the splats.
@@ -219,6 +219,7 @@ Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/pr
 - **3D Models** — direct upload (GLB/GLTF/OBJ/FBX), 50MB limit
 - **Gaussian Splats** — PLY/SOG/SPZ/SPLAT converted to `.spz` on the server (thumbnail rendered on the CPU), KSPLAT stored as uploaded, 1GB limit
 - **Size limits** — image 10MB, video 200MB, model 50MB
+- **Folder uploads** — drag & drop of folders and the "Ordner hochladen" picker walk folders recursively (`src/lib/uploadFiles.ts`, the one place that knows which files the client sends). OS clutter (`.DS_Store`, `__MACOSX`, dotfiles) is dropped silently; every other unsupported file is listed in the upload modal as a hint.
 
 ---
 
