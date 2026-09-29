@@ -101,7 +101,12 @@ export default function BookViewerOverlay({ book }: { book: OpenBook }) {
         <DialogPrimitive.Content
           aria-describedby={undefined}
           className="fixed inset-0 z-[1101] flex flex-col items-center justify-center outline-none"
-          onEscapeKeyDown={(e) => { e.preventDefault(); closeBook('escape'); }}
+          onEscapeKeyDown={(e) => {
+            // Radix listens on document in the capture phase: stop here so EditorPage's window keydown (escape branch) never sees this ESC.
+            e.stopPropagation();
+            e.preventDefault();
+            closeBook('escape');
+          }}
         >
           <DialogTitle className="absolute left-6 top-5 text-sm font-medium text-white/80">{book.title}</DialogTitle>
           <button
