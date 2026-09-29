@@ -182,6 +182,8 @@ interface EditorState {
 
   // Blender-style controls
   transformAxisLock: TransformAxisLock;
+  /** ⇧ is held: a left drag draws the selection marquee instead of orbiting the camera. */
+  shiftHeld: boolean;
 
   // UI State
   rightSidebarOpen: boolean;
@@ -258,6 +260,7 @@ interface EditorState {
   setFocusTarget: (focus: { target: [number, number, number]; isHoming: boolean } | null) => void;
   // Blender-style actions
   setTransformAxisLock: (axis: TransformAxisLock) => void;
+  setShiftHeld: (held: boolean) => void;
   deleteSelectedInstance: () => void;
   setModalTransformActive: (active: boolean) => void;
   setActiveObjectRef: (ref: THREE.Object3D | null) => void;
@@ -360,6 +363,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   // Blender-style defaults
   transformAxisLock: 'none',
+  shiftHeld: false,
   modalTransformActive: false,
   activeObjectRef: null,
 
@@ -453,6 +457,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   // Blender-style actions
   setTransformAxisLock: (axis) => set({ transformAxisLock: axis }),
+  setShiftHeld: (held) => set((state) => (state.shiftHeld === held ? state : { shiftHeld: held })),
   deleteSelectedInstance: () => set((state) => {
     if (state.selectedInstanceIds.length === 0) return state;
     const doomed = new Set(state.selectedInstanceIds);

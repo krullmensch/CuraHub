@@ -24,6 +24,8 @@ import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
 import { commonFaceTarget } from '../lib/selectionFaces';
+import { consumeMarqueeClick } from '../lib/selectionBridge';
+import { SelectionMarquee } from '../components/SelectionMarquee';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
@@ -661,7 +663,11 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           style={{ width: '100%', height: '100%' }}
           gl={glConfig}
           shadows={CANVAS_SHADOWS}
-          onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
+          onPointerMissed={() => {
+            // The pointer-up of a ⇧-drag marquee is no click into the void.
+            if (consumeMarqueeClick()) return;
+            selectInstance(null); selectWall(null); selectZone(null);
+          }}
         >
           <FrameloopController isVisible={isVisible} />
           <Scene />
@@ -675,6 +681,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       )}
       <SceneLoadingIndicator />
       
+      {/* ⇧ + drag: selection marquee over the 3D view */}
+      {viewMode === 'perspective' && !wallEditorOpen && isVisible && <SelectionMarquee containerRef={containerRef} />}
+
       {/* 2D wall editor (overlay, top bar, tool bar) */}
       {viewMode !== 'firstPerson' && isVisible && <WallEditor />}
 

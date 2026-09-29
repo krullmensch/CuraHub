@@ -84,4 +84,11 @@ describe('instance selection', () => {
     expect(remapSelection([-3, 5], -3, 12)).toEqual([12, 5]);
     expect(remapSelection([5], -3, 12)).toEqual([5]);
   });
+
+  it('shiftHeld follows setShiftHeld', () => {
+    useEditorStore.getState().setShiftHeld(true);
+    expect(useEditorStore.getState().shiftHeld).toBe(true);
+    useEditorStore.getState().setShiftHeld(false);
+    expect(useEditorStore.getState().shiftHeld).toBe(false);
+  });
 });

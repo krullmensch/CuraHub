@@ -7,6 +7,7 @@ import { VideoInstance } from './VideoInstance';
 import { ModelInstance } from './ModelInstance';
 import { SplatInstance } from './SplatInstance';
 import { InstanceTransformControls } from './InstanceTransformControls';
+import { SelectionBridge } from './SelectionBridge';
 import { instanceOnFace, openFaceOf } from '../lib/wallEditor/faces';
 import { displayArtworkTitle } from '../lib/artworkTitle';
 
@@ -148,6 +149,7 @@ export const PlacedArtworks = ({ viewerInstances, isEditor = true }: PlacedArtwo
             ))}
             {/* No transform gizmo while walking through the room in first-person preview */}
             {isEditor && plannerViewMode !== 'firstPerson' && !wallEditorOpen && <InstanceTransformControls instanceRefs={instanceRefs} />}
+            {isEditor && <SelectionBridge />}
         </group>
     );
 };

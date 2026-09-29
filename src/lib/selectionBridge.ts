@@ -12,3 +12,21 @@ export function consumeMarqueeClick(): boolean {
   suppressClick = false;
   return suppressed;
 }
+
+/** Rectangle in client (viewport) pixels. */
+export interface ClientRect {
+  left: number;
+  top: number;
+  right: number;
+  bottom: number;
+}
+
+/**
+ * Lets the DOM marquee ask the R3F canvas which artworks it covers (registered by
+ * SelectionBridge inside the canvas; empty outside the editor).
+ */
+export const selectionBridge: {
+  marqueeHits: (rect: ClientRect) => number[];
+} = {
+  marqueeHits: () => [],
+};
