@@ -29,6 +29,10 @@ export function detachIfOffWall(inst: ArtworkInstanceData, walls: ModularWallDat
   return Math.abs(localZ) > tolerance || Math.abs(localX) > halfW ? { ...inst, wallId: null } : inst;
 }
 
+/** Books stand upright on the floor whatever a gizmo or group delta did to them. */
+const uprightOnFloor = (inst: ArtworkInstanceData): ArtworkInstanceData =>
+  inst.medium === 'book' ? { ...inst, position_y: 0, rotation_x: 0, rotation_z: 0 } : inst;
+
 /** Writes the transform of an artwork's group back to the instance, for the one gizmo mode used. */
 export function finalizeInstanceTransform(
   inst: ArtworkInstanceData, object: THREE.Object3D, mode: TransformMode, walls: ModularWallData[],
@@ -47,7 +51,7 @@ export function finalizeInstanceTransform(
     scale_y: mode === 'scale' ? object.scale.y : inst.scale_y,
     scale_z: mode === 'scale' ? object.scale.z : inst.scale_z,
   };
-  return mode === 'translate' ? detachIfOffWall(updated, walls) : updated;
+  return uprightOnFloor(mode === 'translate' ? detachIfOffWall(updated, walls) : updated);
 }
 
 /**
@@ -60,8 +64,8 @@ export function finalizeGroupMember(
 ): ArtworkInstanceData {
   object.position.y = Math.max(artworkMinY(inst, object.scale.y), object.position.y);
   const position = { position_x: object.position.x, position_y: object.position.y, position_z: object.position.z };
-  if (mode === 'translate') return detachIfOffWall({ ...inst, ...position }, walls);
-  return detachIfOffWall({
+  if (mode === 'translate') return uprightOnFloor(detachIfOffWall({ ...inst, ...position }, walls));
+  return uprightOnFloor(detachIfOffWall({
     ...inst,
     ...position,
     rotation_x: object.rotation.x,
@@ -70,5 +74,5 @@ export function finalizeGroupMember(
     scale_x: object.scale.x,
     scale_y: object.scale.y,
     scale_z: object.scale.z,
-  }, walls);
+  }, walls));
 }

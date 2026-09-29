@@ -76,3 +76,48 @@ describe('movesInWallPlane', () => {
     expect(movesInWallPlane({ ...splat, artwork: { ...splat.artwork, asset: { ...splat.artwork.asset, type: 'splat' } } })).toBe(false);
   });
 });
+
+describe('books stay upright on the floor', () => {
+  const book = (patch: Partial<ArtworkInstanceData> = {}) => pic({
+    id: 2, wallId: null, medium: 'book', position_y: 0, position_z: 1, rotation_y: 0.4,
+    artwork: { width: 21, height: 30, asset: { path: '', width: 1, height: 1, dpi: 72, type: 'book' } }, ...patch,
+  });
+
+  it('after a group rotation about X', () => {
+    const object = new THREE.Object3D();
+    object.position.set(0.5, 0.8, 1);
+    object.rotation.set(0.6, 0.4, 0.2);
+    const out = finalizeGroupMember(book(), object, [], 'rotate');
+    expect(out.rotation_x).toBe(0);
+    expect(out.rotation_z).toBe(0);
+    expect(out.rotation_y).toBeCloseTo(0.4);
+    expect(out.position_y).toBe(0);
+    expect(out.position_x).toBeCloseTo(0.5);
+    // a picture in the same group still gets the delta
+    const picObject = new THREE.Object3D();
+    picObject.position.set(0.5, 1.8, 0.06);
+    picObject.rotation.set(0.6, 0, 0);
+    const picOut = finalizeGroupMember(pic(), picObject, [wall], 'rotate');
+    expect(picOut.rotation_x).toBeCloseTo(0.6);
+  });
+
+  it('after a group move with dy > 0', () => {
+    const object = new THREE.Object3D();
+    object.position.set(0.5, 0.3, 1);
+    expect(finalizeGroupMember(book(), object, [], 'translate').position_y).toBe(0);
+    const picObject = new THREE.Object3D();
+    picObject.position.set(0.5, 1.8, 0.06);
+    expect(finalizeGroupMember(pic(), picObject, [wall], 'translate').position_y).toBeCloseTo(1.8);
+  });
+
+  it('after a single-object gizmo commit', () => {
+    const object = new THREE.Object3D();
+    object.position.set(0.5, 0.3, 1);
+    object.rotation.set(0.5, 0.4, 0.5);
+    expect(finalizeInstanceTransform(book(), object, 'translate', []).position_y).toBe(0);
+    const rotated = finalizeInstanceTransform(book(), object, 'rotate', []);
+    expect(rotated.rotation_x).toBe(0);
+    expect(rotated.rotation_z).toBe(0);
+    expect(rotated.rotation_y).toBeCloseTo(0.4);
+  });
+});

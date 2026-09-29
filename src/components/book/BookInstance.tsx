@@ -57,6 +57,10 @@ export const BookInstance = forwardRef<THREE.Group, BookInstanceProps>(({ instan
       position={[instance.position_x, instance.position_y, instance.position_z]}
       rotation={[0, instance.rotation_y, 0]}
       onClick={handleClick}
+      // R3F passes events through to objects behind: without this a double-click on a book in front of
+      // a modular wall also reaches the wall's handler and opens the 2D wall editor. EditorPage's
+      // native dblclick listener opens the book.
+      onDoubleClick={(e: ThreeEvent<MouseEvent>) => e.stopPropagation()}
     >
       <mesh position={[0, pedestal.height / 2, 0]}>
         <boxGeometry args={[pedestal.width, pedestal.height, pedestal.depth]} />

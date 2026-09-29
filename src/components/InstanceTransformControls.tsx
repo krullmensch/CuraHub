@@ -30,7 +30,7 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     const fixedSizeInSelection = useEditorStore((state) =>
         state.localInstances.some(i => isFixedSizeMedium(i.medium) && state.selectedInstanceIds.includes(i.id)));
     const bookSelected = useEditorStore((state) =>
-        state.selectedInstanceIds.length === 1 && state.localInstances.some(i => i.id === state.selectedInstanceId && i.medium === 'book'));
+        state.localInstances.some(i => i.medium === 'book' && state.selectedInstanceIds.includes(i.id)));
     const transformMode = useEditorStore((state) => state.transformMode);
     const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
     // A single wall-hung artwork moves along its wall only: local axes, no handle along the normal.
@@ -48,9 +48,13 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     // Monitors and books keep their size — scale mode moves them instead.
     const effectiveMode = fixedSizeInSelection && transformMode === 'scale' ? 'translate' : transformMode;
     const groupMode = isGroup ? effectiveMode : transformMode;
-    // Books: move on the floor (X/Z), turn about Y only.
+    // A book anywhere in the selection: move on the floor (X/Z), turn about Y only — no lifting,
+    // no tilt, no free-rotation ring / free-move handle / vertical planes.
     const showX = (transformAxisLock === 'none' || transformAxisLock === 'x') && !(bookSelected && effectiveMode === 'rotate');
     const showY = (transformAxisLock === 'none' || transformAxisLock === 'y') && !(bookSelected && effectiveMode === 'translate');
+    const floorOnly = bookSelected && effectiveMode !== 'scale';
+    // three's TransformControls props that drei's typings don't list; drei forwards them to the object.
+    const gizmoExtras: Record<string, boolean> = { showXY: !floorOnly, showYZ: !floorOnly, showXYZE: !floorOnly, showE: !floorOnly };
 
     const selectedGroup = selectedId ? instanceRefs.current.get(selectedId) ?? null : null;
 
@@ -151,6 +155,7 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
                     showX={showX}
                     showY={showY}
                     showZ={showZ}
+                    {...gizmoExtras}
                     onMouseDown={handleMouseDown}
                     onMouseUp={handleMouseUp}
                 />
