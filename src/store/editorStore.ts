@@ -83,6 +83,8 @@ export interface ArtworkInstanceData {
   passepartoutWidth?: number;
   /** Where the window sits in the passepartout. */
   passepartoutPlacement?: PassepartoutPlacement;
+  /** Opacity of a beamer projection, 0–1 (1 = opaque). Other media ignore it. */
+  opacity?: number;
   artwork: {
     id?: number;
     title?: string;
@@ -1046,6 +1048,7 @@ const syncToBackend = async () => {
               frameStyle: frameStyleOf(inst.frameStyle ?? DEFAULT_FRAME_STYLE),
               passepartoutWidth: inst.passepartoutWidth ?? 0,
               passepartoutPlacement: inst.passepartoutPlacement ?? 'center',
+              opacity: inst.opacity ?? 1,
               position: { x: inst.position_x, y: inst.position_y, z: inst.position_z },
               rotation: { x: inst.rotation_x, y: inst.rotation_y, z: inst.rotation_z },
               scale: { x: inst.scale_x, y: inst.scale_y, z: inst.scale_z },
@@ -1113,7 +1116,8 @@ const syncToBackend = async () => {
       const frameStyleChanged = curr.frameStyle !== prev.frameStyle;
       const passepartoutChanged = (curr.passepartoutWidth ?? 0) !== (prev.passepartoutWidth ?? 0)
         || (curr.passepartoutPlacement ?? 'center') !== (prev.passepartoutPlacement ?? 'center');
-      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged || frameStyleChanged || passepartoutChanged)) {
+      const opacityChanged = (curr.opacity ?? 1) !== (prev.opacity ?? 1);
+      if (!(posChanged || rotChanged || scaleChanged || wallChanged || mediumChanged || frameStyleChanged || passepartoutChanged || opacityChanged)) {
         nextInstancesMap.set(curr.id, curr); // no pending op — keep the snapshot in sync
         continue;
       }
@@ -1129,6 +1133,7 @@ const syncToBackend = async () => {
         body.passepartoutWidth = curr.passepartoutWidth ?? 0;
         body.passepartoutPlacement = curr.passepartoutPlacement ?? 'center';
       }
+      if (opacityChanged) body.opacity = curr.opacity ?? 1;
 
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });

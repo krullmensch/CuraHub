@@ -1,8 +1,16 @@
 import type * as THREE from 'three';
-import { artworkMinY, type ArtworkInstanceData, type ModularWallData, type TransformMode } from '@/store/editorStore';
+import { artworkMinY, isFloorAssetType, type ArtworkInstanceData, type ModularWallData, type TransformMode } from '@/store/editorStore';
 
 /** How far beyond a wall's surface or end an artwork may sit and still count as hanging on it. */
 const WALL_TOLERANCE_M = 0.15;
+
+/**
+ * Pictures, monitors and beamer projections hang on a wall and are never pulled into the room:
+ * the move gizmo offers only the two axes in their own plane (local X and Y, not the normal Z).
+ */
+export function movesInWallPlane(inst: Pick<ArtworkInstanceData, 'medium' | 'artwork'>): boolean {
+  return !isFloorAssetType(inst.medium) && !isFloorAssetType(inst.artwork?.asset?.type);
+}
 
 /** Detaches an artwork from its wall once it sits beyond the wall's thickness or width. */
 export function detachIfOffWall(inst: ArtworkInstanceData, walls: ModularWallData[]): ArtworkInstanceData {

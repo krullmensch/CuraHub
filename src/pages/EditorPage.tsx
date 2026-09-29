@@ -197,6 +197,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
   const hasInstanceSelection = useEditorStore((state) => state.selectedInstanceIds.length > 0);
   const selectedFigureId = useEditorStore((state) => state.selectedFigureId);
+  // An unlocked wall can be moved and turned by its gizmo (G/R), same as by the shortcuts.
+  const isMovableWallSelected = useEditorStore((state) =>
+    state.selectedWallId !== null && state.localWalls.some(w => w.id === state.selectedWallId && !w.isLocked));
   // Monitors keep the size of their model — one in the selection locks scaling for all.
   const isMonitorSelected = useEditorStore((state) =>
     state.localInstances.some(i => i.medium === 'monitor' && state.selectedInstanceIds.includes(i.id)));
@@ -706,8 +709,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           backdropFilter: 'blur(12px)',
         }}>
           {/* Transform modes */}
-          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!hasInstanceSelection && selectedFigureId === null} />
-          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!hasInstanceSelection && selectedFigureId === null} />
+          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!hasInstanceSelection && selectedFigureId === null && !isMovableWallSelected} />
+          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!hasInstanceSelection && selectedFigureId === null && !isMovableWallSelected} />
           <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!hasInstanceSelection || isMonitorSelected} />
 
           <ToolSeparator />

@@ -21,13 +21,13 @@ import { enqueueVideoJob } from '../lib/videoJobs';
 import { CHUNK_MAX_BYTES, CHUNK_SIZE_BYTES, ChunkedUploadStore } from '../lib/chunkedUploads';
 import {
     CONVERTIBLE_SPLAT_FORMATS,
-    SPLAT_ONLY_EXTENSIONS,
     convertSplatToSpz,
     inspectSplatFile,
     type SplatInspection,
 } from '../lib/splats';
 import { readSplatFile } from '../lib/splatReaders';
 import { trySplatThumbnails } from '../lib/splatThumbnail';
+import { detectAssetType, type AssetType } from '../lib/assetType';
 
 export const uploadRouter = Router();
 const prisma = new PrismaClient();
@@ -36,37 +36,6 @@ const prisma = new PrismaClient();
 const uploadDir = path.join(__dirname, '../../uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir, { recursive: true });
-}
-
-// Detect asset type from mimetype + extension
-// Supported 3D model formats
-const MODEL_EXTENSIONS = [
-    '.glb', '.gltf',                    // glTF (recommended)
-    '.obj', '.mtl',                     // Wavefront OBJ
-    '.fbx',                             // Autodesk FBX
-    '.dae',                             // COLLADA
-    '.stl',                             // STL (stereolithography)
-    '.ply',                             // Stanford Polygon Library
-    '.3ds',                             // 3DS Max
-    '.ase',                             // ASCII Scene Export
-    '.blend',                           // Blender (via Assimp)
-    '.usdz', '.usd',                    // USD/USDZ
-    '.glb2', '.gltf2',                  // glTF 2.0 variants
-];
-
-type AssetType = 'image' | 'video' | 'model3d' | 'splat';
-
-// `.ply` is detected as 'model3d' here; handleStoredUpload looks into the header and turns
-// Gaussian splat PLYs into 'splat' (see lib/splats).
-function detectAssetType(mimetype: string, filename: string): AssetType | null {
-    const ext = path.extname(filename).toLowerCase();
-    if (SPLAT_ONLY_EXTENSIONS.includes(ext)) return 'splat';
-    if (mimetype.startsWith('image/')) return 'image';
-    if (mimetype.startsWith('video/')) return 'video';
-    if (MODEL_EXTENSIONS.includes(ext)) return 'model3d';
-    // Browsers often send application/octet-stream for binary formats
-    if (mimetype === 'application/octet-stream' && MODEL_EXTENSIONS.includes(ext)) return 'model3d';
-    return null;
 }
 
 // Hard cap on the raw upload size (multer-level), before per-type checks run.

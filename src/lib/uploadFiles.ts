@@ -11,14 +11,20 @@ export const MODEL_EXTENSIONS = [
   '.ply', '.3ds', '.ase', '.blend', '.usdz', '.usd',
 ];
 
+/**
+ * Videos (transcoded to MP4 on the server). Matched by extension because browsers send an empty
+ * or odd MIME type for Matroska and some containers (Safari: '' for .mkv).
+ */
+export const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi'];
+
 /** Gaussian splats (.ply is either — the server tells them apart by the header). */
 export const SPLAT_EXTENSIONS = ['.sog', '.spz', '.splat', '.ksplat'];
 
 /** `accept` attribute for file inputs. */
-export const UPLOAD_ACCEPT = ['image/*', 'video/*', ...MODEL_EXTENSIONS, ...SPLAT_EXTENSIONS].join(',');
+export const UPLOAD_ACCEPT = ['image/*', 'video/*', ...VIDEO_EXTENSIONS, ...MODEL_EXTENSIONS, ...SPLAT_EXTENSIONS].join(',');
 
 export const SUPPORTED_FORMATS_HINT =
-  'Bilder, Videos, 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …) und Gaussian Splats (.ply, .sog, .spz, .splat, .ksplat)';
+  'Bilder, Videos (.mp4, .mov, .webm, .mkv, …), 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …) und Gaussian Splats (.ply, .sog, .spz, .splat, .ksplat)';
 
 /** A file of an upload with its path relative to the dropped/picked folder ('' for loose files). */
 export interface UploadEntry {
@@ -42,10 +48,15 @@ const extensionOf = (name: string): string => {
   return dot > 0 ? name.slice(dot).toLowerCase() : '';
 };
 
+/** A video by MIME type or, when the browser sends none (Matroska), by extension. */
+export function isVideoFile(file: File): boolean {
+  return file.type.startsWith('video/') || VIDEO_EXTENSIONS.includes(extensionOf(file.name));
+}
+
 export function isSupportedUploadFile(file: File): boolean {
   if (file.type.startsWith('image/') || file.type.startsWith('video/')) return true;
   const ext = extensionOf(file.name);
-  return MODEL_EXTENSIONS.includes(ext) || SPLAT_EXTENSIONS.includes(ext);
+  return VIDEO_EXTENSIONS.includes(ext) || MODEL_EXTENSIONS.includes(ext) || SPLAT_EXTENSIONS.includes(ext);
 }
 
 /** OS clutter in folders (Finder, Explorer, zip tools) — skipped without a hint. */

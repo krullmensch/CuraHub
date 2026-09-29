@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { detachIfOffWall, finalizeGroupMember, finalizeInstanceTransform } from './instanceTransform';
+import { detachIfOffWall, finalizeGroupMember, finalizeInstanceTransform, movesInWallPlane } from './instanceTransform';
 import type { ArtworkInstanceData, ModularWallData } from '@/store/editorStore';
 
 const wall: ModularWallData = {
@@ -61,5 +61,18 @@ describe('finalizeGroupMember translate', () => {
     expect(out.rotation_x).toBe(0);
     expect(out.rotation_y).toBe(Math.PI);
     expect(out.scale_x).toBe(1);
+  });
+});
+
+describe('movesInWallPlane', () => {
+  it('keeps pictures, monitors and beamer projections on their wall', () => {
+    expect(movesInWallPlane(pic())).toBe(true);
+    expect(movesInWallPlane(pic({ medium: 'monitor' }))).toBe(true);
+    expect(movesInWallPlane(pic({ medium: 'beamer' }))).toBe(true);
+  });
+  it('lets floor objects move freely', () => {
+    expect(movesInWallPlane(pic({ medium: 'model3d' }))).toBe(false);
+    const splat = pic({ medium: 'splat' });
+    expect(movesInWallPlane({ ...splat, artwork: { ...splat.artwork, asset: { ...splat.artwork.asset, type: 'splat' } } })).toBe(false);
   });
 });

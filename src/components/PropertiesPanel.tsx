@@ -45,6 +45,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { NumericInput } from './properties/NumericInput';
 import { FrameControls } from './properties/FrameControls';
+import { BeamerOpacityControl } from './properties/BeamerOpacityControl';
 import { MultiSelectionPanel } from './MultiSelectionPanel';
 import { NO_PASSEPARTOUT, passepartoutOf, type PassepartoutValue } from '@/lib/passepartout';
 
@@ -626,6 +627,7 @@ const ArtworkPropertiesContent = ({
                     </select>
                 </div>
             )}
+            {sizeIsBeamer && selectedInstanceId !== null && <BeamerOpacityControl instanceId={selectedInstanceId} />}
             {!isModel && !isVideo && (
                 <FrameControls
                     frameStyle={frameStyle}
@@ -737,8 +739,16 @@ const WallPropertiesContent = () => {
     const updateWall = useEditorStore((state) => state.updateWall);
     const toggleWallLock = useEditorStore((state) => state.toggleWallLock);
     const openWallEditor = useEditorStore((state) => state.openWallEditor);
+    const transformMode = useEditorStore((state) => state.transformMode);
+    const setTransformMode = useEditorStore((state) => state.setTransformMode);
     const wall = localWalls.find(w => w.id === selectedWallId);
     if (!wall) return null;
+    // Walls cannot be scaled — the gizmo treats 'scale' as 'translate' (ModularWallsController).
+    const wallMode = transformMode === 'scale' ? 'translate' : transformMode;
+    const wallModeButtons: { mode: TransformMode; icon: LucideIcon; label: string; title: string }[] = [
+        { mode: 'translate', icon: Move, label: 'Verschieben', title: 'Wand verschieben (G)' },
+        { mode: 'rotate', icon: RotateCcw, label: 'Drehen', title: 'Wand drehen (R)' },
+    ];
     const artworksOnWall = localInstances.filter(i => i.wallId === wall.id);
     const hasArtworks = artworksOnWall.length > 0;
     const toDeg = (rad: number) => ((rad * 180) / Math.PI).toFixed(1);
@@ -747,6 +757,22 @@ const WallPropertiesContent = () => {
     return (
         <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
             <div className="text-xs text-zinc-500 italic">{wall.label || 'Modular Wall'} — {wall.width}m × {wall.height}m</div>
+            <div className="flex gap-1">
+                {wallModeButtons.map(({ mode, icon: Icon, label, title }) => (
+                    <Button
+                        key={mode}
+                        variant={wallMode === mode ? 'default' : 'secondary'}
+                        size="sm"
+                        onClick={() => setTransformMode(mode)}
+                        disabled={wall.isLocked}
+                        className={cn("flex-1 h-9 text-xs gap-1.5", wallMode === mode ? "bg-blue-600 hover:bg-blue-500" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700")}
+                        title={wall.isLocked ? 'Wand ist gesperrt' : title}
+                    >
+                        <Icon className="h-3.5 w-3.5" />
+                        {label}
+                    </Button>
+                ))}
+            </div>
             <div className="space-y-2">
                 <Label className="text-xs text-zinc-400 uppercase tracking-wider">2D-Wandeditor</Label>
                 <div className="grid grid-cols-2 gap-2">

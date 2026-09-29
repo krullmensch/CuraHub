@@ -23,7 +23,7 @@ import { useAuthStore } from '../store/authStore';
 import { cn } from '@/lib/utils';
 import { preprocessImageForUpload, type PreprocessResult } from '@/lib/imageUtils';
 import { CHUNKED_UPLOAD_THRESHOLD, uploadFileInChunks } from '@/lib/chunkedUpload';
-import { SUPPORTED_FORMATS_HINT, type SkippedFile } from '@/lib/uploadFiles';
+import { SUPPORTED_FORMATS_HINT, isVideoFile, type SkippedFile } from '@/lib/uploadFiles';
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -558,7 +558,7 @@ function FileCard({
   onNameChange: (name: string) => void;
 }) {
   const isImage = !!item.preview;
-  const isVideo = item.file.type.startsWith('video/');
+  const isVideo = isVideoFile(item.file);
   const saving = item.originalSize > 0 &&
     item.compressedSize !== undefined &&
     item.compressedSize < item.originalSize;
@@ -703,7 +703,7 @@ function DuplicateRow({
         <div className="w-16 h-16 rounded-md overflow-hidden bg-zinc-900 border border-zinc-700 flex items-center justify-center">
           {item.preview ? (
             <img src={item.preview} alt={item.name} className="w-full h-full object-cover" />
-          ) : item.file.type.startsWith('video/') ? (
+          ) : isVideoFile(item.file) ? (
             <Play className="h-6 w-6 text-zinc-500" />
           ) : (
             <Box className="h-6 w-6 text-zinc-500" />

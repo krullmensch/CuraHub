@@ -190,6 +190,9 @@ model ArtworkInstance {
   passepartoutWidth     Float   @default(0)
   passepartoutPlacement String  @default("center")
 
+  // Opacity of a beamer projection, 0–1 (1 = opaque). Other media ignore it.
+  opacity     Float             @default(1)
+
   createdAt   DateTime          @default(now())
 }
 

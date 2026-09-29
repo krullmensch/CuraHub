@@ -4,7 +4,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useEditorStore, artworkMinY, resolveInstanceId } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
-import { finalizeGroupMember, finalizeInstanceTransform } from '../lib/instanceTransform';
+import { finalizeGroupMember, finalizeInstanceTransform, movesInWallPlane } from '../lib/instanceTransform';
 import { useSelectionPivot } from './SelectionPivot';
 import { suppressNextClick } from '../lib/selectionBridge';
 
@@ -31,6 +31,12 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
         state.localInstances.some(i => i.medium === 'monitor' && state.selectedInstanceIds.includes(i.id)));
     const transformMode = useEditorStore((state) => state.transformMode);
     const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
+    // A single wall-hung artwork moves along its wall only: local axes, no handle along the normal.
+    const inWallPlane = useEditorStore((state) => {
+        if (state.selectedInstanceIds.length !== 1) return false;
+        const inst = state.localInstances.find(i => i.id === state.selectedInstanceId);
+        return !!inst && movesInWallPlane(inst);
+    });
     const setIsTransforming = useEditorStore((state) => state.setIsTransforming);
     const invalidate = useThree((state) => state.invalidate);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -123,6 +129,7 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     // Attach event listeners to the TransformControls gizmo via props
 
     const target = isGroup ? selectionPivot.pivot : selectedGroup;
+    const wallPlaneMove = !isGroup && inWallPlane && transformMode === 'translate';
 
     return (
         <>
@@ -133,9 +140,10 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
                     object={target}
                     mode={isGroup ? groupMode : transformMode}
                     size={0.75}
+                    space={wallPlaneMove ? 'local' : 'world'}
                     showX={transformAxisLock === 'none' || transformAxisLock === 'x'}
                     showY={transformAxisLock === 'none' || transformAxisLock === 'y'}
-                    showZ={transformAxisLock === 'none' || transformAxisLock === 'z'}
+                    showZ={!wallPlaneMove && (transformAxisLock === 'none' || transformAxisLock === 'z')}
                     onMouseDown={handleMouseDown}
                     onMouseUp={handleMouseUp}
                 />
