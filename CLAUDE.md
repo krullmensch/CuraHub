@@ -16,6 +16,7 @@ This file gives Claude Code full context about the project — its architecture,
 - `npm run dev` — Vite dev server on port 5173, proxies `/api`, `/auth`, `/upload`, `/uploads`, `/public` to backend
 - `npm run build` — TypeScript check + Vite build
 - `npm run lint` — ESLint
+- `npm test` — vitest for the pure modules in `src/lib` and the store (node environment, no DOM)
 
 ### Backend (`server/` directory)
 - `cd server && npm run dev` — nodemon + ts-node on port 3000
@@ -124,6 +125,14 @@ The editor layout is structured as follows:
 - **authStore** — JWT token + user info with `persist` middleware (localStorage key: `curahub-auth`)
 - **Auto-sync** — Zustand subscription watches `localInstances` changes, debounces (150ms), then diffs against previous state to PATCH/POST/DELETE only what changed
 - **Undo/Redo** — full snapshot stacks (`pastInstances[][]`, `futureInstances[][]`)
+
+### Multi-Selection (3D editor)
+
+- State: `selectedInstanceIds` (all selected artworks) next to `selectedInstanceId`, the **primary** one (last clicked/added, always part of the array). Set both only via `setInstanceSelection(ids, primary?)`, `toggleInstanceInSelection`, `pickInstance(id, additive)`, `selectAllInstances`, `selectInstance`; `clearInstanceSelection` spreads the empty state. Walls/zones stay single-select and clear the artwork selection. Single-object UI (video controls, "Wand öffnen") keeps reading the primary id.
+- Gestures: click = only this artwork, ⇧-click = toggle, ⇧-drag = marquee (`SelectionMarquee` DOM overlay + `SelectionBridge` in the canvas: projected bounds overlap, a ray to the artwork's centre must not hit a wall first; OrbitControls are off while ⇧ is held via `shiftHeld`), ⌘/Ctrl+A = all, ⌘/Ctrl+D = duplicate, the sidebar's "Im Raum" list (`PlacedArtworkList`: ⌘-click toggle, ⇧-click range).
+- Group transform: with more than one artwork the gizmo drives an invisible pivot at the selection's centre (`useSelectionPivot`); members follow via `applyGroupDelta` (translate/rotate rigidly about the pivot, scale each about its own centre) and are committed once on mouse-up (`finalizeGroupMember`, one undo step). `ModalTransformSystem` is not mounted — G/R/S only switch the gizmo mode.
+- Pure modules: `instanceBounds` (world bounds, frame + passepartout included), `selectionTransform`, `instanceTransform` (floor clamp, wall detach), `selectionOperations` (align height/axis, distribute, scale, frame, duplicate — each returns the new instance list or null), `placedArtworkGroups`, `marquee`, `selectionFaces`. `MultiSelectionPanel` replaces the artwork panel for more than one artwork.
+- 2D editor hand-over: opening a face takes the selected artworks on it (`openFaceWithSelection`), closing hands `wallEditorSelection` back to `selectedInstanceIds`.
 
 ### Transform System (Blender-style)
 
