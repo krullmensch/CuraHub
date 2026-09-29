@@ -7,6 +7,7 @@ import { Passepartout } from './Passepartout';
 import { framedArtworkLayout } from '../lib/frameStyles';
 import { useArtworkTexture } from '../hooks/use-artwork-texture';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
+import { consumeMarqueeClick } from '@/lib/selectionBridge';
 
 // Render so the frame's back face sits at outer-group local z = -WALL_PLACEMENT_OFFSET,
 // cancelling out the placement offset baked into stored positions so the back is
@@ -20,9 +21,11 @@ interface SelectableInstanceProps {
 }
 
 export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProps>(
-    ({ instance, selected, isEditor = true }, ref) => {
+    ({ instance, isEditor = true }, ref) => {
         const asset = instance.artwork.asset;
-        const selectInstance = useEditorStore((state) => state.selectInstance);
+        const pickInstance = useEditorStore((state) => state.pickInstance);
+        // Only the primary artwork of a multi-selection loads at full resolution (Cmd+A would load all).
+        const isPrimary = useEditorStore((state) => state.selectedInstanceId === instance.id);
         const { basicMaterials } = useRenderQualitySettings();
         const imageRef = useRef<THREE.Mesh>(null);
 
@@ -70,12 +73,13 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
             pixelWidth: asset.width || 0,
             pixelHeight: asset.height || 0,
             sizeM: Math.max(Math.abs(effWidth), Math.abs(effHeight)),
-            forceMax: isEditor && selected,
+            forceMax: isEditor && isPrimary,
         }, imageRef);
 
         const handleClick = (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
-            selectInstance(instance.id);
+            if (consumeMarqueeClick()) return;
+            pickInstance(instance.id, e.nativeEvent.shiftKey);
         };
 
         return (

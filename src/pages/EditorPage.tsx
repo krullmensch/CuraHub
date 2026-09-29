@@ -16,7 +16,7 @@ import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { useEditorStore, nextTempId, isFloorAssetType, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
-import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings } from 'lucide-react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings, PersonStanding } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
@@ -25,7 +25,13 @@ import { WallEditor } from '../components/wall-editor/WallEditorChrome';
 import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
+import { commonFaceTarget } from '../lib/selectionFaces';
+import { consumeMarqueeClick } from '../lib/selectionBridge';
+import { duplicateCurrentSelection, openFaceWithSelection } from '../lib/selectionActions';
+import { SelectionMarquee } from '../components/SelectionMarquee';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
+import { MAX_SCALE_FIGURES_PER_VERSION, scaleFigureBridge } from '../lib/scaleFigure';
+import { startWallLayoutSync } from '../lib/wallEditor/layoutSync';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
 const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
@@ -126,10 +132,10 @@ function openWallEditorForSelection(): boolean {
     store.openWallEditor({ kind: 'wall', wallId: wall.id, side: camera ? sideSeenFrom(wall, camera) : 'front' });
     return true;
   }
-  const inst = store.selectedInstanceId !== null ? store.localInstances.find(i => i.id === store.selectedInstanceId) : undefined;
-  const target = inst ? targetForInstance(inst, store.localWalls, useWallEditorView.getState().roomFaces) : null;
-  if (!inst || !target) return false;
-  store.openWallEditor(target, [inst.id]);
+  const selected = store.localInstances.filter(i => store.selectedInstanceIds.includes(i.id));
+  const target = commonFaceTarget(selected, store.localWalls, useWallEditorView.getState().roomFaces);
+  if (!target) return false;
+  store.openWallEditor(target, selected.map(i => i.id));
   return true;
 }
 
@@ -155,7 +161,8 @@ function handleCanvasDoubleClick(e: MouseEvent) {
     if (!inst || inst.artwork.asset.type === 'video') return;
     const target = targetForInstance(inst, store.localWalls, rooms);
     if (!target) return;
-    if (!store.wallEditor) store.openWallEditor(target, [inst.id]);
+    // ⇧-double-click keeps the other selected artworks of that wall in the 2D selection.
+    if (!store.wallEditor) openFaceWithSelection(target, [inst.id]);
     else if (targetKey(store.wallEditor) === targetKey(target)) store.setWallEditorSelection([inst.id]);
     return;
   }
@@ -188,22 +195,23 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const setTransformAxisLock = useEditorStore((state) => state.setTransformAxisLock);
   const showTraverses = useEditorStore((state) => state.showTraverses);
   const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
-  const selectedInstanceId = useEditorStore((state) => state.selectedInstanceId);
-  const isMonitorSelected = useEditorStore((state) => {
-    if (!state.selectedInstanceId) return false;
-    const inst = state.localInstances.find(i => i.id === state.selectedInstanceId);
-    return inst?.medium === 'monitor';
-  });
+  const hasInstanceSelection = useEditorStore((state) => state.selectedInstanceIds.length > 0);
+  const selectedFigureId = useEditorStore((state) => state.selectedFigureId);
+  // Monitors keep the size of their model — one in the selection locks scaling for all.
+  const isMonitorSelected = useEditorStore((state) =>
+    state.localInstances.some(i => i.medium === 'monitor' && state.selectedInstanceIds.includes(i.id)));
   const transformMode = useEditorStore((state) => state.transformMode);
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
   const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
+  // Hanging height and ruler guides of the 2D wall editor, per exhibition version
+  useEffect(() => startWallLayoutSync(), []);
   // 2D wall editor: the selected wall, or the wall the selected artwork hangs on
   const canOpenWallEditor = useEditorStore((state) => {
     if (state.selectedWallId !== null) return true;
-    const inst = state.selectedInstanceId !== null ? state.localInstances.find(i => i.id === state.selectedInstanceId) : undefined;
-    return !!inst && targetForInstance(inst, state.localWalls, useWallEditorView.getState().roomFaces) !== null;
+    const selected = state.localInstances.filter(i => state.selectedInstanceIds.includes(i.id));
+    return commonFaceTarget(selected, state.localWalls, useWallEditorView.getState().roomFaces) !== null;
   });
   // RND-11: preset-dependent pixel ratio; antialiasing is a context attribute and stays as
   // chosen when the Canvas was created.
@@ -421,6 +429,23 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     };
   }, [setDragPosition, setDragging]);
 
+  // Scale figure: placed on the floor where the view hits it (or in front of the wall it hits),
+  // facing the camera, then selected.
+  const placeScaleFigure = () => {
+    const store = useEditorStore.getState();
+    // The server refuses more; a POST it rejects would be retried forever by the auto-sync.
+    if (store.localScaleFigures.length >= MAX_SCALE_FIGURES_PER_VERSION) {
+      gooeyToast.error(`Maximal ${MAX_SCALE_FIGURES_PER_VERSION} Maßstabsfiguren pro Version`);
+      return;
+    }
+    const pose = scaleFigureBridge.spawnPose();
+    if (!pose) return;
+    const id = nextTempId();
+    store.addScaleFigure({ id, ...pose, isPublic: false });
+    store.selectFigure(id);
+    store.setTransformMode('translate');
+  };
+
   // Blender-style keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -449,7 +474,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       }
 
       const store = useEditorStore.getState();
-      const hasSelection = !!(store.selectedInstanceId || store.selectedWallId || store.selectedZoneId);
+      const hasSelection = store.selectedInstanceIds.length > 0 || !!store.selectedWallId || !!store.selectedZoneId;
+      const hasInstances = store.selectedInstanceIds.length > 0;
       const key = e.key.toLowerCase();
 
       // The 2D wall editor handles its own keys (WallEditorOverlay); only undo/redo above apply.
@@ -458,6 +484,21 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       // Open the 2D wall editor for the selected wall / the wall of the selected artwork
       if (key === 'e' && !cmdOrCtrl && store.plannerViewMode !== 'firstPerson') {
         if (openWallEditorForSelection()) e.preventDefault();
+        return;
+      }
+
+      // Select all artworks of the version
+      // Only while the editor is shown — it stays mounted (hidden) behind the asset library.
+      if (cmdOrCtrl && key === 'a' && isVisible && store.plannerViewMode !== 'firstPerson') {
+        e.preventDefault();
+        store.selectAllInstances();
+        return;
+      }
+
+      // Duplicate the selected artworks (the copies become the selection)
+      if (cmdOrCtrl && key === 'd' && isVisible && store.plannerViewMode !== 'firstPerson') {
+        e.preventDefault();
+        duplicateCurrentSelection();
         return;
       }
 
@@ -495,6 +536,18 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         return;
       }
 
+      // Scale figure: G/R pick the gizmo mode, Entf/Backspace removes it
+      if (store.selectedFigureId !== null) {
+        if (key === 'r' || key === 'g') {
+          e.preventDefault();
+          setTransformMode(key === 'r' ? 'rotate' : 'translate');
+        } else if (key === 'delete' || key === 'backspace') {
+          e.preventDefault();
+          store.deleteScaleFigure(store.selectedFigureId);
+        }
+        return;
+      }
+
       // Skip all other hotkeys when a zone is selected
       if (store.selectedZoneId) return;
 
@@ -519,7 +572,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         case 's':
           if (!cmdOrCtrl && hasSelection) { // Don't conflict with Cmd+S
             // Monitor size is fixed by the 3D model — scaling is disabled
-            if (store.localInstances.find(i => i.id === store.selectedInstanceId)?.medium === 'monitor') break;
+            if (store.localInstances.some(i => i.medium === 'monitor' && store.selectedInstanceIds.includes(i.id))) break;
             e.preventDefault();
             setTransformMode('scale');
             setTransformAxisLock('none');
@@ -530,17 +583,17 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
         // Axis lock
         case 'x':
-          if (store.selectedInstanceId) {
+          if (hasInstances) {
             setTransformAxisLock(store.transformAxisLock === 'x' ? 'none' : 'x');
           }
           break;
         case 'y':
-          if (store.selectedInstanceId) {
+          if (hasInstances) {
             setTransformAxisLock(store.transformAxisLock === 'y' ? 'none' : 'y');
           }
           break;
         case 'z':
-          if (!cmdOrCtrl && store.selectedInstanceId) {
+          if (!cmdOrCtrl && hasInstances) {
             setTransformAxisLock(store.transformAxisLock === 'z' ? 'none' : 'z');
           }
           break;
@@ -548,7 +601,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         // Delete selected instance
         case 'delete':
         case 'backspace':
-          if (store.selectedInstanceId) {
+          if (hasInstances) {
             e.preventDefault();
             store.deleteSelectedInstance();
           }
@@ -570,7 +623,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock, setPlannerViewMode]);
+  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock, setPlannerViewMode, isVisible]);
   // We need a ref to the container to calculate relative coordinates if needed,
   // but for full screen editor, window coordinates are fine for NDC.
 
@@ -594,7 +647,11 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           style={{ width: '100%', height: '100%' }}
           gl={glConfig}
           shadows={CANVAS_SHADOWS}
-          onPointerMissed={() => { selectInstance(null); selectWall(null); selectZone(null); }}
+          onPointerMissed={() => {
+            // The pointer-up of a ⇧-drag marquee is no click into the void.
+            if (consumeMarqueeClick()) return;
+            selectInstance(null); selectWall(null); selectZone(null);
+          }}
         >
           <FrameloopController isVisible={isVisible} />
           <Scene />
@@ -611,6 +668,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       {/* Outline of the selected artwork (projected by SelectionOutlineTracker) */}
       <SelectionOutlineSvg />
       
+      {/* ⇧ + drag: selection marquee over the 3D view */}
+      {viewMode === 'perspective' && !wallEditorOpen && isVisible && <SelectionMarquee containerRef={containerRef} />}
+
       {/* 2D wall editor (overlay, top bar, tool bar) */}
       {viewMode !== 'firstPerson' && isVisible && <WallEditor />}
 
@@ -646,16 +706,16 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           backdropFilter: 'blur(12px)',
         }}>
           {/* Transform modes */}
-          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!selectedInstanceId} />
-          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!selectedInstanceId} />
-          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!selectedInstanceId || isMonitorSelected} />
+          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!hasInstanceSelection && selectedFigureId === null} />
+          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!hasInstanceSelection && selectedFigureId === null} />
+          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!hasInstanceSelection || isMonitorSelected} />
 
           <ToolSeparator />
 
           {/* Axis lock */}
-          <ToolButton icon="X" tooltip="Lock X (X)" active={transformAxisLock === 'x'} activeColor="rgba(239,68,68,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'x' ? 'none' : 'x')} disabled={!selectedInstanceId} />
-          <ToolButton icon="Y" tooltip="Lock Y (Y)" active={transformAxisLock === 'y'} activeColor="rgba(34,197,94,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'y' ? 'none' : 'y')} disabled={!selectedInstanceId} />
-          <ToolButton icon="Z" tooltip="Lock Z (Z)" active={transformAxisLock === 'z'} activeColor="rgba(59,130,246,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'z' ? 'none' : 'z')} disabled={!selectedInstanceId} />
+          <ToolButton icon="X" tooltip="Lock X (X)" active={transformAxisLock === 'x'} activeColor="rgba(239,68,68,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'x' ? 'none' : 'x')} disabled={!hasInstanceSelection} />
+          <ToolButton icon="Y" tooltip="Lock Y (Y)" active={transformAxisLock === 'y'} activeColor="rgba(34,197,94,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'y' ? 'none' : 'y')} disabled={!hasInstanceSelection} />
+          <ToolButton icon="Z" tooltip="Lock Z (Z)" active={transformAxisLock === 'z'} activeColor="rgba(59,130,246,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'z' ? 'none' : 'z')} disabled={!hasInstanceSelection} />
 
           <ToolSeparator />
 
@@ -669,6 +729,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
           {/* First-person preview */}
           <ToolButton icon={<Footprints size={16} />} tooltip="Ego-Perspektive (V)" onClick={() => setPlannerViewMode('firstPerson')} />
+
+          {/* Scale figure (1.73 m) */}
+          <ToolButton icon={<PersonStanding size={16} />} tooltip="Maßstabsfigur hinzufügen (1,73 m)" onClick={placeScaleFigure} />
 
           <ToolSeparator />
 

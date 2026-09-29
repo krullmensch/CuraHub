@@ -157,6 +157,7 @@ export const ArtworkPlacement = () => {
                 let obj: THREE.Object3D | null = hit.object;
                 while (obj) {
                     if (obj.name === '__ghost__') return false;
+                    if (obj.userData.scaleFigure) return false; // figures don't take artworks
                     if (!obj.visible) return false;
                     obj = obj.parent;
                 }

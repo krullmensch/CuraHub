@@ -4,7 +4,7 @@ import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/store/editorStore';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
 import type { MeasureToggleKey } from '@/lib/wallEditor/measureToggles';
-import { CmInput } from './wall-editor/WallEditorPanel';
+import { CmInput } from './wall-editor/PanelPrimitives';
 import { ToolbarPopoverButton } from './ToolbarPopoverButton';
 
 const ENTRIES: { key: MeasureToggleKey; label: string; icon: ReactNode }[] = [

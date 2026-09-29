@@ -3,6 +3,7 @@ import { useGLTF } from '@react-three/drei';
 import type { ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
+import { consumeMarqueeClick } from '@/lib/selectionBridge';
 
 interface ModelInstanceProps {
     instance: ArtworkInstanceData;
@@ -13,7 +14,7 @@ interface ModelInstanceProps {
 export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
     ({ instance }, ref) => {
         const asset = instance.artwork.asset;
-        const selectInstance = useEditorStore((state) => state.selectInstance);
+        const pickInstance = useEditorStore((state) => state.pickInstance);
 
         // Uploaded GLBs are Draco-compressed; decoder served same-origin (no gstatic CDN).
         const { scene } = useGLTF(asset.path, '/draco/gltf/');
@@ -72,7 +73,8 @@ export const ModelInstance = forwardRef<THREE.Group, ModelInstanceProps>(
 
         const handleClick = (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
-            selectInstance(instance.id);
+            if (consumeMarqueeClick()) return;
+            pickInstance(instance.id, e.nativeEvent.shiftKey);
         };
 
         return (

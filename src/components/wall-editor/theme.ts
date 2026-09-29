@@ -23,3 +23,6 @@ export const PILL_HEIGHT = 16;
 export const SNAP_PX = 6;
 /** Pixel distance within which a guide can be grabbed. */
 export const GUIDE_HIT_PX = 4;
+
+/** Edge length of the corner scale handles (px). */
+export const HANDLE_PX = 8;

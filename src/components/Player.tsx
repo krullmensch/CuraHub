@@ -5,6 +5,7 @@ import { RigidBody, CapsuleCollider, RapierRigidBody } from '@react-three/rapier
 import * as THREE from 'three';
 import { useEditorStore } from '../store/editorStore';
 import { firstPersonTransition } from '../lib/cameraTransition';
+import { PLAYER_BODY_CENTER, PLAYER_CAPSULE_HALF_HEIGHT, PLAYER_CAPSULE_RADIUS, PLAYER_EYE_OFFSET } from '../lib/playerDimensions';
 
 const SPEED = 3.5;
 const ACCEL_FACTOR = 12;  // How fast we reach target speed (higher = snappier)
@@ -15,9 +16,7 @@ const IDLE_BOB_SPEED = 0.6;       // Breathing rhythm (Hz-ish)
 const IDLE_BOB_AMOUNT_Y = 0.003;  // Vertical sway amplitude
 const IDLE_BOB_AMOUNT_X = 0.002;  // Horizontal sway amplitude
 
-/** Height of the camera above the player body's center. */
-export const PLAYER_EYE_OFFSET = 0.8;
-const DEFAULT_SPAWN: [number, number, number] = [-5.99, 0.8, 2.6];
+const DEFAULT_SPAWN: [number, number, number] = [-5.99, PLAYER_BODY_CENTER, 2.6];
 const DEFAULT_ROTATION: [number, number, number] = [0, -1.1, 0];
 
 interface PlayerControllerProps {
@@ -126,7 +125,7 @@ export const PlayerController = ({ paused, spawn = DEFAULT_SPAWN, initialRotatio
             enabledRotations={[false, false, false]}
             lockRotations
         >
-            <CapsuleCollider args={[0.5, 0.3]} />
+            <CapsuleCollider args={[PLAYER_CAPSULE_HALF_HEIGHT, PLAYER_CAPSULE_RADIUS]} />
         </RigidBody>
     );
 };

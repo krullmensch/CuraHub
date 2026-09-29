@@ -7,6 +7,7 @@ import { VideoInstance } from './VideoInstance';
 import { ModelInstance } from './ModelInstance';
 import { SplatInstance } from './SplatInstance';
 import { InstanceTransformControls } from './InstanceTransformControls';
+import { SelectionBridge } from './SelectionBridge';
 import { instanceOnFace, openFaceOf } from '../lib/wallEditor/faces';
 import { displayArtworkTitle } from '../lib/artworkTitle';
 
@@ -35,7 +36,7 @@ interface InstanceSlotProps {
 // (commitLocalChange keeps untouched instance objects). The ref callback is stable per id —
 // a new callback on every render made React detach/re-attach all refs on each list render.
 const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProps) => {
-    const selected = useEditorStore((state) => isEditor && state.selectedInstanceId === instance.id);
+    const selected = useEditorStore((state) => isEditor && state.selectedInstanceIds.includes(instance.id));
     // 2D wall editor: only the artworks of the open face stay visible
     const hidden = useEditorStore((state) => {
         if (!isEditor || !state.wallEditor) return false;
@@ -148,6 +149,7 @@ export const PlacedArtworks = ({ viewerInstances, isEditor = true }: PlacedArtwo
             ))}
             {/* No transform gizmo while walking through the room in first-person preview */}
             {isEditor && plannerViewMode !== 'firstPerson' && !wallEditorOpen && <InstanceTransformControls instanceRefs={instanceRefs} />}
+            {isEditor && <SelectionBridge />}
         </group>
     );
 };

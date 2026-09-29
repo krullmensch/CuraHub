@@ -16,6 +16,7 @@ This file gives Claude Code full context about the project — its architecture,
 - `npm run dev` — Vite dev server on port 5173, proxies `/api`, `/auth`, `/upload`, `/uploads`, `/public` to backend
 - `npm run build` — TypeScript check + Vite build
 - `npm run lint` — ESLint
+- `npm run test` — Vitest (pure logic in `src/lib/**/*.test.ts` and the store's selection logic in `src/store`)
 
 ### Backend (`server/` directory)
 - `cd server && npm run dev` — nodemon + ts-node on port 3000
@@ -125,6 +126,14 @@ The editor layout is structured as follows:
 - **Auto-sync** — Zustand subscription watches `localInstances` changes, debounces (150ms), then diffs against previous state to PATCH/POST/DELETE only what changed
 - **Undo/Redo** — full snapshot stacks (`pastInstances[][]`, `futureInstances[][]`)
 
+### Multi-Selection (3D editor)
+
+- State: `selectedInstanceIds` (all selected artworks) next to `selectedInstanceId`, the **primary** one (last clicked/added, always part of the array). Set both only via `setInstanceSelection(ids, primary?)`, `toggleInstanceInSelection`, `pickInstance(id, additive)`, `selectAllInstances`, `selectInstance`; `clearInstanceSelection` spreads the empty state. Walls/zones stay single-select and clear the artwork selection. Single-object UI (video controls, "Wand öffnen") keeps reading the primary id.
+- Gestures: click = only this artwork, ⇧-click = toggle, ⇧-drag = marquee (`SelectionMarquee` DOM overlay + `SelectionBridge` in the canvas: projected bounds overlap, a ray to the artwork's centre must not hit a wall first; OrbitControls are off while ⇧ is held via `shiftHeld`), ⌘/Ctrl+A = all, ⌘/Ctrl+D = duplicate, the sidebar's "Im Raum" list (`PlacedArtworkList`: ⌘-click toggle, ⇧-click range).
+- Group transform: with more than one artwork the gizmo drives an invisible pivot at the selection's centre (`useSelectionPivot`); members follow via `applyGroupDelta` (translate/rotate rigidly about the pivot, scale each about its own centre) and are committed once on mouse-up (`finalizeGroupMember`, one undo step). `ModalTransformSystem` is not mounted — G/R/S only switch the gizmo mode.
+- Pure modules: `instanceBounds` (world bounds, frame + passepartout included), `selectionTransform`, `instanceTransform` (floor clamp, wall detach), `selectionOperations` (align height/axis, distribute, scale, frame, duplicate — each returns the new instance list or null), `placedArtworkGroups`, `marquee`, `selectionFaces`. `MultiSelectionPanel` replaces the artwork panel for more than one artwork.
+- 2D editor hand-over: opening a face takes the selected artworks on it (`openFaceWithSelection`), closing hands `wallEditorSelection` back to `selectedInstanceIds`.
+
 ### Transform System (Blender-style)
 
 Keyboard shortcuts: `G` grab, `R` rotate, `S` scale, `X/Y/Z` axis lock, `Shift` fine-tune, `Esc` cancel. Implemented via Three.js TransformControls + custom `ModalTransformSystem`.
@@ -142,6 +151,8 @@ Frontal, Figma-like editing of one wall face (`src/components/wall-editor/`, `sr
 - Layout math (align, distribute, spacing, snapping, measuring) is pure and lives in `lib/wallEditor/layout.ts`; commands on the selection in `lib/wallEditor/operations.ts`.
 - `artworkTextureManager` also sizes textures for orthographic cameras (on-screen size = `sizeM × pxPerM`).
 - EditorPage's keyboard handler ignores everything but undo/redo while the editor is open; the overlay handles its own keys.
+- Hanging height and ruler guides are stored per exhibition version (`ExhibitionVersion.hanging_height`, default 1.45 m, and `wall_guides`, keyed by `targetKey`). `lib/wallEditor/layoutSync.ts` (started by EditorPage) loads them from `GET …/versions/:vid/wall-layout` and PATCHes the full state 300 ms after a change; it never dispatches editor actions. Guides: `axis 'h'` = horizontal, value above the face's floor; `'v'` = vertical, value from its left edge (`lib/wallEditor/guides.ts`). Top ruler → horizontal guide, left ruler → vertical guide. Temporary → real wall ids and deleted walls reach the guides through `lib/wallEvents.ts`; the server rewrites the keys when versions are copied or merged (`server/src/lib/wallGuides.ts`).
+- The panel has tabs Anordnen / Werk / Linien (`panelTab` in wallEditorViewStore; a selection switches to Werk until a tab is picked by hand). Scaling (S modal, corner handles, ±5 %, W×H fields) is always about the picture centre (Alt on a handle: opposite corner fixed), monitors excluded; math in `lib/wallEditor/scale.ts`, the preview is drawn by the overlay and committed once (`scaleArtworks` → `commitScaledArtworks`), because frame profiles come from instance data and a scaled group would stretch them.
 - Measures in 3D: the toggles `showHangingLine` / `showFloorDistances` / `showGaps` are shared by 2D and 3D and persisted (`lib/wallEditor/measureToggles.ts`, localStorage `curahub-wall-measures`); the tool bar's "Maße" popover switches them too. `lib/wallEditor/annotations.ts` computes them for every face with artworks (`collectMeasuredFaces`, `faceAnnotations`, `floorLeaders` — pure, Vitest). `WallMeasurements3D` draws them in the orbit view only: lines as merged quads 3 mm in front of the wall (one mesh per colour), labels as `sizeAttenuation: false` sprites (textures from `lib/measureLabelTextures.ts`). Labels are depth-tested but slide along the view ray towards the camera (screen position unchanged) so they don't cut into their own wall at oblique angles, and hide when the camera is behind their face.
 
 ### Selection Outline
@@ -179,16 +190,24 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 
 - Asset/medium type `splat` (`.ply`, `.sog`, `.spz`, `.splat`, `.ksplat`, max 1 GB). Server (`server/src/lib/splats.ts`) validates headers and tells splat PLYs from mesh PLYs.
 - **Every upload is converted to `.spz`** (`server/src/lib/spz.ts` + `splatReaders.ts`), roughly a tenth of a raw INRIA PLY, and the source file is deleted — like the GLB pipeline. `metadata.originalFormat`/`originalSize` keep what was uploaded. `.ksplat` has no reader and stays as it is; a `.sog` that cannot be converted is rejected (no backend of ours reads SOG directly). The encoders are the exact inverse of three.js r186's `SPZLoader`/`GaussianSplatPLYLoader`, so a converted capture renders like its source (verified attribute by attribute in `server/src/tests/splatConvert.test.ts`).
-- SOG v2 (`.sog`, PlayCanvas/SuperSplat) is read as what it is: a zip (fflate) of `meta.json` plus lossless WebP planes (decoded with sharp), dequantised into SPZ's arrays.
+- SOG v2 (`.sog`, PlayCanvas/SuperSplat) is read as what it is: a zip (fflate) of `meta.json` plus lossless WebP planes (decoded with sharp), dequantised into SPZ's arrays. An *unbundled* SOG export (a folder of `meta.json` + WebPs) is zipped into a `.sog` in the browser (`src/lib/uploadFiles.ts`) before upload, so its WebPs never become image assets.
 - Asset-browser thumbnails are rasterised on the CPU during the upload (`server/src/lib/splatThumbnail.ts`): splats sorted back to front and composited as round Gaussians, written as the usual `-thumb-512/256.webp` pair. `SplatPreviewTile` shows it; captures from before fall back to the badge.
 - `node dist/scripts/backfill-splats.js --apply` converts and thumbnails existing splat assets (dry run by default).
 - `SplatInstance` stands on the floor like `model3d`: capture flipped upright (`SPLAT_UP_FLIP`), anchored at the bottom centre of its robust (1–99 %) bounds. Clicks hit a box proxy (`SplatHitProxy`), not the splats.
 - WebGPU: three.js `GaussianSplat`, parsed in `src/workers/splatParse.worker.ts`, geometry cached per URL. WebGL: Spark (`src/lib/sparkSupport.ts`, one `SparkRenderer` per renderer, `onDirty` → `invalidate`).
 - `GaussianSplat` smears splats in render targets — hide splats (`hideSplats`) during offscreen captures such as the glass reflection.
 
+### Maßstabsfigur (scale figure)
+
+- Black person, exactly 1.73 m (`SCALE_FIGURE_HEIGHT` = `PLAYER_STATURE`, `src/lib/playerDimensions.ts`), model `public/models/scale-figure.glb` (mesh `ScaleFigure`, 3270 triangles, faces +Z, half-span 0.30 m). It is the `Character` of SHUTDOWN.gallery's "Quarantine Diary" scene, extracted, scaled and centred by `scripts/build-scale-figure.py` (Python stdlib; run command in the file header).
+- Table `ScaleFigure` per version (`position_x/z`, `rotation_y`, `isPublic`), route `/scale-figures`, copied with versions and merges; `/public` returns only `isPublic` figures.
+- Store: `localScaleFigures`, `selectedFigureId` (exclusive with instance/wall/zone selection), auto-sync diff block like walls, no undo.
+- `ScaleFigures.tsx`: one shared geometry + two shared materials, `TransformControls` (X/Z move, Y turn, tilt removed in `onChange`), hidden in the wall editor, no collider. New figures: toolbar button → `scaleFigureBridge.spawnPose()` (screen-centre ray on the floor, facing the camera).
+- Artwork drops ignore figures (`userData.scaleFigure`).
+
 ### Backend API
 
-Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
+Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/scale-figures`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
 
 ### Database Schema (key models)
 
@@ -205,6 +224,7 @@ Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/pr
 - **3D Models** — direct upload (GLB/GLTF/OBJ/FBX), 50MB limit
 - **Gaussian Splats** — PLY/SOG/SPZ/SPLAT converted to `.spz` on the server (thumbnail rendered on the CPU), KSPLAT stored as uploaded, 1GB limit
 - **Size limits** — image 10MB, video 200MB, model 50MB
+- **Folder uploads** — drag & drop of folders and the "Ordner hochladen" picker walk folders recursively (`src/lib/uploadFiles.ts`, the one place that knows which files the client sends). OS clutter (`.DS_Store`, `__MACOSX`, dotfiles) is dropped silently; every other unsupported file is listed in the upload modal as a hint.
 
 ---
 
@@ -320,7 +340,7 @@ Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/pr
 - Camera modes: `'orthographic' | 'perspective' | 'firstPerson'` (type: `PlannerViewMode`)
 - **Video performance** — VideoTexture updates every frame by default. For first-person mode, throttle `videoTexture.needsUpdate` to every 2nd frame, or use `requestVideoFrameCallback` (see Known Issues)
 
-**Player constants:** `PLAYER_HEIGHT = 1.8`, `PLAYER_SPEED = 5`. Always use delta time: `velocity * delta`.
+**Player constants** (`src/lib/playerDimensions.ts`): stature 1.73 m, eye height 1.62 m, capsule radius 0.3 / half height 0.565 (body centre 0.865). Import them from the lib, not from `Player.tsx` (Rapier chunk). Always use delta time: `velocity * delta`.
 
 ---
 

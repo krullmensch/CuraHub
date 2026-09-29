@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { useShallow } from 'zustand/react/shallow';
 import * as THREE from 'three';
 import { instanceRefMap, useEditorStore, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '@/store/editorStore';
 import { artworkFrameLayout } from '@/lib/wallEditor/footprint';
@@ -7,7 +8,7 @@ import { SplatHitProxy } from '@/lib/splats';
 import { WE_COLORS } from './wall-editor/theme';
 
 /**
- * Outline of the selected artwork: its corners (in the artwork group's local space) are projected
+ * Outline of the selected artworks: their corners (in the artwork group's local space) are projected
  * every frame and written into one SVG path over the canvas. SVG instead of 3D lines gives a real
  * pixel width and works the same on WebGPU and WebGL (drei's Line uses a ShaderMaterial).
  */
@@ -126,49 +127,53 @@ const _world = new THREE.Vector3();
 const _view = new THREE.Vector3();
 
 export const SelectionOutlineTracker = () => {
-    const instance = useEditorStore((s) =>
-        s.selectedInstanceId === null ? null : s.localInstances.find((i) => i.id === s.selectedInstanceId) ?? null);
+    const instances = useEditorStore(useShallow((s) =>
+        s.localInstances.filter((i) => s.selectedInstanceIds.includes(i.id))));
     const active = useEditorStore((s) => s.plannerViewMode !== 'firstPerson' && !s.wallEditor);
-    const shape = useRef<OutlineShape | null>(null);
-    const screen = useRef<{ x: number; y: number }[]>([]);
+    // Outline per selected artwork, rebuilt when its data changes (scale, frame, …).
+    const shapes = useRef(new Map<number, { instance: ArtworkInstanceData; shape: OutlineShape | null }>());
 
     useEffect(() => {
-        shape.current = null;
-        if (!active || !instance) setPath('');
-    }, [instance, active]);
+        const next = new Map<number, { instance: ArtworkInstanceData; shape: OutlineShape | null }>();
+        for (const instance of instances) {
+            const known = shapes.current.get(instance.id);
+            next.set(instance.id, known && known.instance === instance ? known : { instance, shape: null });
+        }
+        shapes.current = next;
+        if (!active || instances.length === 0) setPath('');
+    }, [instances, active]);
     useEffect(() => () => setPath(''), []);
 
     useFrame(({ camera, size }) => {
-        if (!active || !instance) return;
-        const group = instanceRefMap.get(instance.id);
-        if (!group) {
-            setPath('');
-            return;
-        }
-        // Models and splats load asynchronously: retry until they have bounds.
-        if (!shape.current) shape.current = outlineShape(instance, group);
-        const current = shape.current;
-        if (!current) {
-            setPath('');
-            return;
-        }
-        group.updateWorldMatrix(true, false);
+        if (!active || shapes.current.size === 0) return;
         const perspective = camera instanceof THREE.PerspectiveCamera;
-        screen.current.length = 0;
-        for (const p of current.points) {
-            _world.copy(p).applyMatrix4(group.matrixWorld);
-            // A corner behind the camera would project to the wrong side of the screen.
-            if (perspective && _view.copy(_world).applyMatrix4(camera.matrixWorldInverse).z > -camera.near) {
-                setPath('');
-                return;
+        let d = '';
+        for (const entry of shapes.current.values()) {
+            const group = instanceRefMap.get(entry.instance.id);
+            if (!group) continue;
+            // Models and splats load asynchronously: retry until they have bounds.
+            if (!entry.shape) entry.shape = outlineShape(entry.instance, group);
+            const shape = entry.shape;
+            if (!shape) continue;
+            group.updateWorldMatrix(true, false);
+            const pts: { x: number; y: number }[] = [];
+            let behind = false;
+            for (const p of shape.points) {
+                _world.copy(p).applyMatrix4(group.matrixWorld);
+                // A corner behind the camera would project to the wrong side of the screen.
+                if (perspective && _view.copy(_world).applyMatrix4(camera.matrixWorldInverse).z > -camera.near) {
+                    behind = true;
+                    break;
+                }
+                _world.project(camera);
+                pts.push({ x: ((_world.x + 1) / 2) * size.width, y: ((1 - _world.y) / 2) * size.height });
             }
-            _world.project(camera);
-            screen.current.push({ x: ((_world.x + 1) / 2) * size.width, y: ((1 - _world.y) / 2) * size.height });
+            if (behind) continue;
+            for (const [a, b] of shape.edges) {
+                d += `M${pts[a].x.toFixed(1)} ${pts[a].y.toFixed(1)}L${pts[b].x.toFixed(1)} ${pts[b].y.toFixed(1)}`;
+            }
         }
-        const pts = screen.current;
-        setPath(current.edges
-            .map(([a, b]) => `M${pts[a].x.toFixed(1)} ${pts[a].y.toFixed(1)}L${pts[b].x.toFixed(1)} ${pts[b].y.toFixed(1)}`)
-            .join(''));
+        setPath(d);
     });
 
     return null;

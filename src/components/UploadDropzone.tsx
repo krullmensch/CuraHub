@@ -3,6 +3,16 @@ import { useAuthStore } from '../store/authStore';
 import { Button } from "@/components/ui/button";
 import { CloudUpload } from "lucide-react";
 import { preprocessImageForUpload } from '@/lib/imageUtils';
+import {
+  SUPPORTED_FORMATS_HINT,
+  UPLOAD_ACCEPT,
+  collectDroppedFiles,
+  describeSkippedFiles,
+  entriesFromFileList,
+  selectUploadFiles,
+  type SkippedFile,
+  type UploadEntry,
+} from '@/lib/uploadFiles';
 
 interface DuplicateInfo {
   filename: string;
@@ -11,8 +21,11 @@ interface DuplicateInfo {
 }
 
 interface UploadDropzoneProps {
-  /** Called with collected files instead of uploading — used by AssetLibrary to show the preview modal */
-  onFilesReady?: (files: File[]) => void;
+  /**
+   * Called with collected files instead of uploading — used by AssetLibrary to show the preview
+   * modal. `skipped` lists files of the drop the server would not accept (shown as a hint there).
+   */
+  onFilesReady?: (files: File[], skipped: SkippedFile[]) => void;
   onUploadStart?: () => void;
   onUploadComplete?: (fileData: unknown) => void;
   onUploadError?: (error: string) => void;
@@ -128,33 +141,25 @@ export const UploadDropzone = ({
       return response.json();
   };
 
-  const processFiles = async (files: FileList | File[]) => {
-      const MODEL_EXTENSIONS = [
-          '.glb', '.gltf', '.obj', '.fbx', '.dae', '.stl',
-          '.ply', '.3ds', '.ase', '.blend', '.usdz', '.usd',
-          // Gaussian splats (.ply is either — the server tells them apart by the header)
-          '.sog', '.spz', '.splat', '.ksplat',
-      ];
-
-      const validFiles = Array.from(files).filter(file => {
-          if (file.type.startsWith('image/')) return true;
-          if (file.type.startsWith('video/')) return true;
-          const ext = file.name.toLowerCase();
-          if (MODEL_EXTENSIONS.some(m => ext.endsWith(m))) return true;
-          return false;
-      });
+  const processFiles = async (entries: UploadEntry[]) => {
+      if (entries.length === 0) return;
+      const { files: validFiles, skipped } = await selectUploadFiles(entries);
 
       if (validFiles.length === 0) {
-          if (files.length > 0) {
-             onUploadError('Nicht unterstütztes Dateiformat. Erlaubt: Bilder, Videos, 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …) und Gaussian Splats (.ply, .sog, .spz, .splat, .ksplat)');
-          }
+          onUploadError(skipped.length > 0
+              ? `Keine unterstützten Dateien gefunden (${describeSkippedFiles(skipped)}). Erlaubt: ${SUPPORTED_FORMATS_HINT}`
+              : 'Keine Dateien gefunden.');
           return;
       }
 
       // If a preview-modal handler is registered, hand files off there
       if (onFilesReady) {
-          onFilesReady(validFiles);
+          onFilesReady(validFiles, skipped);
           return;
+      }
+
+      if (skipped.length > 0) {
+          onUploadError(`${skipped.length} nicht unterstützte Datei${skipped.length !== 1 ? 'en' : ''} übersprungen: ${describeSkippedFiles(skipped)}`);
       }
 
       // Legacy: upload directly (used by EditorLayout)
@@ -182,14 +187,17 @@ export const UploadDropzone = ({
     setIsDragging(false);
     if (disabled) return;
 
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFiles(e.dataTransfer.files);
+    try {
+      // Folders are walked recursively; their unsupported files end up in the hint.
+      processFiles(await collectDroppedFiles(e.dataTransfer));
+    } catch {
+      onUploadError('Der Ordner konnte nicht gelesen werden.');
     }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files.length > 0) {
-          processFiles(e.target.files);
+          processFiles(entriesFromFileList(e.target.files));
       }
       if (fileInputRef.current) {
           fileInputRef.current.value = '';
@@ -223,7 +231,7 @@ export const UploadDropzone = ({
               <CloudUpload className="h-10 w-10 text-blue-300" />
             </div>
             <p className="text-lg font-semibold text-blue-100">Dateien hier ablegen</p>
-            <p className="text-sm text-blue-300/70">Bilder, Videos und 3D-Modelle</p>
+            <p className="text-sm text-blue-300/70">Bilder, Videos, 3D-Modelle, Gaussian Splats oder ganze Ordner</p>
           </div>
         </div>
       )}
@@ -239,7 +247,7 @@ export const UploadDropzone = ({
                       {processing ? 'Optimierung & Upload läuft…' : 'Klicken oder Dateien hierher ziehen'}
                   </p>
                   <p className="text-xs text-gray-500">
-                      Bilder, Videos, 3D-Modelle (.glb) und Gaussian Splats (.ply, .spz) unterstützt
+                      Bilder, Videos, 3D-Modelle (.glb) und Gaussian Splats (.ply, .sog, .spz) — auch ganze Ordner
                   </p>
                   <Button variant="outline" size="sm" className="mt-4 pointer-events-none" disabled={processing}>
                       {processing ? 'Verarbeitung…' : 'Dateien auswählen'}
@@ -254,7 +262,7 @@ export const UploadDropzone = ({
             type="file"
             className="hidden"
             onChange={handleFileSelect}
-            accept="image/*,video/*,.glb,.gltf,.obj,.fbx,.dae,.stl,.ply,.3ds,.ase,.blend,.usdz,.usd,.sog,.spz,.splat,.ksplat"
+            accept={UPLOAD_ACCEPT}
             multiple
             disabled={processing}
         />

@@ -3,11 +3,13 @@ import { useShallow } from 'zustand/react/shallow';
 import { gooeyToast } from 'goey-toast';
 import { useEditorStore, instanceRefMap } from '@/store/editorStore';
 import {
+    EMPTY_GUIDES,
     makeViewTransform,
     RULER_SIZE,
     useWallEditorView,
     type WallEditorTool,
 } from '@/store/wallEditorViewStore';
+import { guideToWall, MAX_GUIDES_PER_FACE, MAX_HANGING_HEIGHT, MIN_HANGING_HEIGHT, wallToGuideValue, type GuideAxis } from '@/lib/wallEditor/guides';
 import { wallToWorld } from '@/lib/wallEditor/geometry';
 import { wallEditorBridge } from '@/lib/wallEditor/bridge';
 import { floorLeaders } from '@/lib/wallEditor/annotations';
@@ -38,11 +40,32 @@ import {
 } from '@/lib/wallEditor/layout';
 import { formatCm, roundMm } from '@/lib/wallEditor/format';
 import { fitWallEditorView } from '@/lib/wallEditor/view';
-import { commitWallOffsets, removeInstances, type WallArtwork, type WallFace } from '@/lib/wallEditor/wallArtworks';
+import { pictureSize } from '@/lib/wallEditor/footprint';
+import {
+    OPPOSITE_CORNER,
+    clampScaleFactor,
+    cornerPoint,
+    fineFactor,
+    handleScaleFactor,
+    modalScaleFactor,
+    snapFactorToCm,
+    type Corner,
+    type Point,
+} from '@/lib/wallEditor/scale';
+import {
+    commitScaledArtworks,
+    commitWallOffsets,
+    isScalable,
+    removeInstances,
+    scaleArtworks,
+    type ScaledArtwork,
+    type WallArtwork,
+    type WallFace,
+} from '@/lib/wallEditor/wallArtworks';
 import { FloorChain, MeasureLine, Pill } from './OverlayPrimitives';
 import { textWidth } from './textMetrics';
 import { WallEditorRulers } from './WallEditorRulers';
-import { GUIDE_HIT_PX, SNAP_PX, WE_COLORS, WE_FONT } from './theme';
+import { GUIDE_HIT_PX, HANDLE_PX, SNAP_PX, WE_COLORS, WE_FONT } from './theme';
 
 type Draft = Map<number, Offset>;
 
@@ -63,7 +86,8 @@ type Interaction =
     | { kind: 'marquee'; pointerId: number; startU: number; startV: number; u: number; v: number; base: number[] }
     | { kind: 'pan'; pointerId: number; lastX: number; lastY: number }
     | { kind: 'measure'; pointerId: number; x1: number; y1: number; x2: number; y2: number }
-    | { kind: 'guide'; pointerId: number; id: number; axis: Axis; overRuler: boolean }
+    | { kind: 'guide'; pointerId: number; id: number; axis: GuideAxis; overRuler: boolean }
+    | { kind: 'hanging'; pointerId: number; /** Height above the floor while dragging (metres). */ value: number }
     | {
         kind: 'spacing';
         pointerId: number;
@@ -74,7 +98,26 @@ type Interaction =
         startGap: number;
         gap: number;
         offsets: Draft;
+    }
+    | {
+        kind: 'scale';
+        /** null: modal S gesture that follows the mouse without a pressed button. */
+        pointerId: number | null;
+        ids: number[];
+        /** Wall point the factor is measured from: the selection centre, or the fixed corner (Alt). */
+        pivot: Point;
+        start: Point;
+        /** Corner handle being dragged; null for S. */
+        corner: Corner | null;
+        /** Alt on a corner handle of a single artwork: it scales about the opposite corner. */
+        fixedCorner: boolean;
+        factor: number;
+        scaled: Map<number, ScaledArtwork>;
     };
+
+type ScaleInteraction = Extract<Interaction, { kind: 'scale' }>;
+
+const SCALE_CORNERS: Corner[] = ['nw', 'ne', 'sw', 'se'];
 
 const ZERO: Offset = { dx: 0, dy: 0 };
 const NUDGE_M = 0.01;
@@ -132,16 +175,21 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         showHangingLine: s.showHangingLine,
         hangingHeight: s.hangingHeight,
         measurements: s.measurements,
-        guides: s.guides,
+        guidesHidden: s.guidesHidden,
+        guidesLocked: s.guidesLocked,
+        hoverGuideId: s.hoverGuideId,
     })));
+    const guides = useWallEditorView((s) => s.guidesByFace[face.key] ?? EMPTY_GUIDES);
     const selection = useEditorStore((s) => s.wallEditorSelection);
     const setSelection = useEditorStore((s) => s.setWallEditorSelection);
 
     const [interaction, setInteraction] = useState<Interaction | null>(null);
     const interactionRef = useRef<Interaction | null>(null);
     const [hoverId, setHoverId] = useState<number | null>(null);
-    const [hoverGuide, setHoverGuide] = useState<number | null>(null);
+    const [hoverHanging, setHoverHanging] = useState(false);
     const [pointer, setPointer] = useState<{ u: number; v: number } | null>(null);
+    // Last pointer position in wall coordinates, for starting S from the keyboard.
+    const pointerRef = useRef<{ u: number; v: number } | null>(null);
     const [altDown, setAltDown] = useState(false);
     const [spaceDown, setSpaceDown] = useState(false);
     // The vertical ruler sits right of the floating asset sidebar (if open).
@@ -203,14 +251,19 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     }, [selectedIds, selection, setSelection]);
 
     const draft: Draft | null = interaction?.kind === 'move' || interaction?.kind === 'spacing' ? interaction.offsets : null;
+    const scaled = interaction?.kind === 'scale' ? interaction.scaled : null;
     const rectOf = useCallback((item: WallArtwork): Rect => {
+        const s = scaled?.get(item.id);
+        if (s) return s.rect;
         const o = draft?.get(item.id);
         return o ? translate(item.rect, o.dx, o.dy) : item.rect;
-    }, [draft]);
+    }, [draft, scaled]);
 
-    const guidesX = view.guides.filter((g) => g.axis === 'x').map((g) => g.value);
-    const guidesY = view.guides.filter((g) => g.axis === 'y').map((g) => g.value);
-    const hangY = wallRect.y + view.hangingHeight;
+    const visibleGuides = view.guidesHidden ? EMPTY_GUIDES : guides;
+    const guidesX = visibleGuides.filter((g) => g.axis === 'v').map((g) => guideToWall(g, wallRect));
+    const guidesY = visibleGuides.filter((g) => g.axis === 'h').map((g) => guideToWall(g, wallRect));
+    const hangingValue = interaction?.kind === 'hanging' ? interaction.value : view.hangingHeight;
+    const hangY = wallRect.y + hangingValue;
     if (view.showHangingLine) guidesY.push(hangY);
 
     const toLocal = (e: { clientX: number; clientY: number }) => {
@@ -225,19 +278,30 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         return null;
     };
 
-    const hitGuide = (x: number, y: number) => view.guides.find((g) => (
-        g.axis === 'x'
-            ? Math.abs(vt.toScreenX(g.value) - x) <= GUIDE_HIT_PX && y > RULER_SIZE
-            : Math.abs(vt.toScreenY(g.value) - y) <= GUIDE_HIT_PX && x > rulerLeft + RULER_SIZE
-    )) ?? null;
-    const isOverRuler = (axis: Axis, x: number, y: number) => (axis === 'x'
+    const hitGuide = (x: number, y: number) => {
+        if (view.guidesLocked) return null;
+        return visibleGuides.find((g) => (
+            g.axis === 'v'
+                ? Math.abs(vt.toScreenX(guideToWall(g, wallRect)) - x) <= GUIDE_HIT_PX && y > RULER_SIZE
+                : Math.abs(vt.toScreenY(guideToWall(g, wallRect)) - y) <= GUIDE_HIT_PX && x > rulerLeft + RULER_SIZE
+        )) ?? null;
+    };
+    // Horizontal guides come out of (and go back into) the top ruler, vertical ones the left ruler.
+    const isOverRuler = (axis: GuideAxis, x: number, y: number) => (axis === 'h'
         ? y < RULER_SIZE
         : x > rulerLeft - 8 && x < rulerLeft + RULER_SIZE);
 
-    const snapGuideValue = (axis: Axis, value: number) => {
+    const hitHanging = (x: number, y: number) => (
+        view.showHangingLine && !view.guidesLocked
+        && Math.abs(vt.toScreenY(hangY) - y) <= GUIDE_HIT_PX
+        && x >= vt.toScreenX(wallRect.x) - 12 && x <= vt.toScreenX(right(wallRect)) + 12
+    );
+
+    /** Snaps a guide position (wall coordinates) to the wall's edges and centre and to artwork edges. */
+    const snapGuideValue = (axis: GuideAxis, value: number) => {
         if (!view.snapping) return roundMm(value);
         const threshold = SNAP_PX / vt.pxPerM;
-        const candidates = axis === 'x'
+        const candidates = axis === 'v'
             ? [wallRect.x, centerX(wallRect), right(wallRect), ...items.flatMap((i) => [i.rect.x, centerX(i.rect), right(i.rect)])]
             : [wallRect.y, top(wallRect), ...items.flatMap((i) => [i.rect.y, centerY(i.rect), top(i.rect)])];
         let best: number | null = null;
@@ -253,11 +317,55 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         setInter(null);
     }, [face, setInter]);
 
+    const finishScale = useCallback((it: ScaleInteraction) => {
+        commitScaledArtworks(face, it.scaled);
+        setInter(null);
+    }, [face, setInter]);
+
+    const scalableIds = selectedIds.filter((id) => isScalable(itemsById.get(id)!.inst));
+
+    /** New factor and preview for the pointer at `p` (wall coordinates). */
+    const updateScale = (it: ScaleInteraction, p: Point, mods: { shift: boolean; cmd: boolean }): ScaleInteraction => {
+        let factor = it.corner ? handleScaleFactor(it.pivot, it.start, p) : modalScaleFactor(it.pivot, it.start, p);
+        if (mods.shift) factor = fineFactor(factor);
+        const first = itemsById.get(it.ids[0]);
+        if (first && view.snapping !== mods.cmd) factor = snapFactorToCm(factor, pictureSize(first.inst).w);
+        const sizes = it.ids.flatMap((id) => {
+            const item = itemsById.get(id);
+            return item ? [pictureSize(item.inst)] : [];
+        });
+        factor = clampScaleFactor(factor, sizes);
+        const fixedCorner = it.fixedCorner && it.corner ? OPPOSITE_CORNER[it.corner] : undefined;
+        return { ...it, factor, scaled: scaleArtworks(face, it.ids, factor, fixedCorner) };
+    };
+
+    const handleScaleHandlePointerDown = (corner: Corner, e: React.PointerEvent) => {
+        if (e.button !== 0 || interactionRef.current || scalableIds.length === 0) return;
+        e.stopPropagation();
+        rootRef.current?.setPointerCapture(e.pointerId);
+        const { x, y } = toLocal(e);
+        const box = unionRect(scalableIds.map((id) => itemsById.get(id)!.rect))!;
+        const fixedCorner = e.altKey && scalableIds.length === 1;
+        const pivot = fixedCorner ? cornerPoint(box, OPPOSITE_CORNER[corner]) : { x: centerX(box), y: centerY(box) };
+        setInter({
+            kind: 'scale', pointerId: e.pointerId, ids: scalableIds, pivot, start: { x: vt.toWallU(x), y: vt.toWallV(y) },
+            corner, fixedCorner, factor: 1, scaled: scaleArtworks(face, scalableIds, 1),
+        });
+    };
+
     // ── Pointer input ───────────────────────────────────────────────────────
 
     const effectiveTool: WallEditorTool = spaceDown ? 'hand' : view.tool;
 
     const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+        // Modal S: left click confirms, any other button cancels.
+        const current = interactionRef.current;
+        if (current?.kind === 'scale' && current.pointerId === null) {
+            e.preventDefault();
+            if (e.button === 0) finishScale(current);
+            else setInter(null);
+            return;
+        }
         if (interactionRef.current) return;
         const { x, y } = toLocal(e);
         const u = vt.toWallU(x);
@@ -305,6 +413,12 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             return;
         }
 
+        // artwork > hanging line > guide when they overlap
+        if (hitHanging(x, y)) {
+            setInter({ kind: 'hanging', pointerId: e.pointerId, value: view.hangingHeight });
+            return;
+        }
+
         const guide = hitGuide(x, y);
         if (guide) {
             setInter({ kind: 'guide', pointerId: e.pointerId, id: guide.id, axis: guide.axis, overRuler: false });
@@ -316,13 +430,19 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         setInter({ kind: 'marquee', pointerId: e.pointerId, startU: u, startV: v, u, v, base });
     };
 
-    const handleRulerPointerDown = (axis: Axis, e: React.PointerEvent) => {
+    const handleRulerPointerDown = (ruler: 'top' | 'left', e: React.PointerEvent) => {
         if (e.button !== 0 || interactionRef.current) return;
         e.stopPropagation();
         rootRef.current?.setPointerCapture(e.pointerId);
         const { x, y } = toLocal(e);
-        const value = axis === 'x' ? vt.toWallU(x) : vt.toWallV(y);
-        const id = useWallEditorView.getState().addGuide(axis, roundMm(value));
+        const axis: GuideAxis = ruler === 'top' ? 'h' : 'v';
+        const wallValue = axis === 'h' ? vt.toWallV(y) : vt.toWallU(x);
+        const id = useWallEditorView.getState().addGuide(face.key, axis, roundMm(wallToGuideValue(axis, wallValue, wallRect)));
+        if (id === null) {
+            if (rootRef.current?.hasPointerCapture(e.pointerId)) rootRef.current.releasePointerCapture(e.pointerId);
+            gooeyToast.error(`Höchstens ${MAX_GUIDES_PER_FACE} Hilfslinien pro Wandseite`);
+            return;
+        }
         setInter({ kind: 'guide', pointerId: e.pointerId, id, axis, overRuler: true });
     };
 
@@ -343,13 +463,21 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         const u = vt.toWallU(x);
         const v = vt.toWallV(y);
         setPointer({ u, v });
+        pointerRef.current = { u, v };
         const it = interactionRef.current;
+
+        if (it?.kind === 'scale' && it.pointerId === null) {
+            setInter(updateScale(it, { x: u, y: v }, { shift: e.shiftKey, cmd: e.metaKey || e.ctrlKey }));
+            return;
+        }
 
         if (!it) {
             const hit = effectiveTool === 'hand' ? null : hitItem(u, v);
             if ((hit?.id ?? null) !== hoverId) setHoverId(hit?.id ?? null);
-            const guide = effectiveTool === 'select' && !hit ? hitGuide(x, y) : null;
-            if ((guide?.id ?? null) !== hoverGuide) setHoverGuide(guide?.id ?? null);
+            const overHanging = !hit && effectiveTool === 'select' && hitHanging(x, y);
+            if (overHanging !== hoverHanging) setHoverHanging(overHanging);
+            const guide = effectiveTool === 'select' && !hit && !overHanging ? hitGuide(x, y) : null;
+            useWallEditorView.getState().setHoverGuide(guide?.id ?? null);
             return;
         }
         if (e.pointerId !== it.pointerId) return;
@@ -387,9 +515,17 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             }
             case 'guide': {
                 const overRuler = isOverRuler(it.axis, x, y);
-                const value = snapGuideValue(it.axis, it.axis === 'x' ? u : v);
-                useWallEditorView.getState().moveGuide(it.id, value);
+                const wallValue = snapGuideValue(it.axis, it.axis === 'v' ? u : v);
+                useWallEditorView.getState().updateGuide(face.key, it.id, { value: roundMm(wallToGuideValue(it.axis, wallValue, wallRect)) });
                 if (overRuler !== it.overRuler) setInter({ ...it, overRuler });
+                return;
+            }
+            case 'hanging': {
+                const raw = v - wallRect.y;
+                // Whole centimetres, with Alt whole millimetres.
+                const rounded = e.altKey ? roundMm(raw) : Math.round(raw * 100) / 100;
+                const value = Math.min(MAX_HANGING_HEIGHT, Math.max(MIN_HANGING_HEIGHT, rounded));
+                if (value !== it.value) setInter({ ...it, value });
                 return;
             }
             case 'move': {
@@ -445,6 +581,10 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 setInter({ ...it, gap, offsets });
                 return;
             }
+            case 'scale': {
+                setInter(updateScale(it, { x: u, y: v }, { shift: e.shiftKey, cmd: e.metaKey || e.ctrlKey }));
+                return;
+            }
         }
     };
 
@@ -466,7 +606,13 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 }
                 break;
             case 'guide':
-                if (it.overRuler) useWallEditorView.getState().removeGuide(it.id);
+                if (it.overRuler) useWallEditorView.getState().removeGuide(face.key, it.id);
+                break;
+            case 'hanging':
+                useWallEditorView.getState().setHangingHeight(it.value);
+                break;
+            case 'scale':
+                commitScaledArtworks(face, it.scaled);
                 break;
             default:
                 break;
@@ -547,6 +693,14 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 store.closeWallEditor();
                 return;
             }
+            const active = interactionRef.current;
+            if (active?.kind === 'scale') {
+                if (key === 'Enter' && active.pointerId === null) {
+                    e.preventDefault();
+                    finishScale(active);
+                }
+                return; // no other shortcuts while scaling
+            }
             if (cmd && lower === 'a') {
                 e.preventDefault();
                 store.setWallEditorSelection(items.map((i) => i.id));
@@ -559,6 +713,22 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 e.preventDefault();
                 const sel = unionRect(ids.map((id) => itemsById.get(id)!.rect));
                 if (sel) fitWallEditorView(sel, 0.25);
+                return;
+            }
+            if (lower === 's' && !e.shiftKey && !e.altKey && !active) {
+                const scalable = ids.filter((id) => isScalable(itemsById.get(id)!.inst));
+                if (scalable.length === 0) return;
+                e.preventDefault();
+                const box = unionRect(scalable.map((id) => itemsById.get(id)!.rect))!;
+                const pivot = { x: centerX(box), y: centerY(box) };
+                const p = pointerRef.current;
+                // From the pointer; from the box corner when the pointer is outside or on the centre.
+                const onCentre = !p || Math.hypot(p.u - pivot.x, p.v - pivot.y) * view.pxPerM < 8;
+                const start = onCentre ? { x: right(box), y: top(box) } : { x: p.u, y: p.v };
+                setInter({
+                    kind: 'scale', pointerId: null, ids: scalable, pivot, start,
+                    corner: null, fixedCorner: false, factor: 1, scaled: scaleArtworks(face, scalable, 1),
+                });
                 return;
             }
             if (lower === 'v') { view.setTool('select'); return; }
@@ -606,7 +776,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             window.removeEventListener('keyup', onKeyUp);
             window.removeEventListener('blur', onBlur);
         };
-    }, [face, items, itemsById, wallRect, cancelInteraction]);
+    }, [face, items, itemsById, wallRect, cancelInteraction, finishScale, setInter]);
 
     // Leaving the editor mid-drag: put the artworks back.
     useEffect(() => () => {
@@ -614,6 +784,11 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         if (it?.kind === 'move') applyDraft(face, it.ids, new Map());
         if (it?.kind === 'spacing') applyDraft(face, it.order.map((o) => o.id), new Map());
     }, [face]);
+
+    // Ends a live scale gesture when the artworks change under it (panel action, ⌘Z, removal).
+    useEffect(() => {
+        if (interactionRef.current?.kind === 'scale') setInter(null);
+    }, [items, setInter]);
 
     // ── Derived drawing data ─────────────────────────────────────────────
     const W = view.viewportW;
@@ -632,17 +807,17 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         const overlapping = new Set<number>();
         const eps = 0.0005;
         for (const a of items) {
-            const r = a.rect;
+            const r = rectOf(a);
             if (r.x < wallRect.x - eps || right(r) > right(wallRect) + eps || r.y < wallRect.y - eps || top(r) > top(wallRect) + eps) outside.add(a.id);
             for (const b of items) {
                 if (a.id >= b.id) continue;
                 const shrink = (q: Rect): Rect => ({ x: q.x + eps, y: q.y + eps, w: q.w - 2 * eps, h: q.h - 2 * eps });
-                if (rectsIntersect(shrink(r), shrink(b.rect))) { overlapping.add(a.id); overlapping.add(b.id); }
+                if (rectsIntersect(shrink(r), shrink(rectOf(b)))) { overlapping.add(a.id); overlapping.add(b.id); }
             }
             if (openings.some((o) => rectsIntersect(r, o))) overlapping.add(a.id);
         }
         return { outside, overlapping };
-    }, [items, wallRect, openings]);
+    }, [items, wallRect, openings, rectOf]);
 
     const annotations: ReactNode[] = [];
     const measureColor = WE_COLORS.measure;
@@ -758,15 +933,20 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
 
     let cursor = 'default';
     if (interaction?.kind === 'pan') cursor = 'grabbing';
+    else if (interaction?.kind === 'scale') {
+        cursor = interaction.corner === null ? 'crosshair' : interaction.corner === 'nw' || interaction.corner === 'se' ? 'nwse-resize' : 'nesw-resize';
+    }
     else if (interaction?.kind === 'spacing') cursor = interaction.axis === 'x' ? 'ew-resize' : 'ns-resize';
-    else if (interaction?.kind === 'guide') cursor = interaction.axis === 'x' ? 'col-resize' : 'row-resize';
+    else if (interaction?.kind === 'guide') cursor = interaction.axis === 'v' ? 'col-resize' : 'row-resize';
+    else if (interaction?.kind === 'hanging') cursor = 'row-resize';
     else if (effectiveTool === 'hand') cursor = 'grab';
     else if (effectiveTool === 'measure') cursor = 'crosshair';
     else if (interaction?.kind === 'move') cursor = 'move';
     else if (hoverId !== null) cursor = 'move';
-    else if (hoverGuide !== null) {
-        const g = view.guides.find((gg) => gg.id === hoverGuide);
-        cursor = g?.axis === 'x' ? 'col-resize' : 'row-resize';
+    else if (hoverHanging) cursor = 'row-resize';
+    else if (view.hoverGuideId !== null) {
+        const g = guides.find((gg) => gg.id === view.hoverGuideId);
+        if (g) cursor = g.axis === 'v' ? 'col-resize' : 'row-resize';
     }
 
     const floorY = sy(wallRect.y);
@@ -776,7 +956,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         for (let i = 0; i < o.length; i += 4) outlinePath += `M${sx(o[i])} ${sy(o[i + 1])}L${sx(o[i + 2])} ${sy(o[i + 3])}`;
     }
     // Hanging height label left of the wall when there is room, otherwise just inside it.
-    const hangingLabel = `Hängehöhe ${formatCm(view.hangingHeight)}`;
+    const hangingLabel = `Hängehöhe ${formatCm(hangingValue)}`;
     const hangingLabelOutside = sx(wallRect.x) - (rulerLeft + RULER_SIZE) > textWidth(hangingLabel) + 30;
     const wallScreen = screenRect(wallRect);
     const marquee = interaction?.kind === 'marquee' ? {
@@ -785,7 +965,19 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         width: Math.abs(interaction.u - interaction.startU) * vt.pxPerM,
         height: Math.abs(interaction.v - interaction.startV) * vt.pxPerM,
     } : null;
-    const draggedGuide = interaction?.kind === 'guide' ? view.guides.find((g) => g.id === interaction.id) : null;
+    const draggedGuide = interaction?.kind === 'guide' ? guides.find((g) => g.id === interaction.id) ?? null : null;
+
+    let scaleLabel: string | null = null;
+    if (interaction?.kind === 'scale') {
+        const first = itemsById.get(interaction.ids[0]);
+        if (first) {
+            const size = pictureSize(first.inst);
+            scaleLabel = `${formatCm(size.w * interaction.factor, false)} × ${formatCm(size.h * interaction.factor)} · ${Math.round(interaction.factor * 100)} %`;
+        }
+    }
+    const scaleBox = unionRect(scalableIds.map((id) => rectOf(itemsById.get(id)!)));
+    const showScaleHandles = effectiveTool === 'select' && !!scaleBox
+        && (!interaction || (interaction.kind === 'scale' && interaction.corner !== null));
 
     return (
         <div
@@ -797,7 +989,15 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerCancel}
-            onPointerLeave={() => { if (!interactionRef.current) { setPointer(null); setHoverId(null); } }}
+            onPointerLeave={() => {
+                if (!interactionRef.current) {
+                    setPointer(null);
+                    pointerRef.current = null;
+                    setHoverId(null);
+                    setHoverHanging(false);
+                    useWallEditorView.getState().setHoverGuide(null);
+                }
+            }}
             onContextMenu={(e) => e.preventDefault()}
         >
             <svg width={W} height={H} className="absolute inset-0 select-none" style={{ overflow: 'hidden' }}>
@@ -853,7 +1053,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                         <line
                             x1={sx(wallRect.x) - 12} x2={sx(right(wallRect)) + 12}
                             y1={sy(hangY)} y2={sy(hangY)}
-                            stroke={WE_COLORS.hanging} strokeWidth={1} strokeDasharray="6 4" opacity={0.9}
+                            stroke={WE_COLORS.hanging} strokeWidth={hoverHanging || interaction?.kind === 'hanging' ? 2 : 1} strokeDasharray="6 4" opacity={0.9}
                         />
                         {hangingLabelOutside ? (
                             <Pill
@@ -878,12 +1078,13 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 )}
 
                 {/* Ruler guides */}
-                {view.guides.map((g) => {
-                    const active = g.id === hoverGuide || g.id === draggedGuide?.id;
-                    return g.axis === 'x' ? (
-                        <line key={g.id} x1={sx(g.value)} x2={sx(g.value)} y1={0} y2={H} stroke={WE_COLORS.guide} strokeWidth={active ? 1.5 : 1} opacity={active ? 1 : 0.75} pointerEvents="none" />
+                {visibleGuides.map((g) => {
+                    const active = g.id === view.hoverGuideId || g.id === draggedGuide?.id;
+                    const pos = guideToWall(g, wallRect);
+                    return g.axis === 'v' ? (
+                        <line key={g.id} x1={sx(pos)} x2={sx(pos)} y1={0} y2={H} stroke={WE_COLORS.guide} strokeWidth={active ? 1.5 : 1} opacity={active ? 1 : 0.75} pointerEvents="none" />
                     ) : (
-                        <line key={g.id} x1={0} x2={W} y1={sy(g.value)} y2={sy(g.value)} stroke={WE_COLORS.guide} strokeWidth={active ? 1.5 : 1} opacity={active ? 1 : 0.75} pointerEvents="none" />
+                        <line key={g.id} x1={0} x2={W} y1={sy(pos)} y2={sy(pos)} stroke={WE_COLORS.guide} strokeWidth={active ? 1.5 : 1} opacity={active ? 1 : 0.75} pointerEvents="none" />
                     );
                 })}
 
@@ -933,7 +1134,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                         <Pill
                             x={sx(centerX(selectionBox))}
                             y={sy(selectionBox.y) + 14}
-                            text={`${formatCm(selectionBox.w, false)} × ${formatCm(selectionBox.h)}`}
+                            text={scaleLabel ?? `${formatCm(selectionBox.w, false)} × ${formatCm(selectionBox.h)}`}
                             color={WE_COLORS.select}
                         />
                         {selectedIds.length === 1 && (
@@ -958,6 +1159,26 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
 
                 {spacingHandles}
 
+                {/* Corner handles: scale about the centre (Alt: opposite corner fixed) */}
+                {showScaleHandles && scaleBox && SCALE_CORNERS.map((corner) => {
+                    const p = cornerPoint(scaleBox, corner);
+                    return (
+                        <rect
+                            key={corner}
+                            x={sx(p.x) - HANDLE_PX / 2}
+                            y={sy(p.y) - HANDLE_PX / 2}
+                            width={HANDLE_PX}
+                            height={HANDLE_PX}
+                            fill="#fff"
+                            stroke={WE_COLORS.select}
+                            strokeWidth={1.5}
+                            pointerEvents="auto"
+                            style={{ cursor: corner === 'nw' || corner === 'se' ? 'nwse-resize' : 'nesw-resize' }}
+                            onPointerDown={(e) => handleScaleHandlePointerDown(corner, e)}
+                        />
+                    );
+                })}
+
                 {marquee && (
                     <rect {...marquee} fill="rgba(59,130,246,0.08)" stroke={WE_COLORS.select} strokeWidth={1} pointerEvents="none" />
                 )}
@@ -969,18 +1190,20 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                         height={H}
                         selection={selectionBox}
                         pointer={pointer}
-                        guides={view.guides}
+                        guides={visibleGuides.map((g) => ({ id: g.id, axis: g.axis, pos: guideToWall(g, wallRect) }))}
                         left={rulerLeft}
                         onRulerPointerDown={handleRulerPointerDown}
                     />
                 )}
 
                 {/* Value of the guide being dragged */}
-                {draggedGuide && (
-                    draggedGuide.axis === 'x'
-                        ? <Pill x={sx(draggedGuide.value)} y={RULER_SIZE + 14} text={interaction?.kind === 'guide' && interaction.overRuler ? 'Entfernen' : formatCm(draggedGuide.value)} color={WE_COLORS.guide} textColor="#083344" />
-                        : <Pill x={rulerLeft + RULER_SIZE + 8} y={sy(draggedGuide.value)} align="start" text={interaction?.kind === 'guide' && interaction.overRuler ? 'Entfernen' : formatCm(draggedGuide.value - wallRect.y)} color={WE_COLORS.guide} textColor="#083344" />
-                )}
+                {draggedGuide && (() => {
+                    const pos = guideToWall(draggedGuide, wallRect);
+                    const text = interaction?.kind === 'guide' && interaction.overRuler ? 'Entfernen' : formatCm(draggedGuide.value);
+                    return draggedGuide.axis === 'v'
+                        ? <Pill x={sx(pos)} y={RULER_SIZE + 14} text={text} color={WE_COLORS.guide} textColor="#083344" />
+                        : <Pill x={rulerLeft + RULER_SIZE + 8} y={sy(pos)} align="start" text={text} color={WE_COLORS.guide} textColor="#083344" />;
+                })()}
             </svg>
 
             {/* Tooltip for hovered artwork */}

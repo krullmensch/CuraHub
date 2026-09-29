@@ -10,19 +10,22 @@ import { ShaderWarmup } from './ShaderWarmup';
 import { WindowView } from './WindowView';
 import { EditorGrid } from './EditorGrid';
 import { WallEditorRoomFace } from './wall-editor/WallEditorRoomFace';
+import { ScaleFigures } from './ScaleFigures';
 import { WallMeasurements3D } from './WallMeasurements3D';
-import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../store/editorStore';
+import { useEditorStore, type ArtworkInstanceData, type ModularWallData, type ScaleFigureData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
 interface SceneProps {
     isEditor?: boolean;
     viewerInstances?: ArtworkInstanceData[];
     viewerWalls?: ModularWallData[];
+    /** Viewer: public scale figures of the published version. */
+    viewerScaleFigures?: ScaleFigureData[];
     /** Called once the shaders of the loaded room/artworks are compiled (ShaderWarmup). */
     onShadersReady?: () => void;
 }
 
-export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShadersReady }: SceneProps) => {
+export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerScaleFigures, onShadersReady }: SceneProps) => {
     const plannerViewMode = useEditorStore(state => state.plannerViewMode);
     // 2D wall editor: the room and the floor grid make way for the open wall
     const wallEditorOpen = useEditorStore(state => isEditor && !!state.wallEditor);
@@ -101,6 +104,14 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShaders
                     <PlacedArtworks viewerInstances={viewerInstances} isEditor={isEditor} />
                     <ModularWallsController viewerWalls={viewerWalls} isEditor={isEditor} />
                 </Suspense>
+
+                {/* Own boundary: the figure model doesn't hold back the artworks. The viewer
+                    only loads it when the version has public figures. */}
+                {(isEditor || (viewerScaleFigures && viewerScaleFigures.length > 0)) && (
+                    <Suspense fallback={null}>
+                        <ScaleFigures viewerFigures={viewerScaleFigures} isEditor={isEditor} />
+                    </Suspense>
+                )}
 
                 <FPVArtworkRaycaster isEditor={isEditor} />
 
