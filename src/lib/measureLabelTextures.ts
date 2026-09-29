@@ -64,14 +64,19 @@ function makeTexture(canvas: HTMLCanvasElement): THREE.CanvasTexture {
     return texture;
 }
 
+// Sprites switch to the new textures on their next React render, not synchronously.
+const RETIRE_DELAY_MS = 1000;
+
 function redrawAll(): void {
+    const retired: THREE.CanvasTexture[] = [];
     for (const entry of cache.values()) {
         entry.width = draw(entry.canvas, entry.text, entry.style);
         // A new texture: WebGPU textures cannot change size after creation.
-        entry.texture.dispose();
+        retired.push(entry.texture);
         entry.texture = makeTexture(entry.canvas);
     }
     listeners.forEach((listener) => listener());
+    window.setTimeout(() => retired.forEach((texture) => texture.dispose()), RETIRE_DELAY_MS);
 }
 
 function requestFont(): void {
