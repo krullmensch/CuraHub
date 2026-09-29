@@ -12,12 +12,14 @@ const prisma = new PrismaClient();
 /** Opacity of a beamer projection (1 = opaque). */
 const opacitySchema = z.number().min(0).max(1);
 
+export const INSTANCE_MEDIA = ['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat', 'book'] as const;
+
 const instanceSchema = z.object({
   versionId: z.number(),
   artworkId: z.number().optional(),
   assetId: z.number().optional(),
   wallId: z.number().nullable().optional(),
-  medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat']).optional(),
+  medium: z.enum(INSTANCE_MEDIA).optional(),
   frameStyle: frameStyleSchema.optional(),
   passepartoutWidth: passepartoutWidthSchema.optional(),
   passepartoutPlacement: passepartoutPlacementSchema.optional(),
@@ -156,7 +158,7 @@ instancesRouter.get('/', authenticate, async (req: Request, res) => {
 
 const patchInstanceSchema = z.object({
     wallId: z.number().nullable().optional(),
-    medium: z.enum(['frame', 'wallpaper', 'projector', 'display', 'model3d', 'monitor', 'beamer', 'splat']).optional(),
+    medium: z.enum(INSTANCE_MEDIA).optional(),
     frameStyle: frameStyleSchema.optional(),
     passepartoutWidth: passepartoutWidthSchema.optional(),
     passepartoutPlacement: passepartoutPlacementSchema.optional(),

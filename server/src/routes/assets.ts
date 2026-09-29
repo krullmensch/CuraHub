@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { authenticate, userCanAccessProject } from '../lib/middleware';
 import { getVideoJobProgress } from '../lib/videoJobs';
+import { getBookJobProgress } from '../lib/bookJobs';
 
 export const assetsRouter = Router();
 const prisma = new PrismaClient();
@@ -148,7 +149,9 @@ assetsRouter.get('/:id/processing', authenticate, async (req: Request, res) => {
             error: typeof meta.processingError === 'string' ? meta.processingError : null,
             proxiesPending: meta.proxiesPending === true,
             videoProxies: meta.videoProxies && typeof meta.videoProxies === 'object' ? meta.videoProxies : null,
-            job: asset.status === 'processing' || meta.proxiesPending === true ? getVideoJobProgress(id) : null,
+            job: asset.status === 'processing' || meta.proxiesPending === true
+                ? getVideoJobProgress(id) ?? getBookJobProgress(id)
+                : null,
         });
     } catch (error) {
         console.error('Error fetching processing state:', error);

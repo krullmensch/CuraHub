@@ -17,6 +17,7 @@ import { exhibitionsRouter } from './routes/exhibitions';
 import { publicRouter } from './routes/public';
 import { adminRouter } from './routes/admin';
 import { resumeVideoJobs } from './lib/videoJobs';
+import { resumeBookJobs } from './lib/bookJobs';
 import { videoStreamHandler } from './lib/videoRanges';
 
 const app = express();
@@ -214,6 +215,7 @@ if (process.env.NODE_ENV !== 'test') {
         console.log(`Server running on http://localhost:${PORT}`);
         // VID-03: continue video jobs interrupted by a restart.
         resumeVideoJobs().catch((err) => console.error('[VideoJobs] Resume failed:', err));
+        resumeBookJobs().catch((err) => console.error('[BookJobs] Resume failed:', err));
     });
 }
 

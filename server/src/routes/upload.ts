@@ -18,6 +18,9 @@ import draco3d from 'draco3dgltf';
 import { authenticate, requireCurator, userCanAccessProject } from '../lib/middleware';
 import { tryGenerateImageThumbnails } from '../lib/thumbnails';
 import { enqueueVideoJob } from '../lib/videoJobs';
+import { hasPdfMagic } from '../lib/pdfGeometry';
+import { booksDir, coverFileNames } from '../lib/bookPdf';
+import { enqueueBookJob } from '../lib/bookJobs';
 import { CHUNK_MAX_BYTES, CHUNK_SIZE_BYTES, ChunkedUploadStore } from '../lib/chunkedUploads';
 import {
     CONVERTIBLE_SPLAT_FORMATS,
@@ -51,6 +54,7 @@ const SIZE_LIMITS: Record<string, number> = {
     video: 2 * 1024 * 1024 * 1024, // 2GB (was Infinity — see SEC-01)
     model3d: 100 * 1024 * 1024, // 100MB (source formats are larger, output is compressed)
     splat: 1024 * 1024 * 1024, // 1GB (uncompressed PLY captures; converted to .spz on upload)
+    book: 200 * 1024 * 1024, // 200MB (PDF; only page 1 is rendered)
 };
 
 /** Size limit before the file's content is known: a `.ply` may still turn out to be a splat. */
@@ -96,7 +100,7 @@ const upload = multer({
       if (type) {
           cb(null, true);
       } else {
-          cb(new Error('Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .sog, .spz, .splat, .ksplat)'));
+          cb(new Error('Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .sog, .spz, .splat, .ksplat), PDF-Bücher (.pdf)'));
       }
   }
 });
@@ -166,7 +170,7 @@ uploadRouter.post('/chunks', authenticate, requireCurator, async (req: Request, 
 
     const assetType = detectAssetType(mimetype, filename);
     if (!assetType) {
-        return res.status(400).json({ error: 'Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .sog, .spz, .splat, .ksplat)' });
+        return res.status(400).json({ error: 'Unsupported file type. Allowed: images, videos, 3D models (.glb, .fbx, .obj, .usdz, .stl, .dae, …), Gaussian splats (.ply, .sog, .spz, .splat, .ksplat), PDF-Bücher (.pdf)' });
     }
     const sizeLimit = Math.min(preliminarySizeLimit(assetType, filename), UPLOAD_MAX_BYTES);
     if (size > sizeLimit) {
@@ -355,6 +359,21 @@ async function handleStoredUpload(
       if (splat) assetType = 'splat';
   }
 
+  // Books: the extension alone is not trusted — the file must carry the PDF signature.
+  if (assetType === 'book') {
+      const handle = await fs.promises.open(file.path, 'r');
+      const head = Buffer.alloc(1024);
+      try {
+          await handle.read(head, 0, 1024, 0);
+      } finally {
+          await handle.close();
+      }
+      if (!hasPdfMagic(head)) {
+          discard();
+          return { status: 400, body: { error: 'Datei ist kein gültiges PDF' } };
+      }
+  }
+
   // Validate per-type size limit (before hashing — no point hashing a rejected file)
   const sizeLimit = SIZE_LIMITS[assetType];
   if (file.size > sizeLimit) {
@@ -426,6 +445,11 @@ async function handleStoredUpload(
               height: clientOriginalHeight,
               dpi: clientDpi,
           });
+          return { status: 200, body: asset };
+      }
+
+      if (assetType === 'book') {
+          const asset = await processBook(file, projectId, folderId, fileHash);
           return { status: 200, body: asset };
       }
 
@@ -622,6 +646,42 @@ function streamFileHash(filePath: string): Promise<string> {
         stream.on('error', reject);
         stream.on('end', () => resolve(hash.digest('hex')));
     });
+}
+
+// ── Books (PDF) ──
+// The PDF moves into the dot-directory `.books/` (never served statically, see routes/books.ts);
+// cover, page size and the artwork come from a background job (lib/bookJobs.ts).
+async function processBook(file: StoredFile, projectId: string | undefined, folderId?: number, fileHash?: string) {
+    const stem = file.filename.replace(/\.[^.]+$/, '');
+    const pdfFile = `${stem}.pdf`;
+    await fs.promises.mkdir(booksDir(uploadDir), { recursive: true });
+    await fs.promises.rename(file.path, path.join(booksDir(uploadDir), pdfFile));
+
+    const asset = await prisma.asset.create({
+        data: {
+            filename: path.basename(file.originalname, path.extname(file.originalname)),
+            path: `/uploads/${coverFileNames(stem, 1).cover}`,
+            mimetype: 'application/pdf',
+            size: file.size,
+            type: 'book',
+            width: 0,
+            height: 0,
+            status: 'processing',
+            fileHash,
+            projectId: projectId ? parseInt(projectId, 10) : undefined,
+            folderId,
+            metadata: {
+                projectId: projectId ? String(projectId) : undefined,
+                pdfFile,
+                coverSource: 'pdf',
+                coverVersion: 1,
+                originalSize: file.size,
+            },
+        },
+    });
+    console.log(`[Upload] Book ${file.originalname} queued for processing (asset ${asset.id})`);
+    enqueueBookJob(asset.id);
+    return asset;
 }
 
 // ── Video processing ──

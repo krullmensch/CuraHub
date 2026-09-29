@@ -16,4 +16,10 @@ describe('detectAssetType', () => {
         expect(detectAssetType('application/octet-stream', 'scan.spz')).toBe('splat');
         expect(detectAssetType('text/plain', 'notes.txt')).toBeNull();
     });
+
+    it('detects PDFs as books by extension', () => {
+        expect(detectAssetType('application/pdf', 'katalog.pdf')).toBe('book');
+        expect(detectAssetType('', 'Katalog.PDF')).toBe('book');
+        expect(detectAssetType('application/octet-stream', 'katalog.pdf')).toBe('book');
+    });
 });

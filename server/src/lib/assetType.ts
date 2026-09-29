@@ -2,7 +2,7 @@ import path from 'path';
 import { SPLAT_ONLY_EXTENSIONS } from './splats';
 
 /** Kind of asset an upload becomes. Mirrored by src/lib/uploadFiles.ts on the client. */
-export type AssetType = 'image' | 'video' | 'model3d' | 'splat';
+export type AssetType = 'image' | 'video' | 'model3d' | 'splat' | 'book';
 
 // Supported 3D model formats
 export const MODEL_EXTENSIONS = [
@@ -27,6 +27,8 @@ export const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi'
 // Gaussian splat PLYs into 'splat' (see lib/splats).
 export function detectAssetType(mimetype: string, filename: string): AssetType | null {
     const ext = path.extname(filename).toLowerCase();
+    // Books: the upload handler also checks the %PDF- signature (lib/pdfGeometry).
+    if (ext === '.pdf') return 'book';
     if (SPLAT_ONLY_EXTENSIONS.includes(ext)) return 'splat';
     if (VIDEO_EXTENSIONS.includes(ext)) return 'video';
     if (mimetype.startsWith('image/')) return 'image';

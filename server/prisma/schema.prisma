@@ -113,6 +113,8 @@ model Artwork {
   description String?  @db.Text
   width       Float?   // Physical width in cm
   height      Float?   // Physical height in cm
+  depth          Float?   // Book thickness in cm; null = automatic from the page count
+  publicReadable Boolean  @default(false) // Book can be opened in the public viewer
   
   asset       Asset?   @relation(fields: [assetId], references: [id])
   assetId     Int?     @unique
@@ -129,7 +131,7 @@ model Asset {
   path          String   // Relative path or URL
   mimetype      String
   size          Int
-  type          String   @default("image") // "image", "video", "model3d", "splat"
+  type          String   @default("image") // "image", "video", "model3d", "splat", "book"
   width         Int?     // Original pixel width
   height        Int?     // Original pixel height
   dpi           Int?     // Original DPI
@@ -178,7 +180,7 @@ model ArtworkInstance {
   scale_y     Float             @default(1.0)
   scale_z     Float             @default(1.0)
 
-  medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d", "monitor", "beamer", "splat"
+  medium      String            @default("frame") // "frame", "wallpaper", "projector", "display", "model3d", "monitor", "beamer", "splat", "book"
 
   // Picture frame, "<profile>-<finish>" from the HALBE range (e.g. "alu8-silber-matt") or
   // "none" for an unframed work. See src/lib/frameStyles.ts (client) and
