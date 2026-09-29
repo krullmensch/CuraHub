@@ -44,7 +44,7 @@ export const monitorGlbBounds = { minY: 0, maxX: 0 };
  * (e.g. right after a scale transform before it is committed to the store).
  */
 export function artworkMinY(inst: Pick<ArtworkInstanceData, 'medium' | 'artwork' | 'scale_y'>, overrideScaleY?: number): number {
-  if (inst.medium === 'model3d' || inst.medium === 'splat') return 0;
+  if (inst.medium === 'model3d' || inst.medium === 'splat' || inst.medium === 'book') return 0;
   // Monitor pivot may not be at the model's bottom — use the actual GLB bbox
   if (inst.medium === 'monitor') {
     const { width, height } = inst.artwork.asset;
@@ -63,12 +63,38 @@ export type PlannerViewMode = 'orthographic' | 'perspective' | 'firstPerson';
 export type TransformMode = 'translate' | 'rotate' | 'scale';
 export type TransformAxisLock = 'none' | 'x' | 'y' | 'z';
 
-export type AssetType = 'image' | 'video' | 'model3d' | 'splat';
-export type MediumType = 'frame' | 'wallpaper' | 'projector' | 'display' | 'model3d' | 'monitor' | 'beamer' | 'splat';
+export type AssetType = 'image' | 'video' | 'model3d' | 'splat' | 'book';
+export type MediumType = 'frame' | 'wallpaper' | 'projector' | 'display' | 'model3d' | 'monitor' | 'beamer' | 'splat' | 'book';
 
-/** Assets that stand on the floor (3D models, Gaussian splats) instead of hanging on a wall. */
+/** Assets that stand on the floor (3D models, Gaussian splats, books on pedestals) instead of hanging on a wall. */
 export function isFloorAssetType(type: string | null | undefined): boolean {
-  return type === 'model3d' || type === 'splat';
+  return type === 'model3d' || type === 'splat' || type === 'book';
+}
+
+/** Media whose size is given (monitor model, book from its PDF) — never scaled. */
+export function isFixedSizeMedium(medium: string | null | undefined): boolean {
+  return medium === 'monitor' || medium === 'book';
+}
+
+/** Book data kept in Asset.metadata (server: lib/bookPdf.ts BookAssetMetadata). */
+export interface BookAssetMeta {
+  pageCount?: number;
+  pageWidthMm?: number;
+  pageHeightMm?: number;
+  coverVersion?: number;
+  coverSource?: 'pdf' | 'override';
+}
+
+/** What a dragged book needs before the server returns the instance (drop ghost, first render). */
+export interface BookDragInfo {
+  assetId: number;
+  pageCount: number;
+  depth: number | null;
+  publicReadable: boolean;
+  title: string;
+  artist: string | null;
+  year: string | null;
+  thumbnailPath: string | null;
 }
 
 export interface ArtworkInstanceData {
@@ -93,7 +119,12 @@ export interface ArtworkInstanceData {
     description?: string | null;
     width?: number | null;
     height?: number | null;
+    /** Book thickness in cm; null = automatic from the page count. */
+    depth?: number | null;
+    /** Book can be opened in the public viewer. */
+    publicReadable?: boolean;
     asset: {
+      id?: number;
       path: string;
       width: number;
       height: number;
@@ -101,7 +132,7 @@ export interface ArtworkInstanceData {
       type?: AssetType;
       thumbnailPath?: string | null;
       /** VID-04: proxy versions of a video, short edge (px) → path. */
-      metadata?: { videoProxies?: Record<string, string> | null } | null;
+      metadata?: (BookAssetMeta & { videoProxies?: Record<string, string> | null }) | null;
     }
   };
   position_x: number;
@@ -161,7 +192,7 @@ interface FirstPersonCameraState {
 
 interface DragState {
   isDragging: boolean;
-  draggedAsset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string; artworkWidth?: number; artworkHeight?: number } | null;
+  draggedAsset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string; artworkWidth?: number; artworkHeight?: number; book?: BookDragInfo } | null;
   dragPosition: { x: number; y: number } | null; // NDC coordinates (-1 to 1)
   validPlacement: {
     position: [number, number, number];
@@ -258,7 +289,7 @@ interface EditorState {
   // Actions
   setDialogOpen: (isOpen: boolean) => void;
   startPlacement: (artwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string }) => void;
-  setDragging: (isDragging: boolean, asset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string; artworkWidth?: number; artworkHeight?: number } | null) => void;
+  setDragging: (isDragging: boolean, asset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string; artworkWidth?: number; artworkHeight?: number; book?: BookDragInfo } | null) => void;
   setDragPosition: (pos: { x: number; y: number } | null) => void;
   setValidPlacement: (placement: { position: [number, number, number]; rotation: [number, number, number]; scale: number; wallId: number | null } | null) => void;
   triggerInstancesRefresh: () => void;
