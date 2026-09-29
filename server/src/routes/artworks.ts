@@ -123,22 +123,26 @@ artworksRouter.get('/', authenticate, requireCurator, async (req: Request, res) 
     }
 });
 
+export const artworkUpdateSchema = z.object({
+    title: z.string().min(1).optional(),
+    artist: z.string().optional(),
+    year: z.string().optional(),
+    description: z.string().optional(),
+    width: z.number().positive().optional(),
+    height: z.number().positive().optional(),
+    /** Book thickness in cm; null = automatic from the page count. */
+    depth: z.number().min(0.3).max(8).nullable().optional(),
+    /** Book can be opened in the public viewer. */
+    publicReadable: z.boolean().optional(),
+});
+
 // Update Artwork — authenticated curators only; the linked asset's project must be
 // accessible to the user (SEC-02).
 artworksRouter.put('/:id', authenticate, requireCurator, async (req: Request, res) => {
     const { id } = req.params;
     try {
         // Validation (partial update allowed)
-        const schema = z.object({
-            title: z.string().min(1).optional(),
-            artist: z.string().optional(),
-            year: z.string().optional(),
-            description: z.string().optional(),
-            width: z.number().positive().optional(),
-            height: z.number().positive().optional(),
-        });
-
-        const data = schema.parse(req.body);
+        const data = artworkUpdateSchema.parse(req.body);
         const artworkId = parseInt(id);
 
         if (isNaN(artworkId)) {
@@ -172,6 +176,8 @@ artworksRouter.put('/:id', authenticate, requireCurator, async (req: Request, re
                 description: data.description,
                 width: data.width,
                 height: data.height,
+                depth: data.depth,
+                publicReadable: data.publicReadable,
             },
             include: { asset: true }
         });

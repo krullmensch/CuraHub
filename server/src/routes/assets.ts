@@ -3,9 +3,12 @@ import { PrismaClient, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
+import multer from 'multer';
+import os from 'os';
 import { authenticate, userCanAccessProject } from '../lib/middleware';
 import { getVideoJobProgress } from '../lib/videoJobs';
 import { getBookJobProgress } from '../lib/bookJobs';
+import { bookStem, booksDir, coverFileNames, readBookMetadata, removeCoverSet, writeCoverSet } from '../lib/bookPdf';
 
 export const assetsRouter = Router();
 const prisma = new PrismaClient();
@@ -162,6 +165,75 @@ assetsRouter.get('/:id/processing', authenticate, async (req: Request, res) => {
 // Uploads directory (real, resolved path) — used to guard against path traversal on delete.
 const uploadsDir = path.resolve(__dirname, '../../uploads');
 
+const coverUpload = multer({
+    dest: os.tmpdir(),
+    limits: { fileSize: 20 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => cb(null, ['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)),
+});
+
+/** Loads a ready book asset the user may edit (same rule as PATCH /assets/:id). */
+async function editableBook(req: Request) {
+    const id = parseInt(String(req.params.id), 10);
+    if (isNaN(id)) return null;
+    const asset = await prisma.asset.findUnique({ where: { id }, include: { project: { select: { ownerId: true } } } });
+    if (!asset || asset.type !== 'book' || asset.status !== 'ready') return null;
+    if (req.user!.role !== 'admin' && asset.project?.ownerId !== req.user!.userId) return null;
+    const meta = readBookMetadata(asset.metadata);
+    return meta ? { asset, meta } : null;
+}
+
+/** Writes a new cover set from `sourcePath`, points the asset at it and drops the old set. */
+async function replaceCover(req: Request, sourcePath: string, coverSource: 'pdf' | 'override') {
+    const book = await editableBook(req);
+    if (!book) return null;
+    const stem = bookStem(book.meta.pdfFile);
+    const version = book.meta.coverVersion + 1;
+    const cover = await writeCoverSet(sourcePath, uploadsDir, stem, version);
+    const updated = await prisma.asset.update({
+        where: { id: book.asset.id },
+        data: {
+            path: cover.path,
+            thumbnailPath: cover.thumbnailPath,
+            width: cover.width,
+            height: cover.height,
+            metadata: { ...book.meta, coverVersion: version, coverSource } as Prisma.InputJsonValue,
+        },
+        include: { artwork: true },
+    });
+    removeCoverSet(uploadsDir, stem, book.meta.coverVersion);
+    return updated;
+}
+
+// POST /assets/:id/cover — replacement cover for a book (JPG/PNG/WebP).
+assetsRouter.post('/:id/cover', authenticate, coverUpload.single('file'), async (req: Request, res) => {
+    const tmp = req.file?.path;
+    try {
+        if (!tmp) return res.status(400).json({ error: 'Bild konnte nicht gelesen werden' });
+        const updated = await replaceCover(req, tmp, 'override');
+        if (!updated) return res.status(404).json({ error: 'Buch nicht gefunden' });
+        res.json(updated);
+    } catch (err) {
+        console.warn('[Books] Cover replacement failed:', (err as Error).message);
+        res.status(400).json({ error: 'Bild konnte nicht gelesen werden' });
+    } finally {
+        if (tmp) fs.rmSync(tmp, { force: true });
+    }
+});
+
+// DELETE /assets/:id/cover — back to the cover rendered from the PDF.
+assetsRouter.delete('/:id/cover', authenticate, async (req: Request, res) => {
+    try {
+        const book = await editableBook(req);
+        if (!book) return res.status(404).json({ error: 'Buch nicht gefunden' });
+        const source = path.join(uploadsDir, coverFileNames(bookStem(book.meta.pdfFile), 1).coverPdf);
+        const updated = await replaceCover(req, source, 'pdf');
+        res.json(updated);
+    } catch (err) {
+        console.error('[Books] Cover reset failed:', err);
+        res.status(500).json({ error: 'Cover konnte nicht zurückgesetzt werden' });
+    }
+});
+
 /**
  * Resolves a stored asset path (e.g. '/uploads/xyz.webp') to an absolute path on disk,
  * using only its basename joined onto the uploads dir. Returns null if the resolved
@@ -266,6 +338,13 @@ assetsRouter.delete('/:id', authenticate, async (req: Request, res) => {
                     }
                 }
             }
+        }
+
+        // Books: the private PDF and the page-1 render kept for „Cover aus PDF verwenden".
+        const bookMeta = asset.type === 'book' ? readBookMetadata(asset.metadata) : null;
+        if (bookMeta) {
+            fs.rmSync(path.join(booksDir(uploadsDir), path.basename(bookMeta.pdfFile)), { force: true });
+            fs.rmSync(path.join(uploadsDir, coverFileNames(bookStem(bookMeta.pdfFile), 1).coverPdf), { force: true });
         }
 
         res.json({ message: 'Asset deleted successfully' });
