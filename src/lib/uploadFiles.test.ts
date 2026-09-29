@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isSupportedUploadFile, isVideoFile } from './uploadFiles';
+import { UPLOAD_ACCEPT, isSupportedUploadFile, isVideoFile } from './uploadFiles';
 
 const file = (name: string, type: string) => new File([new Uint8Array(1)], name, { type });
 
@@ -19,5 +19,15 @@ describe('video uploads', () => {
   it('does not take other files for videos', () => {
     expect(isVideoFile(file('bild.jpg', 'image/jpeg'))).toBe(false);
     expect(isSupportedUploadFile(file('notes.txt', 'text/plain'))).toBe(false);
+  });
+});
+
+describe('book uploads', () => {
+  it('accepts PDFs whatever MIME type the browser sends', () => {
+    expect(isSupportedUploadFile(file('katalog.pdf', 'application/pdf'))).toBe(true);
+    expect(isSupportedUploadFile(file('Katalog.PDF', ''))).toBe(true);
+  });
+  it('lists PDFs in the file picker', () => {
+    expect(UPLOAD_ACCEPT.split(',')).toContain('.pdf');
   });
 });

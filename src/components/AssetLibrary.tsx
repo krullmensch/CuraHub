@@ -32,6 +32,8 @@ import { gooeyToast } from 'goey-toast';
 import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus, FolderUp, Inbox, Layers, MoreHorizontal, Palette, Pencil, FolderInput, Upload, AlertCircle } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { SplatPreviewTile } from './SplatPreviewTile';
+import { BookPreviewTile } from './book/BookPreviewTile';
+import { bookDragInfo } from '@/lib/book/api';
 import { FolderColorPicker } from './FolderColorPicker';
 import {
   type Folder,
@@ -80,9 +82,11 @@ interface Asset {
   artwork?: {
     id: number;
     title: string;
-    artist?: string;
-    year?: string;
+    artist?: string | null;
+    year?: string | null;
     description?: string;
+    depth?: number | null;
+    publicReadable?: boolean;
     width?: number;
     height?: number;
   } | null;
@@ -91,6 +95,7 @@ interface Asset {
     heightCm?: number;
     projectId?: string;
     proxiesPending?: boolean;
+    pageCount?: number;
   };
 }
 
@@ -460,6 +465,7 @@ export const AssetLibrary = () => {
         videoUrl: asset.type === 'video' ? asset.path : undefined,
         artworkWidth: asset.artwork?.width,
         artworkHeight: asset.artwork?.height,
+        book: bookDragInfo(asset),
       });
     }
 
@@ -961,7 +967,9 @@ export const AssetLibrary = () => {
                     style={{ contentVisibility: 'auto', containIntrinsicSize: '220px 220px' }}
                   >
                     <div className="aspect-square relative flex items-center justify-center bg-black/40 p-2">
-                      {asset.type === 'splat' ? (
+                      {asset.type === 'book' ? (
+                        <BookPreviewTile filename={asset.filename} thumbnailPath={asset.thumbnailPath} pageCount={asset.metadata?.pageCount} />
+                      ) : asset.type === 'splat' ? (
                         <SplatPreviewTile filename={asset.filename} thumbnailPath={asset.thumbnailPath} />
                       ) : isModel ? (
                         <ModelPreviewCard url={asset.path} />

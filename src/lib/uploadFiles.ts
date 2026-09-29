@@ -20,11 +20,14 @@ export const VIDEO_EXTENSIONS = ['.mp4', '.m4v', '.mov', '.webm', '.mkv', '.avi'
 /** Gaussian splats (.ply is either — the server tells them apart by the header). */
 export const SPLAT_EXTENSIONS = ['.sog', '.spz', '.splat', '.ksplat'];
 
+/** PDFs become books on a pedestal (server renders the cover). */
+export const BOOK_EXTENSIONS = ['.pdf'];
+
 /** `accept` attribute for file inputs. */
-export const UPLOAD_ACCEPT = ['image/*', 'video/*', ...VIDEO_EXTENSIONS, ...MODEL_EXTENSIONS, ...SPLAT_EXTENSIONS].join(',');
+export const UPLOAD_ACCEPT = ['image/*', 'video/*', ...VIDEO_EXTENSIONS, ...MODEL_EXTENSIONS, ...SPLAT_EXTENSIONS, ...BOOK_EXTENSIONS].join(',');
 
 export const SUPPORTED_FORMATS_HINT =
-  'Bilder, Videos (.mp4, .mov, .webm, .mkv, …), 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …) und Gaussian Splats (.ply, .sog, .spz, .splat, .ksplat)';
+  'Bilder, Videos (.mp4, .mov, .webm, .mkv, …), 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …) Gaussian Splats (.ply, .sog, .spz, .splat, .ksplat) und PDF-Bücher (.pdf)';
 
 /** A file of an upload with its path relative to the dropped/picked folder ('' for loose files). */
 export interface UploadEntry {
@@ -56,7 +59,7 @@ export function isVideoFile(file: File): boolean {
 export function isSupportedUploadFile(file: File): boolean {
   if (file.type.startsWith('image/') || file.type.startsWith('video/')) return true;
   const ext = extensionOf(file.name);
-  return VIDEO_EXTENSIONS.includes(ext) || MODEL_EXTENSIONS.includes(ext) || SPLAT_EXTENSIONS.includes(ext);
+  return VIDEO_EXTENSIONS.includes(ext) || MODEL_EXTENSIONS.includes(ext) || SPLAT_EXTENSIONS.includes(ext) || BOOK_EXTENSIONS.includes(ext);
 }
 
 /** OS clutter in folders (Finder, Explorer, zip tools) — skipped without a hint. */

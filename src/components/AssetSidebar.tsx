@@ -7,6 +7,8 @@ import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
 import { useEditorStore, type AssetType } from '@/store/editorStore';
 import { SplatPreviewTile } from './SplatPreviewTile';
+import { BookPreviewTile } from './book/BookPreviewTile';
+import { bookDragInfo } from '@/lib/book/api';
 import { useAuthStore } from '@/store/authStore';
 import { type Folder, listFolders, moveAssetToFolder } from '@/lib/folders';
 import { VideoProcessingBadge } from './VideoProcessingBadge';
@@ -41,10 +43,14 @@ interface Asset {
   thumbnailPath?: string | null;
   /** VID-03: 'processing' | 'ready' | 'failed' */
   status?: string;
-  metadata?: { proxiesPending?: boolean } | null;
+  metadata?: { proxiesPending?: boolean; pageCount?: number } | null;
   artwork?: {
     id: number;
     title: string;
+    artist?: string | null;
+    year?: string | null;
+    depth?: number | null;
+    publicReadable?: boolean;
     width?: number;
     height?: number;
   } | null;
@@ -169,6 +175,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
             videoUrl: asset.type === 'video' ? asset.path : undefined,
             artworkWidth: asset.artwork?.width,
             artworkHeight: asset.artwork?.height,
+            book: bookDragInfo(asset),
         });
 
         // Drag image last (after the data): a small thumbnail chip at the cursor.
@@ -345,6 +352,8 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                                 </div>
                                             </div>
                                         </div>
+                                    ) : asset.type === 'book' ? (
+                                        <BookPreviewTile filename={asset.filename} thumbnailPath={asset.thumbnailPath} pageCount={asset.metadata?.pageCount} compact />
                                     ) : asset.type === 'splat' ? (
                                         <SplatPreviewTile filename={asset.filename} thumbnailPath={asset.thumbnailPath} compact />
                                     ) : asset.type === 'model3d' ? (

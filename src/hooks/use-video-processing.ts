@@ -6,7 +6,7 @@ import { useAuthStore } from '../store/authStore';
  * (GET /api/assets/:id/processing) — transcode, thumbnail and the smaller proxy versions.
  */
 
-export type VideoJobPhase = 'queued' | 'analyzing' | 'remuxing' | 'transcoding' | 'thumbnail' | 'proxies';
+export type VideoJobPhase = 'queued' | 'analyzing' | 'remuxing' | 'transcoding' | 'thumbnail' | 'proxies' | 'cover' | 'tiers';
 
 export interface VideoProcessingState {
     status: string;
@@ -39,6 +39,8 @@ export const VIDEO_PHASE_LABELS: Record<VideoJobPhase, string> = {
     transcoding: 'Umwandlung',
     thumbnail: 'Vorschaubild',
     proxies: 'Kleinere Versionen',
+    cover: 'Cover wird erzeugt',
+    tiers: 'Vorschaubilder',
 };
 
 const POLL_MS = 2000;
