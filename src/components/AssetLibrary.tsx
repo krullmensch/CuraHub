@@ -29,7 +29,7 @@ import {
   PopoverTrigger,
 } from '@/components/ui/popover';
 import { gooeyToast } from 'goey-toast';
-import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus, Inbox, Layers, MoreHorizontal, Palette, Pencil, FolderInput, Upload, AlertCircle } from 'lucide-react';
+import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus, FolderUp, Inbox, Layers, MoreHorizontal, Palette, Pencil, FolderInput, Upload, AlertCircle } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { SplatPreviewTile } from './SplatPreviewTile';
 import { FolderColorPicker } from './FolderColorPicker';
@@ -43,6 +43,14 @@ import {
   DEFAULT_FOLDER_COLOR,
 } from '@/lib/folders';
 import { cn } from '@/lib/utils';
+import {
+  SUPPORTED_FORMATS_HINT,
+  UPLOAD_ACCEPT,
+  describeSkippedFiles,
+  entriesFromFileList,
+  selectUploadFiles,
+  type SkippedFile,
+} from '@/lib/uploadFiles';
 
 // LOAD-04: lazy-load these two dialogs — they pull in upload/preview/metadata
 // logic that isn't needed until the user actually uploads or edits an asset.
@@ -138,9 +146,11 @@ export const AssetLibrary = () => {
 
   const dragMovedRef = useRef(false);
   const uploadInputRef = useRef<HTMLInputElement>(null);
+  const folderInputRef = useRef<HTMLInputElement>(null);
 
   // Upload preview modal
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const [skippedFiles, setSkippedFiles] = useState<SkippedFile[]>([]);
   const [uploadModalOpen, setUploadModalOpen] = useState(false);
   const [uploadKey, setUploadKey] = useState(0);
 
@@ -292,9 +302,10 @@ export const AssetLibrary = () => {
     }
   };
 
-  const handleFilesReady = (files: File[]) => {
+  const handleFilesReady = (files: File[], skipped: SkippedFile[] = []) => {
     if (files.length === 0) return;
     setPendingFiles(files);
+    setSkippedFiles(skipped);
     setUploadKey((k) => k + 1);
     setUploadModalOpen(true);
   };
@@ -313,9 +324,24 @@ export const AssetLibrary = () => {
     fetchFolders();
   };
 
+  /** Files from the file or folder picker — filtered like a drop. */
+  const handlePickedFiles = async (list: FileList) => {
+    const { files, skipped } = await selectUploadFiles(entriesFromFileList(list));
+    if (files.length === 0) {
+      gooeyToast.error('Upload fehlgeschlagen', {
+        description: skipped.length > 0
+          ? `Keine unterstützten Dateien gefunden (${describeSkippedFiles(skipped)}). Erlaubt: ${SUPPORTED_FORMATS_HINT}`
+          : 'Der Ordner ist leer.',
+      });
+      return;
+    }
+    handleFilesReady(files, skipped);
+  };
+
   const handleUploadModalClose = () => {
     setUploadModalOpen(false);
     setPendingFiles([]);
+    setSkippedFiles([]);
     fetchFolders();
   };
 
@@ -782,21 +808,47 @@ export const AssetLibrary = () => {
                   type="file"
                   className="hidden"
                   multiple
-                  accept="image/*,video/*,.glb,.gltf,.obj,.fbx,.dae,.stl,.ply,.3ds,.ase,.blend,.usdz,.usd"
+                  accept={UPLOAD_ACCEPT}
                   onChange={(e) => {
                     if (e.target.files && e.target.files.length > 0) {
-                      handleFilesReady(Array.from(e.target.files));
+                      void handlePickedFiles(e.target.files);
                     }
                     e.target.value = '';
                   }}
                 />
-                <Button
-                  onClick={() => uploadInputRef.current?.click()}
-                  className="bg-blue-600 hover:bg-blue-700 text-white shrink-0"
-                >
-                  <Upload className="h-4 w-4 mr-2" />
-                  Dateien hochladen
-                </Button>
+                <input
+                  ref={(el) => {
+                    folderInputRef.current = el;
+                    // Not in React's input typings; lets the picker choose a whole folder.
+                    el?.setAttribute('webkitdirectory', '');
+                  }}
+                  type="file"
+                  className="hidden"
+                  multiple
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      void handlePickedFiles(e.target.files);
+                    }
+                    e.target.value = '';
+                  }}
+                />
+                <div className="flex gap-2 shrink-0">
+                  <Button
+                    variant="outline"
+                    onClick={() => folderInputRef.current?.click()}
+                    className="bg-transparent border-blue-700 text-blue-200 hover:bg-blue-900/30 hover:text-white"
+                  >
+                    <FolderUp className="h-4 w-4 mr-2" />
+                    Ordner hochladen
+                  </Button>
+                  <Button
+                    onClick={() => uploadInputRef.current?.click()}
+                    className="bg-blue-600 hover:bg-blue-700 text-white"
+                  >
+                    <Upload className="h-4 w-4 mr-2" />
+                    Dateien hochladen
+                  </Button>
+                </div>
               </>
             )}
             {selectedIds.length > 0 && (
@@ -1069,6 +1121,7 @@ export const AssetLibrary = () => {
               <UploadPreviewModal
                 key={uploadKey}
                 files={pendingFiles}
+                skippedFiles={skippedFiles}
                 projectId={activeProjectId}
                 folderId={folderForUpload}
                 open={uploadModalOpen}

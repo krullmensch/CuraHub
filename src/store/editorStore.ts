@@ -186,6 +186,8 @@ interface EditorState {
 
   // Selection & Transform State (Phase 4.2)
   selectedInstanceId: number | null;
+  /** All selected artworks (3D editor). `selectedInstanceId` is the primary one and always part of it. */
+  selectedInstanceIds: number[];
   selectedWallId: number | null;
   selectedZoneId: number | null;
   selectedFigureId: number | null;
@@ -200,6 +202,8 @@ interface EditorState {
 
   // Blender-style controls
   transformAxisLock: TransformAxisLock;
+  /** ⇧ is held: a left drag draws the selection marquee instead of orbiting the camera. */
+  shiftHeld: boolean;
 
   // UI State
   rightSidebarOpen: boolean;
@@ -267,6 +271,12 @@ interface EditorState {
   selectWall: (id: number | null) => void;
   selectZone: (id: number | null) => void;
   selectFigure: (id: number | null) => void;
+  /** Sets the artwork selection; `primary` defaults to the last id. Clears wall/zone/figure selection. */
+  setInstanceSelection: (ids: number[], primary?: number | null) => void;
+  toggleInstanceInSelection: (id: number) => void;
+  /** Click on an artwork: replace the selection, or toggle it with ⇧. */
+  pickInstance: (id: number, additive: boolean) => void;
+  selectAllInstances: () => void;
   setTransformMode: (mode: TransformMode) => void;
   setIsTransforming: (v: boolean) => void;
   setLiveTransform: (t: EditorState['liveTransform']) => void;
@@ -274,6 +284,7 @@ interface EditorState {
   setFocusTarget: (focus: { target: [number, number, number]; isHoming: boolean } | null) => void;
   // Blender-style actions
   setTransformAxisLock: (axis: TransformAxisLock) => void;
+  setShiftHeld: (held: boolean) => void;
   deleteSelectedInstance: () => void;
   setModalTransformActive: (active: boolean) => void;
   setActiveObjectRef: (ref: THREE.Object3D | null) => void;
@@ -326,7 +337,21 @@ interface EditorState {
 // moved since — i.e. no further edits happened while the batch was in flight.
 let localEditSeq = 0;
 
-export const useEditorStore = create<EditorState>((set) => ({
+export const clearInstanceSelection = { selectedInstanceId: null, selectedInstanceIds: [] as number[] };
+
+/** Selection fields for `ids` (deduped, only existing artworks); primary defaults to the last. */
+function instanceSelection(ids: number[], instances: ArtworkInstanceData[], primary?: number | null) {
+  const known = new Set(instances.map(i => i.id));
+  const unique = [...new Set(ids)].filter(id => known.has(id));
+  const main = primary != null && unique.includes(primary) ? primary : unique[unique.length - 1] ?? null;
+  return { selectedInstanceIds: unique, selectedInstanceId: main };
+}
+
+/** Replaces a temporary id by the database id once auto-sync created the instance. */
+export const remapSelection = (ids: number[], from: number, to: number) =>
+  ids.includes(from) ? ids.map(id => (id === from ? to : id)) : ids;
+
+export const useEditorStore = create<EditorState>((set, get) => ({
   isPlacing: false,
   pendingArtwork: null,
   isDialogOpen: false,
@@ -357,6 +382,7 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Phase 4.2 defaults
   selectedInstanceId: null,
+  selectedInstanceIds: [],
   selectedWallId: null,
   selectedZoneId: null,
   selectedFigureId: null,
@@ -368,6 +394,7 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Blender-style defaults
   transformAxisLock: 'none',
+  shiftHeld: false,
   modalTransformActive: false,
   activeObjectRef: null,
 
@@ -429,10 +456,37 @@ export const useEditorStore = create<EditorState>((set) => ({
   triggerInstancesRefresh: () => set((state) => ({ instancesVersion: state.instancesVersion + 1 })),
 
   // Phase 4.2 actions
-  selectInstance: (id) => set({ selectedInstanceId: id, selectedWallId: null, selectedZoneId: null, selectedFigureId: null }),
-  selectWall: (id) => set({ selectedWallId: id, selectedInstanceId: null, selectedZoneId: null, selectedFigureId: null }),
-  selectZone: (id) => set({ selectedZoneId: id, selectedInstanceId: null, selectedWallId: null, selectedFigureId: null }),
-  selectFigure: (id) => set({ selectedFigureId: id, selectedInstanceId: null, selectedWallId: null, selectedZoneId: null }),
+  selectInstance: (id) => set((state) => ({
+    ...(id === null ? clearInstanceSelection : instanceSelection([id], state.localInstances)),
+    selectedWallId: null,
+    selectedZoneId: null,
+    selectedFigureId: null,
+  })),
+  selectWall: (id) => set({ selectedWallId: id, ...clearInstanceSelection, selectedZoneId: null, selectedFigureId: null }),
+  selectZone: (id) => set({ selectedZoneId: id, ...clearInstanceSelection, selectedWallId: null, selectedFigureId: null }),
+  selectFigure: (id) => set({ selectedFigureId: id, ...clearInstanceSelection, selectedWallId: null, selectedZoneId: null }),
+  setInstanceSelection: (ids, primary) => set((state) => ({
+    ...instanceSelection(ids, state.localInstances, primary),
+    selectedWallId: null,
+    selectedZoneId: null,
+    selectedFigureId: null,
+  })),
+  toggleInstanceInSelection: (id) => set((state) => {
+    const has = state.selectedInstanceIds.includes(id);
+    const ids = has ? state.selectedInstanceIds.filter(i => i !== id) : [...state.selectedInstanceIds, id];
+    const primary = has ? (state.selectedInstanceId === id ? undefined : state.selectedInstanceId) : id;
+    return { ...instanceSelection(ids, state.localInstances, primary), selectedWallId: null, selectedZoneId: null, selectedFigureId: null };
+  }),
+  pickInstance: (id, additive) => {
+    if (additive) get().toggleInstanceInSelection(id);
+    else get().selectInstance(id);
+  },
+  selectAllInstances: () => set((state) => ({
+    ...instanceSelection(state.localInstances.map(i => i.id), state.localInstances, state.selectedInstanceId),
+    selectedWallId: null,
+    selectedZoneId: null,
+    selectedFigureId: null,
+  })),
   setTransformMode: (mode) => set({ transformMode: mode }),
   setIsTransforming: (v) => set({ isTransforming: v }),
   setLiveTransform: (t) => set({ liveTransform: t }),
@@ -441,16 +495,17 @@ export const useEditorStore = create<EditorState>((set) => ({
 
   // Blender-style actions
   setTransformAxisLock: (axis) => set({ transformAxisLock: axis }),
+  setShiftHeld: (held) => set((state) => (state.shiftHeld === held ? state : { shiftHeld: held })),
   deleteSelectedInstance: () => set((state) => {
-    if (!state.selectedInstanceId) return state;
-    const newInstances = state.localInstances.filter(inst => inst.id !== state.selectedInstanceId);
+    if (state.selectedInstanceIds.length === 0) return state;
+    const doomed = new Set(state.selectedInstanceIds);
     localEditSeq++;
     return {
       pastInstances: [...state.pastInstances, state.localInstances].slice(-MAX_HISTORY_SIZE),
-      localInstances: newInstances,
+      localInstances: state.localInstances.filter(inst => !doomed.has(inst.id)),
       futureInstances: [],
       hasUnsavedChanges: true,
-      selectedInstanceId: null,
+      ...clearInstanceSelection,
       transformAxisLock: 'none',
     };
   }),
@@ -521,11 +576,11 @@ export const useEditorStore = create<EditorState>((set) => ({
     activeExhibitionId: exhibitionId,
     activeExhibitionSlug: exhibitionSlug,
     activeVersionId: versionId,
-    selectedInstanceId: null, // Clear selection on project switch
+    ...clearInstanceSelection, // Clear selection on project switch
     // The 2D wall editor only survives a re-activation of the same version.
     ...(versionId !== state.activeVersionId ? { wallEditor: null, wallEditorSelection: [] } : {}),
   })),
-  setActiveVersion: (id) => set({ activeVersionId: id, selectedInstanceId: null, selectedFigureId: null, wallEditor: null, wallEditorSelection: [] }),
+  setActiveVersion: (id) => set({ activeVersionId: id, ...clearInstanceSelection, selectedFigureId: null, wallEditor: null, wallEditorSelection: [] }),
 
   // Phase 6 actions
   setLocalInstances: (instances) => {
@@ -536,7 +591,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       pastInstances: [],
       futureInstances: [],
       hasUnsavedChanges: false,
-      selectedInstanceId: null
+      ...clearInstanceSelection,
     });
   },
   commitLocalChange: (newInstances) => {
@@ -560,7 +615,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       futureInstances: [state.localInstances, ...state.futureInstances].slice(0, MAX_HISTORY_SIZE),
       localInstances: previous,
       hasUnsavedChanges: true, // Might transition to clean, but typically considered dirty until manually saved
-      selectedInstanceId: null,
+      ...clearInstanceSelection,
     };
   }),
   redo: () => set((state) => {
@@ -573,7 +628,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       futureInstances: newFuture,
       localInstances: next,
       hasUnsavedChanges: true,
-      selectedInstanceId: null,
+      ...clearInstanceSelection,
     };
   }),
   markSaved: () => set({
@@ -687,7 +742,7 @@ export const useEditorStore = create<EditorState>((set) => ({
       wallEditor: target,
       wallEditorSelection: selection,
       // The 3D selection (gizmos, halos) stays out of the 2D view.
-      selectedInstanceId: null,
+      ...clearInstanceSelection,
       selectedWallId: null,
       selectedZoneId: null,
       selectedFigureId: null,
@@ -701,12 +756,14 @@ export const useEditorStore = create<EditorState>((set) => ({
     const target = state.wallEditor;
     if (!target) return state;
     const wallId = target.kind === 'wall' && state.localWalls.some(w => w.id === target.wallId) ? target.wallId : null;
+    // Artworks selected in the 2D editor stay selected in 3D; otherwise an edited modular wall does.
+    const selection = instanceSelection(state.wallEditorSelection, state.localInstances);
     return {
       wallEditor: null,
       wallEditorSelection: [],
-      // Back in 3D an edited modular wall stays selected.
-      selectedWallId: wallId,
-      selectedInstanceId: null,
+      selectedWallId: selection.selectedInstanceIds.length > 0 ? null : wallId,
+      selectedZoneId: null,
+      ...selection,
     };
   }),
   setWallEditorSide: (side: WallSide) => set((state) => (
@@ -896,7 +953,23 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Temp id → database id, so work started before auto-sync created an instance (a gizmo drag
+// holding the old ids) can still find it afterwards.
+const instanceIdRemaps = new Map<number, number>();
+
+export function recordInstanceIdRemap(oldId: number, newId: number): void {
+  instanceIdRemaps.set(oldId, newId);
+}
+
+/** The id an instance has now: a temporary id resolves to its database id once it was created. */
+export function resolveInstanceId(id: number): number {
+  let current = id;
+  for (let next = instanceIdRemaps.get(current); next !== undefined; next = instanceIdRemaps.get(current)) current = next;
+  return current;
+}
+
 function remapInstanceRefs(oldId: number, newId: number) {
+  recordInstanceIdRemap(oldId, newId);
   const ref = instanceRefMap.get(oldId);
   if (ref) { instanceRefMap.set(newId, ref); instanceRefMap.delete(oldId); }
   const videoEl = videoRefMap.get(oldId);
@@ -998,6 +1071,7 @@ const syncToBackend = async () => {
               snapshot.map(i => i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i)
             ),
             selectedInstanceId: current.selectedInstanceId === inst.id ? created.id : current.selectedInstanceId,
+            selectedInstanceIds: remapSelection(current.selectedInstanceIds, inst.id, created.id),
             wallEditorSelection: current.wallEditorSelection.includes(inst.id)
               ? current.wallEditorSelection.map(id => id === inst.id ? created.id : id)
               : current.wallEditorSelection,

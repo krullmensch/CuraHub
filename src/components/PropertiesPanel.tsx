@@ -45,6 +45,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { NumericInput } from './properties/NumericInput';
 import { FrameControls } from './properties/FrameControls';
+import { MultiSelectionPanel } from './MultiSelectionPanel';
 import { NO_PASSEPARTOUT, passepartoutOf, type PassepartoutValue } from '@/lib/passepartout';
 
 interface TransformData {
@@ -65,6 +66,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const selectedId = useEditorStore((state) => state.selectedInstanceId);
     const selectedWallId = useEditorStore((state) => state.selectedWallId);
     const selectedFigureId = useEditorStore((state) => state.selectedFigureId);
+    const multiCount = useEditorStore((state) => state.selectedInstanceIds.length);
     const transformMode = useEditorStore((state) => state.transformMode);
     const setTransformMode = useEditorStore((state) => state.setTransformMode);
     const selectInstance = useEditorStore((state) => state.selectInstance);
@@ -76,14 +78,14 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
     // Sync active tab to properties when something is selected
     useEffect(() => {
-        if (selectedId || selectedWallId || selectedFigureId !== null) {
+        if (selectedId || selectedWallId || selectedFigureId !== null || multiCount > 1) {
             // Use setTimeout to avoid synchronous setState warning in some linters/react versions
             const timer = setTimeout(() => {
                 setActiveTab('properties');
             }, 0);
             return () => clearTimeout(timer);
         }
-    }, [selectedId, selectedWallId, selectedFigureId]);
+    }, [selectedId, selectedWallId, selectedFigureId, multiCount]);
 
     const [transform, setTransform] = useState<TransformData>({
         position: { x: 0, y: 0, z: 0 },
@@ -395,6 +397,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                 {activeTab === 'properties' && (
                     hasPropertiesContent ? (
                         selectedFigureId !== null ? <ScaleFigurePropertiesContent /> :
+                        multiCount > 1 ? <MultiSelectionPanel /> :
                         selectedWallId ? <WallPropertiesContent /> :
                         <ArtworkPropertiesContent
                             transform={displayTransform}

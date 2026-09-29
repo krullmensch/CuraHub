@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import { gooeyToast } from 'goey-toast';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
 import { SPLAT_UP_FLIP, SplatHitProxy, loadSplat, splatAnchor, type SplatHandle } from '../lib/splats';
+import { consumeMarqueeClick } from '@/lib/selectionBridge';
 
 interface SplatInstanceProps {
     instance: ArtworkInstanceData;
@@ -30,7 +31,7 @@ const noRaycast = () => {};
 export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
     ({ instance, selected, isEditor = true }, ref) => {
         const url = instance.artwork.asset.path;
-        const selectInstance = useEditorStore((state) => state.selectInstance);
+        const pickInstance = useEditorStore((state) => state.pickInstance);
         const gl = useThree((state) => state.gl);
         const scene = useThree((state) => state.scene);
         const invalidate = useThree((state) => state.invalidate);
@@ -87,7 +88,8 @@ export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
 
         const handleClick = (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
-            selectInstance(instance.id);
+            if (consumeMarqueeClick()) return;
+            pickInstance(instance.id, e.nativeEvent.shiftKey);
         };
 
         return (

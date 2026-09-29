@@ -4,6 +4,7 @@ import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { TransformControls, useGLTF } from '@react-three/drei';
 import { useEditorStore, type ScaleFigureData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
+import { consumeMarqueeClick } from '@/lib/selectionBridge';
 import { SCALE_FIGURE_MESH, SCALE_FIGURE_URL, scaleFigureBridge, spawnPoseFromCamera, spawnPoseFromHit, type FigurePose } from '@/lib/scaleFigure';
 
 // Shared by every figure: matte black, faceted. Selected: dark blue.
@@ -78,7 +79,12 @@ const Figure = memo(function Figure({ figure, geometry, selected, onSelect, grou
                 name="ScaleFigure"
                 geometry={geometry}
                 material={selected ? SELECTED_MATERIAL : FIGURE_MATERIAL}
-                onClick={onSelect ? (e: ThreeEvent<MouseEvent>) => { e.stopPropagation(); onSelect(figure.id); } : undefined}
+                onClick={onSelect ? (e: ThreeEvent<MouseEvent>) => {
+                    e.stopPropagation();
+                    // The pointer-up of a ⇧-drag marquee must not replace its result.
+                    if (consumeMarqueeClick()) return;
+                    onSelect(figure.id);
+                } : undefined}
             />
         </group>
     );

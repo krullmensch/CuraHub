@@ -79,6 +79,8 @@ export const PlannerCameraSystem = () => {
     const updateOrbitState = useEditorStore(state => state.updateOrbitCameraState);
     const updateFPState = useEditorStore(state => state.updateFirstPersonCameraState);
     const isTransforming = useEditorStore(state => state.isTransforming);
+    // ⇧ + left drag draws the selection marquee (SelectionMarquee) — the camera stays put.
+    const shiftHeld = useEditorStore(state => state.shiftHeld);
 
     const focusTarget = useEditorStore(state => state.focusTarget);
     const setFocusTarget = useEditorStore(state => state.setFocusTarget);
@@ -435,7 +437,7 @@ export const PlannerCameraSystem = () => {
                     minDistance={CAMERA_LIMITS.PERSPECTIVE.minDistance}
                     maxDistance={CAMERA_LIMITS.PERSPECTIVE.maxDistance}
                     enableRotate={true}
-                    enabled={!isTransforming && wallPhase === 'idle'}
+                    enabled={!isTransforming && wallPhase === 'idle' && !shiftHeld}
                     mouseButtons={{
                         LEFT: THREE.MOUSE.ROTATE,
                         MIDDLE: THREE.MOUSE.ROTATE,
