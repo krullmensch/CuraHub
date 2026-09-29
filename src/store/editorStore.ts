@@ -865,7 +865,23 @@ if (typeof window !== 'undefined') {
   });
 }
 
+// Temp id → database id, so work started before auto-sync created an instance (a gizmo drag
+// holding the old ids) can still find it afterwards.
+const instanceIdRemaps = new Map<number, number>();
+
+export function recordInstanceIdRemap(oldId: number, newId: number): void {
+  instanceIdRemaps.set(oldId, newId);
+}
+
+/** The id an instance has now: a temporary id resolves to its database id once it was created. */
+export function resolveInstanceId(id: number): number {
+  let current = id;
+  for (let next = instanceIdRemaps.get(current); next !== undefined; next = instanceIdRemaps.get(current)) current = next;
+  return current;
+}
+
 function remapInstanceRefs(oldId: number, newId: number) {
+  recordInstanceIdRemap(oldId, newId);
   const ref = instanceRefMap.get(oldId);
   if (ref) { instanceRefMap.set(newId, ref); instanceRefMap.delete(oldId); }
   const videoEl = videoRefMap.get(oldId);

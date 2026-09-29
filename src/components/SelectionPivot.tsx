@@ -7,6 +7,8 @@ import { instanceWorldBounds } from '../lib/instanceBounds';
 import { applyGroupDelta, floorDeltaLimit } from '../lib/selectionTransform';
 
 interface Member {
+    /** Id at the start of the drag — resolve it with resolveInstanceId when committing. */
+    id: number;
     group: THREE.Group;
     /** World matrix at the start of the drag. */
     start: THREE.Matrix4;
@@ -23,10 +25,11 @@ export interface SelectionPivot {
     /** Carries all members along with the pivot; call every frame while dragging. */
     apply: (mode: TransformMode) => void;
     /**
-     * The artwork groups of the drag. Matched by object, not id: auto-sync may swap a temporary id
-     * for the database id mid-drag (instanceRefMap follows it).
+     * The dragged artwork groups by their id at the start of the drag. Auto-sync may swap a
+     * temporary id for the database id mid-drag (the slot then remounts with a new group) — resolve
+     * the id with resolveInstanceId and take the transform from the group held here.
      */
-    members: () => Set<THREE.Group>;
+    members: () => Map<number, THREE.Group>;
 }
 
 /** Keeps the pivot at or above a height (the lowest point the rigid group may reach). */
@@ -81,6 +84,7 @@ export function useSelectionPivot(): SelectionPivot {
             if (!group || !inst) continue;
             group.updateWorldMatrix(true, false);
             members.push({
+                id,
                 group,
                 start: group.matrixWorld.clone(),
                 minY: artworkMinY(inst, group.scale.y),
@@ -111,7 +115,7 @@ export function useSelectionPivot(): SelectionPivot {
         }
     }, [pivot]);
 
-    const members = useCallback(() => new Set((drag.current?.members ?? []).map((m) => m.group)), []);
+    const members = useCallback(() => new Map((drag.current?.members ?? []).map((m) => [m.id, m.group])), []);
 
     return { pivot, begin, apply, members };
 }

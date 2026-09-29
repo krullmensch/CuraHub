@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { remapSelection, useEditorStore, type ArtworkInstanceData } from './editorStore';
+import { recordInstanceIdRemap, remapSelection, resolveInstanceId, useEditorStore, type ArtworkInstanceData } from './editorStore';
 
 const inst = (id: number): ArtworkInstanceData => ({
   id, artwork: { asset: { path: '', width: 100, height: 100, dpi: 72, type: 'image' } },
@@ -109,5 +109,11 @@ describe('instance selection', () => {
     useEditorStore.getState().closeWallEditor();
     expect(useEditorStore.getState().selectedWallId).toBe(7);
     expect(useEditorStore.getState().selectedInstanceIds).toEqual([]);
+  });
+
+  it('resolveInstanceId follows a temp id to its database id', () => {
+    recordInstanceIdRemap(-501, 77);
+    expect(resolveInstanceId(-501)).toBe(77);
+    expect(resolveInstanceId(12)).toBe(12);
   });
 });

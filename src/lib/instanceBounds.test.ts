@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
 import { instanceWorldBounds } from './instanceBounds';
+import { SplatHitProxy } from './splats';
+import { instanceRefMap } from '@/store/editorStore';
 import type { ArtworkInstanceData } from '@/store/editorStore';
 
 const picture = (patch: Partial<ArtworkInstanceData> = {}): ArtworkInstanceData => ({
@@ -31,5 +34,21 @@ describe('instanceWorldBounds', () => {
     const b = instanceWorldBounds(picture({ id: 999, medium: 'model3d', artwork: { asset: { path: '', width: 0, height: 0, dpi: null, type: 'model3d' } } }));
     expect(Number.isFinite(b.min.x) && Number.isFinite(b.max.y)).toBe(true);
     expect(b.isEmpty()).toBe(false);
+  });
+});
+
+describe('instanceWorldBounds for splats', () => {
+  it('measures the hit proxy box, not the splat quad mesh', () => {
+    const group = new THREE.Group();
+    const quad = new THREE.Mesh(new THREE.PlaneGeometry(4, 4));
+    const proxy = new SplatHitProxy();
+    proxy.box.set(new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 2, 0.5));
+    group.add(quad, proxy);
+    group.position.set(3, 0, 0);
+    instanceRefMap.set(4242, group as THREE.Group);
+    const b = instanceWorldBounds(picture({ id: 4242, medium: 'splat', artwork: { asset: { path: '', width: 0, height: 0, dpi: null, type: 'splat' } } }));
+    instanceRefMap.delete(4242);
+    expect(b.min.x).toBeCloseTo(2.5); expect(b.max.x).toBeCloseTo(3.5);
+    expect(b.max.y).toBeCloseTo(2);
   });
 });

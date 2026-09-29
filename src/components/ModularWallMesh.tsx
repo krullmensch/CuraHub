@@ -5,6 +5,7 @@ import type { ThreeEvent } from '@react-three/fiber';
 import { Lock } from 'lucide-react';
 import { useEditorStore, type ModularWallData } from '@/store/editorStore';
 import { sideFromDirection, sideSeenFrom } from '@/lib/wallEditor/geometry';
+import { consumeMarqueeClick } from '@/lib/selectionBridge';
 
 interface ModularWallMeshProps {
     wall: ModularWallData;
@@ -27,6 +28,8 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
 
         const handleClick = isEditor ? (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
+            // The pointer-up of a ⇧-drag marquee over a wall must not replace its result.
+            if (consumeMarqueeClick()) return;
             selectWall(wall.id);
         } : undefined;
 

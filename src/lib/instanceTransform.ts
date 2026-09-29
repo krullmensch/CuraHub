@@ -42,14 +42,20 @@ export function finalizeInstanceTransform(
   return mode === 'translate' ? detachIfOffWall(updated, walls) : updated;
 }
 
-/** Group transforms move, turn and scale members at once (rotation moves them too) — write all of it. */
-export function finalizeGroupMember(inst: ArtworkInstanceData, object: THREE.Object3D, walls: ModularWallData[]): ArtworkInstanceData {
+/**
+ * Writes a group member back after a group transform. Rotating a group moves its members too, so
+ * rotate/scale write everything; a pure move writes only the position — the Euler angles read back
+ * from the matrix may differ from the stored ones for the same orientation (ry = π → (π, 0, π)).
+ */
+export function finalizeGroupMember(
+  inst: ArtworkInstanceData, object: THREE.Object3D, walls: ModularWallData[], mode: TransformMode,
+): ArtworkInstanceData {
   object.position.y = Math.max(artworkMinY(inst, object.scale.y), object.position.y);
+  const position = { position_x: object.position.x, position_y: object.position.y, position_z: object.position.z };
+  if (mode === 'translate') return detachIfOffWall({ ...inst, ...position }, walls);
   return detachIfOffWall({
     ...inst,
-    position_x: object.position.x,
-    position_y: object.position.y,
-    position_z: object.position.z,
+    ...position,
     rotation_x: object.rotation.x,
     rotation_y: object.rotation.y,
     rotation_z: object.rotation.z,

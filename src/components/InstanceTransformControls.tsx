@@ -2,10 +2,11 @@ import { useRef, useCallback } from 'react';
 import { TransformControls } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useEditorStore, artworkMinY, instanceRefMap } from '../store/editorStore';
+import { useEditorStore, artworkMinY, resolveInstanceId } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { finalizeGroupMember, finalizeInstanceTransform } from '../lib/instanceTransform';
 import { useSelectionPivot } from './SelectionPivot';
+import { suppressNextClick } from '../lib/selectionBridge';
 
 // RND-07: the PropertiesPanel readout re-renders on every liveTransform update — 10 Hz is
 // plenty for numbers, the 3D object itself still moves every frame.
@@ -84,13 +85,16 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
         const currentToken = useAuthStore.getState().token;
 
         if (store.selectedInstanceIds.length > 1) {
+            // The pointer-up usually ends on an artwork of the group, which moved along — its
+            // click must not shrink the selection to that one artwork.
+            suppressNextClick();
             selectionPivot.apply(groupMode);
-            const groups = selectionPivot.members();
+            const groups = new Map([...selectionPivot.members()].map(([id, group]) => [resolveInstanceId(id), group]));
             if (!currentToken || groups.size === 0) return;
             // One commit for the whole group → one undo step.
             store.commitLocalChange(store.localInstances.map(inst => {
-                const group = instanceRefMap.get(inst.id);
-                return group && groups.has(group) ? finalizeGroupMember(inst, group, store.localWalls) : inst;
+                const group = groups.get(inst.id);
+                return group ? finalizeGroupMember(inst, group, store.localWalls, groupMode) : inst;
             }));
             return;
         }

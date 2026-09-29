@@ -526,14 +526,15 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       }
 
       // Select all artworks of the version
-      if (cmdOrCtrl && key === 'a' && store.plannerViewMode !== 'firstPerson') {
+      // Only while the editor is shown — it stays mounted (hidden) behind the asset library.
+      if (cmdOrCtrl && key === 'a' && isVisible && store.plannerViewMode !== 'firstPerson') {
         e.preventDefault();
         store.selectAllInstances();
         return;
       }
 
       // Duplicate the selected artworks (the copies become the selection)
-      if (cmdOrCtrl && key === 'd' && store.plannerViewMode !== 'firstPerson') {
+      if (cmdOrCtrl && key === 'd' && isVisible && store.plannerViewMode !== 'firstPerson') {
         e.preventDefault();
         duplicateCurrentSelection();
         return;
@@ -648,7 +649,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('beforeunload', handleBeforeUnload);
     };
-  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock, setPlannerViewMode]);
+  }, [selectInstance, selectWall, selectZone, setTransformMode, setTransformAxisLock, setPlannerViewMode, isVisible]);
   // We need a ref to the container to calculate relative coordinates if needed,
   // but for full screen editor, window coordinates are fine for NDC.
 

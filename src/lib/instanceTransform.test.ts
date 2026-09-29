@@ -43,10 +43,23 @@ describe('finalizeGroupMember', () => {
     object.position.set(0.2, 1.4, 0.06);
     object.rotation.set(0, 0.3, 0);
     object.scale.set(2, 2, 2);
-    const out = finalizeGroupMember(pic(), object, [wall]);
+    const out = finalizeGroupMember(pic(), object, [wall], 'rotate');
     expect(out.position_x).toBeCloseTo(0.2);
     expect(out.rotation_y).toBeCloseTo(0.3);
     expect(out.scale_x).toBe(2);
     expect(out.position_y).toBeCloseTo(1.4);
+  });
+});
+
+describe('finalizeGroupMember translate', () => {
+  it('writes only the position, so turned pictures keep their stored rotation', () => {
+    const object = new THREE.Object3D();
+    object.position.set(0.3, 1.5, 0.06);
+    object.rotation.set(Math.PI, 0, Math.PI); // same orientation as rotation_y = π, other Euler
+    const out = finalizeGroupMember(pic({ rotation_y: Math.PI }), object, [wall], 'translate');
+    expect(out.position_x).toBeCloseTo(0.3);
+    expect(out.rotation_x).toBe(0);
+    expect(out.rotation_y).toBe(Math.PI);
+    expect(out.scale_x).toBe(1);
   });
 });
