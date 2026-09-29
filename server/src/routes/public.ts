@@ -97,7 +97,14 @@ publicRouter.get('/exhibition/:slug', async (req, res) => {
         res.json({
             exhibition: { id: exhibition.id, title: exhibition.title, slug: exhibition.slug },
             version: { id: version.id, comment: version.comment, published_at: version.published_at },
-            instances: version.instances,
+            // Books: the PDF name stays server-side; the viewer asks /api/books/:id/pdf.
+            instances: version.instances.map((inst) => {
+                const asset = inst.artwork?.asset;
+                if (asset?.type !== 'book' || !asset.metadata || typeof asset.metadata !== 'object' || Array.isArray(asset.metadata)) return inst;
+                // eslint-disable-next-line @typescript-eslint/no-unused-vars
+                const { pdfFile: _pdfFile, ...metadata } = asset.metadata as Record<string, unknown>;
+                return { ...inst, artwork: { ...inst.artwork, asset: { ...asset, metadata } } };
+            }),
             walls: version.walls,
             scaleFigures: version.scaleFigures,
         });

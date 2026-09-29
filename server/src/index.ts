@@ -15,6 +15,7 @@ import { wallsRouter } from './routes/walls';
 import { scaleFiguresRouter } from './routes/scaleFigures';
 import { exhibitionsRouter } from './routes/exhibitions';
 import { publicRouter } from './routes/public';
+import { booksRouter } from './routes/books';
 import { adminRouter } from './routes/admin';
 import { resumeVideoJobs } from './lib/videoJobs';
 import { resumeBookJobs } from './lib/bookJobs';
@@ -76,6 +77,7 @@ app.use('/scale-figures', scaleFiguresRouter);
 app.use('/exhibitions', exhibitionsRouter);
 app.use('/admin', adminRouter);
 app.use('/public', publicRouter);
+app.use('/books', booksRouter);
 app.use('/', versionsRouter);
 
 // --- API Routes (With /api prefix) ---
@@ -91,6 +93,7 @@ app.use('/api/scale-figures', scaleFiguresRouter);
 app.use('/api/exhibitions', exhibitionsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/public', publicRouter);
+app.use('/api/books', booksRouter);
 app.use('/api', versionsRouter);
 
 // --- Production Frontend Serving & SPA Fallback ---

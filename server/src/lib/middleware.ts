@@ -106,3 +106,14 @@ export const userCanAccessProject = async (
   });
   return project !== null;
 };
+
+/** The JWT user if a valid token is sent, else null — for routes that also serve anonymous visitors. */
+export const readOptionalUser = (req: Request): { userId: number; role: AppRole } | null => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return null;
+  try {
+    return jwt.verify(token, JWT_SECRET) as { userId: number; role: AppRole };
+  } catch {
+    return null;
+  }
+};
