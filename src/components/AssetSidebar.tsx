@@ -11,6 +11,18 @@ import { useAuthStore } from '@/store/authStore';
 import { type Folder, listFolders, moveAssetToFolder } from '@/lib/folders';
 import { VideoProcessingBadge } from './VideoProcessingBadge';
 import { setCompactDragImage } from '@/lib/dragPreview';
+import { PlacedArtworkList } from './PlacedArtworkList';
+
+type SidebarView = 'assets' | 'placed';
+const SIDEBAR_VIEW_KEY = 'curahub-sidebar-view';
+
+function readSidebarView(): SidebarView {
+    try {
+        return localStorage.getItem(SIDEBAR_VIEW_KEY) === 'placed' ? 'placed' : 'assets';
+    } catch {
+        return 'assets';
+    }
+}
 
 interface AssetSidebarProps {
     isOpen: boolean;
@@ -61,6 +73,11 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const setDragging = useEditorStore((state) => state.setDragging);
     const activeProjectId = useEditorStore((state) => state.activeProjectId);
     const token = useAuthStore((state) => state.token);
+    const [view, setView] = useState<SidebarView>(readSidebarView);
+    const chooseView = (next: SidebarView) => {
+        setView(next);
+        try { localStorage.setItem(SIDEBAR_VIEW_KEY, next); } catch { /* storage blocked — keep it for this session */ }
+    };
 
     const fetchAssets = useCallback(async (filter: FolderFilter, silent = false) => {
         if (!activeProjectId) {
@@ -208,7 +225,21 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                 )}
             >
                 <CardHeader className="p-4 border-b border-zinc-800 bg-blue-600 flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="text-sm font-medium text-white">Asset Library</CardTitle>
+                    <CardTitle className="flex gap-1 text-sm font-medium text-white">
+                        {([['assets', 'Assets'], ['placed', 'Im Raum']] as const).map(([value, label]) => (
+                            <button
+                                key={value}
+                                type="button"
+                                onClick={() => chooseView(value)}
+                                className={cn(
+                                    'rounded-md px-2 py-0.5 text-xs transition-colors',
+                                    view === value ? 'bg-white/20 text-white' : 'text-blue-100 hover:bg-white/10 hover:text-white',
+                                )}
+                            >
+                                {label}
+                            </button>
+                        ))}
+                    </CardTitle>
                     <Button 
                         variant="ghost" 
                         size="icon" 
@@ -218,6 +249,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                         <ChevronLeft className="h-4 w-4" />
                     </Button>
                 </CardHeader>
+                {view === 'placed' ? <PlacedArtworkList /> : <>
                 {folders.length > 0 && (
                     <div data-asset-drop-zone className="flex gap-1.5 px-3 py-2 border-b border-zinc-800 overflow-x-auto no-scrollbar">
                         <button
@@ -346,6 +378,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                         </div>
                     )}
                 </div>
+                </>}
             </Card>
 
             {/* Toggle Button (Visible when closed) */}
