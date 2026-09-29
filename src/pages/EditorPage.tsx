@@ -25,6 +25,7 @@ import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
 import { commonFaceTarget } from '../lib/selectionFaces';
 import { consumeMarqueeClick } from '../lib/selectionBridge';
+import { duplicateCurrentSelection } from '../lib/selectionActions';
 import { SelectionMarquee } from '../components/SelectionMarquee';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
 
@@ -527,6 +528,13 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       if (cmdOrCtrl && key === 'a' && store.plannerViewMode !== 'firstPerson') {
         e.preventDefault();
         store.selectAllInstances();
+        return;
+      }
+
+      // Duplicate the selected artworks (the copies become the selection)
+      if (cmdOrCtrl && key === 'd' && store.plannerViewMode !== 'firstPerson') {
+        e.preventDefault();
+        duplicateCurrentSelection();
         return;
       }
 
