@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useEditorStore, type AssetType } from '@/store/editorStore';
 import { SplatPreviewTile } from './SplatPreviewTile';
 import { BookPreviewTile } from './book/BookPreviewTile';
+import { BookSettingsDialog } from './book/BookSettingsDialog';
 import { bookDragInfo } from '@/lib/book/api';
 import { useAuthStore } from '@/store/authStore';
 import { type Folder, listFolders, moveAssetToFolder } from '@/lib/folders';
@@ -43,7 +44,13 @@ interface Asset {
   thumbnailPath?: string | null;
   /** VID-03: 'processing' | 'ready' | 'failed' */
   status?: string;
-  metadata?: { proxiesPending?: boolean; pageCount?: number } | null;
+  metadata?: {
+    proxiesPending?: boolean;
+    pageCount?: number;
+    pageWidthMm?: number;
+    pageHeightMm?: number;
+    coverSource?: 'pdf' | 'override';
+  } | null;
   artwork?: {
     id: number;
     title: string;
@@ -71,6 +78,9 @@ function thumbnailSrcSet(asset: Asset): string | undefined {
 
 export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
     const [assets, setAssets] = useState<Asset[]>([]);
+    // Kept as an id so the dialog sees the refreshed row (new cover) after a reload.
+    const [bookSettingsId, setBookSettingsId] = useState<number | null>(null);
+    const bookSettingsAsset = bookSettingsId != null ? assets.find((a) => a.id === bookSettingsId) ?? null : null;
     const [loading, setLoading] = useState(false);
     const [folders, setFolders] = useState<Folder[]>([]);
     const [activeFilter, setActiveFilter] = useState<FolderFilter>('all');
@@ -327,7 +337,10 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                                             ? "border-blue-500 ring-2 ring-blue-500/50"
                                             : "border-zinc-800 hover:border-zinc-600"
                                     )}
-                                    title={asset.artwork?.title || asset.filename}
+                                    onDoubleClick={() => {
+                                        if (asset.type === 'book' && isAssetReady(asset)) setBookSettingsId(asset.id);
+                                    }}
+                                    title={asset.type === 'book' ? 'Doppelklick: Buch-Einstellungen' : asset.artwork?.title || asset.filename}
                                     style={{ contentVisibility: 'auto', containIntrinsicSize: '256px 256px' }}
                                 >
                                     {(asset.type || 'image') === 'image' ? (
@@ -406,6 +419,14 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                     <ChevronRight className="h-4 w-4 text-white" />
                 </Button>
             </div>
+            {bookSettingsAsset && (
+                <BookSettingsDialog
+                    asset={bookSettingsAsset}
+                    open
+                    onOpenChange={(o) => { if (!o) setBookSettingsId(null); }}
+                    onSaved={refreshAssetsSilently}
+                />
+            )}
         </>
     );
 };

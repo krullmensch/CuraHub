@@ -33,6 +33,7 @@ import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { SplatPreviewTile } from './SplatPreviewTile';
 import { BookPreviewTile } from './book/BookPreviewTile';
+import { BookSettingsDialog } from './book/BookSettingsDialog';
 import { bookDragInfo } from '@/lib/book/api';
 import { FolderColorPicker } from './FolderColorPicker';
 import {
@@ -96,6 +97,9 @@ interface Asset {
     projectId?: string;
     proxiesPending?: boolean;
     pageCount?: number;
+    pageWidthMm?: number;
+    pageHeightMm?: number;
+    coverSource?: 'pdf' | 'override';
   };
 }
 
@@ -124,6 +128,8 @@ export const AssetLibrary = () => {
   const [assetsToDelete, setAssetsToDelete] = useState<number[]>([]);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
+  // Kept as an id so the dialog sees the refreshed row (new cover) after a reload.
+  const [bookSettingsId, setBookSettingsId] = useState<number | null>(null);
   const [contextMenu, setContextMenu] = useState<{ assetId: number; x: number; y: number } | null>(null);
   const activeProjectId = useEditorStore((state) => state.activeProjectId);
   const setDragging = useEditorStore((state) => state.setDragging);
@@ -349,6 +355,16 @@ export const AssetLibrary = () => {
     setSkippedFiles([]);
     fetchFolders();
   };
+
+  const openAssetEditor = (asset: Asset) => {
+    if (asset.type === 'book') {
+      setBookSettingsId(asset.id);
+      return;
+    }
+    setSelectedAsset(asset);
+  };
+
+  const bookSettingsAsset = bookSettingsId != null ? assets.find((a) => a.id === bookSettingsId) ?? null : null;
 
   const handleMetadataSaved = () => {
     setSelectedAsset(null);
@@ -1030,7 +1046,7 @@ export const AssetLibrary = () => {
                           className="h-8 w-8 pointer-events-auto"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedAsset(asset);
+                            openAssetEditor(asset);
                           }}
                         >
                           <Edit className="h-4 w-4" />
@@ -1084,7 +1100,7 @@ export const AssetLibrary = () => {
                 style={{ left: contextMenu.x, top: contextMenu.y }}
               >
                 <button
-                  onClick={() => { setSelectedAsset(assets.find((a) => a.id === contextMenu.assetId) ?? null); setContextMenu(null); }}
+                  onClick={() => { const target = assets.find((a) => a.id === contextMenu.assetId); if (target) openAssetEditor(target); setContextMenu(null); }}
                   className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-zinc-100 hover:bg-zinc-800"
                 >
                   <Edit className="h-4 w-4" /> Bearbeiten
@@ -1175,6 +1191,15 @@ export const AssetLibrary = () => {
                 onCancel={() => setSelectedAsset(null)}
               />
             </Suspense>
+          )}
+
+          {bookSettingsAsset && (
+            <BookSettingsDialog
+              asset={bookSettingsAsset}
+              open
+              onOpenChange={(o) => { if (!o) setBookSettingsId(null); }}
+              onSaved={() => fetchAssets(selectedFolder)}
+            />
           )}
 
           {/* Create Folder Dialog */}
