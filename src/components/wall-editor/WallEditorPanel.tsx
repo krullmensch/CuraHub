@@ -47,7 +47,7 @@ interface CmInputProps {
 }
 
 /** Centimetre input: edits locally, commits on Enter/blur, accepts "152,5". */
-const CmInput = ({ label, value, placeholder, onCommit, disabled, title }: CmInputProps) => {
+export const CmInput = ({ label, value, placeholder, onCommit, disabled, title }: CmInputProps) => {
     const [text, setText] = useState(value === null ? '' : cmInputValue(value));
     const focused = useRef(false);
     const external = value === null ? '' : cmInputValue(value);
