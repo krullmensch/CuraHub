@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { commonFaceTarget } from './selectionFaces';
+import { commonFaceTarget, selectionOnFace } from './selectionFaces';
 import type { ArtworkInstanceData, ModularWallData } from '@/store/editorStore';
 
 const wall: ModularWallData = {
@@ -21,5 +21,15 @@ describe('commonFaceTarget', () => {
   });
   it('returns null for an empty selection', () => {
     expect(commonFaceTarget([], [wall], [])).toBeNull();
+  });
+});
+
+describe('selectionOnFace', () => {
+  it('keeps only the selected artworks hanging on the face', () => {
+    const instances = [pic(1, 0.06), pic(2, 0.06), pic(3, -0.06)];
+    expect(selectionOnFace({ kind: 'wall', wallId: 1, side: 'front' }, instances, [1, 3], [wall], [])).toEqual([1]);
+  });
+  it('is empty for an unknown face', () => {
+    expect(selectionOnFace({ kind: 'wall', wallId: 9, side: 'front' }, [pic(1, 0.06)], [1], [wall], [])).toEqual([]);
   });
 });

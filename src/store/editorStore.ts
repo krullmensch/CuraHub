@@ -674,12 +674,14 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     const target = state.wallEditor;
     if (!target) return state;
     const wallId = target.kind === 'wall' && state.localWalls.some(w => w.id === target.wallId) ? target.wallId : null;
+    // Artworks selected in the 2D editor stay selected in 3D; otherwise an edited modular wall does.
+    const selection = instanceSelection(state.wallEditorSelection, state.localInstances);
     return {
       wallEditor: null,
       wallEditorSelection: [],
-      // Back in 3D an edited modular wall stays selected.
-      selectedWallId: wallId,
-      ...clearInstanceSelection,
+      selectedWallId: selection.selectedInstanceIds.length > 0 ? null : wallId,
+      selectedZoneId: null,
+      ...selection,
     };
   }),
   setWallEditorSide: (side: WallSide) => set((state) => (

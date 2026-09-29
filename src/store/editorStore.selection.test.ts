@@ -91,4 +91,23 @@ describe('instance selection', () => {
     useEditorStore.getState().setShiftHeld(false);
     expect(useEditorStore.getState().shiftHeld).toBe(false);
   });
+
+  it('closing the wall editor hands its selection back to 3D', () => {
+    useEditorStore.setState({ wallEditor: { kind: 'room', faceId: 'f1' }, wallEditorSelection: [1, 2] });
+    useEditorStore.getState().closeWallEditor();
+    const s = useEditorStore.getState();
+    expect(s.selectedInstanceIds).toEqual([1, 2]);
+    expect(s.selectedInstanceId).toBe(2);
+    expect(s.wallEditor).toBeNull();
+  });
+
+  it('closing the wall editor with nothing selected keeps the edited wall selected', () => {
+    useEditorStore.setState({
+      localWalls: [{ id: 7, position_x: 0, position_y: 1.5, position_z: 0, rotation_x: 0, rotation_y: 0, rotation_z: 0, width: 4, height: 3, thickness: 0.1, color: '#fff', isLocked: false }],
+      wallEditor: { kind: 'wall', wallId: 7, side: 'front' }, wallEditorSelection: [],
+    });
+    useEditorStore.getState().closeWallEditor();
+    expect(useEditorStore.getState().selectedWallId).toBe(7);
+    expect(useEditorStore.getState().selectedInstanceIds).toEqual([]);
+  });
 });

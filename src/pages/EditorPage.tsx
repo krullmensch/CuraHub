@@ -25,7 +25,7 @@ import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
 import { commonFaceTarget } from '../lib/selectionFaces';
 import { consumeMarqueeClick } from '../lib/selectionBridge';
-import { duplicateCurrentSelection } from '../lib/selectionActions';
+import { duplicateCurrentSelection, openFaceWithSelection } from '../lib/selectionActions';
 import { SelectionMarquee } from '../components/SelectionMarquee';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
 
@@ -219,7 +219,8 @@ function handleCanvasDoubleClick(e: MouseEvent) {
     if (!inst || inst.artwork.asset.type === 'video') return;
     const target = targetForInstance(inst, store.localWalls, rooms);
     if (!target) return;
-    if (!store.wallEditor) store.openWallEditor(target, [inst.id]);
+    // ⇧-double-click keeps the other selected artworks of that wall in the 2D selection.
+    if (!store.wallEditor) openFaceWithSelection(target, [inst.id]);
     else if (targetKey(store.wallEditor) === targetKey(target)) store.setWallEditorSelection([inst.id]);
     return;
   }

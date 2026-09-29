@@ -1,5 +1,5 @@
 import type { ArtworkInstanceData, ModularWallData } from '@/store/editorStore';
-import { targetForInstance, targetKey, type WallEditorTarget } from './wallEditor/faces';
+import { instanceOnFace, resolveFace, targetForInstance, targetKey, type WallEditorTarget } from './wallEditor/faces';
 import type { RoomFace } from './wallEditor/roomFaces';
 
 /** The wall face every artwork hangs on, or null when they are spread over several (or none). */
@@ -14,4 +14,13 @@ export function commonFaceTarget(
     common = target;
   }
   return common;
+}
+
+/** The selected artworks that hang on a face — what the 2D editor starts with when it opens it. */
+export function selectionOnFace(
+  target: WallEditorTarget, instances: ArtworkInstanceData[], selectedIds: number[], walls: ModularWallData[], roomFaces: RoomFace[],
+): number[] {
+  const face = resolveFace(target, walls, roomFaces);
+  if (!face) return [];
+  return instances.filter(inst => selectedIds.includes(inst.id) && instanceOnFace(inst, face)).map(inst => inst.id);
 }
