@@ -113,7 +113,7 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                     </Suspense>
                 )}
 
-                <FPVArtworkRaycaster isEditor={isEditor} />
+                <FPVArtworkRaycaster isEditor={isEditor} instances={viewerInstances} />
 
                 {/* Mounts together with the room (same Suspense boundary). */}
                 <ShaderWarmup onDone={onShadersReady} />

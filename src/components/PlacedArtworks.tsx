@@ -24,6 +24,7 @@ const buildArtworkInfo = (instance: ArtworkInstanceData) => ({
     description: instance.artwork?.description || '',
     instanceId: instance.id,
     assetType: instance.artwork?.asset?.type || 'image',
+    publicReadable: instance.artwork?.publicReadable === true,
 });
 
 interface InstanceSlotProps {

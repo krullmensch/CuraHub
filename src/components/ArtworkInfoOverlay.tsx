@@ -1,6 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useEditorStore, videoRefMap } from '../store/editorStore';
 import { Volume2, VolumeX } from 'lucide-react';
+import { useBookViewerStore } from '../store/bookViewerStore';
 
 const MouseLeftIcon = ({ size = 20, color = "white" }: { size?: number, color?: string }) => (
     <svg 
@@ -45,6 +46,7 @@ const Kbd = ({ children }: { children: React.ReactNode }) => (
  */
 export const ArtworkInfoOverlay = () => {
     const fpvHoveredInfo = useEditorStore((s) => s.fpvHoveredInfo);
+    const bookInReach = useBookViewerStore((s) => s.bookInReachId !== null);
 
     const [displayInfo, setDisplayInfo] = useState<typeof fpvHoveredInfo>(null);
     const [isActive, setIsActive] = useState(false);
@@ -206,6 +208,12 @@ export const ArtworkInfoOverlay = () => {
                     background: 'rgba(255, 255, 255, 0.85)',
                 }} />
             </div>
+
+            {bookInReach && (
+                <div className="pointer-events-none fixed left-1/2 top-1/2 z-20 mt-6 -translate-x-1/2 rounded bg-black/60 px-2 py-1 text-xs text-white">
+                    Klicken zum Lesen
+                </div>
+            )}
 
             {/* ── Extension line + Info panel ── */}
             {displayInfo && (

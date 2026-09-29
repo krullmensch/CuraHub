@@ -1,6 +1,8 @@
 import { useBookViewerStore, type OpenBook } from '@/store/bookViewerStore';
 import { useEditorStore, type ArtworkInstanceData } from '@/store/editorStore';
 import { displayArtworkTitle } from '@/lib/artworkTitle';
+import type * as THREE from 'three';
+import { BOOK_OPEN_DISTANCE } from './geometry';
 
 export interface PointerEnv {
   pointerLocked(): boolean;
@@ -52,4 +54,23 @@ export function openBookForInstance(inst: ArtworkInstanceData, publicView: boole
     pageCount: inst.artwork.asset.metadata?.pageCount ?? 0,
     publicView,
   });
+}
+
+/** First person: the crosshair rests on a book's hit box, close enough to open it. */
+export function bookInReach(hit: { object: THREE.Object3D; distance: number } | null, readable: boolean): boolean {
+  return !!hit && readable && hit.object.userData.bookHitProxy === true && hit.distance <= BOOK_OPEN_DISTANCE;
+}
+
+/** Click while walking (pointer locked) opens the book under the crosshair. */
+export function installFirstPersonBookClick(getInstance: (id: number) => ArtworkInstanceData | undefined, publicView: boolean): () => void {
+  const onMouseDown = (e: MouseEvent) => {
+    if (e.button !== 0 || !document.pointerLockElement) return;
+    const id = useBookViewerStore.getState().bookInReachId;
+    const inst = id !== null ? getInstance(id) : undefined;
+    if (!inst) return;
+    e.preventDefault();
+    openBookForInstance(inst, publicView);
+  };
+  document.addEventListener('mousedown', onMouseDown);
+  return () => document.removeEventListener('mousedown', onMouseDown);
 }

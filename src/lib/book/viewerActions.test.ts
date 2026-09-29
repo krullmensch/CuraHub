@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { closeBook, openBook, type PointerEnv } from './viewerActions';
+import * as THREE from 'three';
+import { bookInReach, closeBook, openBook, type PointerEnv } from './viewerActions';
 import { useBookViewerStore } from '@/store/bookViewerStore';
 import { isControlsLocked } from '@/lib/controlsLock';
 import { useEditorStore } from '@/store/editorStore';
@@ -69,5 +70,19 @@ describe('controls lock', () => {
   it('also follows the existing dialog flag', () => {
     useEditorStore.setState({ isDialogOpen: true });
     expect(isControlsLocked()).toBe(true);
+  });
+});
+
+describe('bookInReach', () => {
+  const proxy = new THREE.Object3D();
+  proxy.userData.bookHitProxy = true;
+  it('is true for the book hit box within 2.5 m', () => {
+    expect(bookInReach({ object: proxy, distance: 2.4 }, true)).toBe(true);
+  });
+  it('is false further away, for other objects, or when the book is not readable', () => {
+    expect(bookInReach({ object: proxy, distance: 2.6 }, true)).toBe(false);
+    expect(bookInReach({ object: new THREE.Object3D(), distance: 1 }, true)).toBe(false);
+    expect(bookInReach({ object: proxy, distance: 1 }, false)).toBe(false);
+    expect(bookInReach(null, true)).toBe(false);
   });
 });

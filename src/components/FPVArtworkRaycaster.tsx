@@ -1,11 +1,15 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useEditorStore, instanceRefMap } from '../store/editorStore';
+import { useEditorStore, instanceRefMap, type ArtworkInstanceData } from '../store/editorStore';
+import { useBookViewerStore } from '../store/bookViewerStore';
+import { bookInReach, installFirstPersonBookClick } from '../lib/book/viewerActions';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
 interface FPVArtworkRaycasterProps {
     isEditor: boolean;
+    /** The public viewer's data; the editor reads its store. */
+    instances?: ArtworkInstanceData[];
 }
 
 const MAX_DISTANCE = 12;
@@ -22,7 +26,7 @@ function findArtworkAncestor(obj: THREE.Object3D | null): THREE.Object3D | null 
     return null;
 }
 
-export const FPVArtworkRaycaster = ({ isEditor }: FPVArtworkRaycasterProps) => {
+export const FPVArtworkRaycaster = ({ isEditor, instances }: FPVArtworkRaycasterProps) => {
     const camera = useThree((state) => state.camera);
     const scene = useThree((state) => state.scene);
     const { raycastHz } = useRenderQualitySettings();
@@ -38,11 +42,20 @@ export const FPVArtworkRaycaster = ({ isEditor }: FPVArtworkRaycasterProps) => {
     useEffect(() => {
         return () => {
             useEditorStore.getState().setFpvHoveredInfo(null);
+            useBookViewerStore.getState().setBookInReach(null);
         };
     }, []);
 
+    const instancesRef = useRef(instances);
+    useEffect(() => { instancesRef.current = instances; }, [instances]);
+    useEffect(() => installFirstPersonBookClick(
+        (id) => (instancesRef.current ?? useEditorStore.getState().localInstances).find((i) => i.id === id),
+        !isEditor,
+    ), [isEditor]);
+
     useFrame(() => {
         const clearHover = () => {
+            useBookViewerStore.getState().setBookInReach(null);
             if (lastInstanceId.current !== null) {
                 lastInstanceId.current = null;
                 useEditorStore.getState().setFpvHoveredInfo(null);
@@ -74,9 +87,11 @@ export const FPVArtworkRaycaster = ({ isEditor }: FPVArtworkRaycasterProps) => {
         //    instead of the whole scene with the room model (≈20k mesh raycasts/s before).
         let artworkGroup: THREE.Object3D | null = null;
         let hitDistance = 0;
+        let firstHit: THREE.Intersection | null = null;
         for (const hit of raycaster.intersectObjects(Array.from(instanceRefMap.values()), true)) {
             if (!hit.object.visible) continue;
             artworkGroup = findArtworkAncestor(hit.object);
+            firstHit = hit;
             hitDistance = hit.distance;
             break;
         }
@@ -103,6 +118,11 @@ export const FPVArtworkRaycaster = ({ isEditor }: FPVArtworkRaycasterProps) => {
         }
 
         const id = artworkGroup.userData.instanceId as number;
+        const info = artworkGroup.userData.artworkInfo as { assetType: string; publicReadable?: boolean };
+        const readable = isEditor || info.publicReadable === true;
+        useBookViewerStore.getState().setBookInReach(
+            info.assetType === 'book' && bookInReach(firstHit, readable) ? id : null,
+        );
         if (lastInstanceId.current !== id) {
             lastInstanceId.current = id;
             useEditorStore.getState().setFpvHoveredInfo(artworkGroup.userData.artworkInfo);
