@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { instanceRefMap, isFloorAssetType, type ArtworkInstanceData } from '@/store/editorStore';
 import { artworkFrameLayout, baseArtworkSize } from './wallEditor/footprint';
-import { SplatHitProxy } from './splats';
+import { BoxHitProxy } from './boxHitProxy';
 
 /** Side length used while nothing better is known (model not loaded, no pixel size). */
 const FALLBACK_SIZE_M = 0.5;
@@ -28,18 +28,19 @@ function instanceMatrix(inst: ArtworkInstanceData, withScale: boolean): THREE.Ma
 /**
  * World bounds of the meshes below an artwork's group (frames are drawn instanced elsewhere).
  * A splat's meshes say nothing about its extent (WebGPU draws it as a ±2 m instanced quad) — its
- * hit proxy carries the robust bounds of the capture.
+ * hit proxy carries the robust bounds of the capture. A book's proxy (`bookHitProxy`) covers only
+ * the book, so books are measured from their meshes (pedestal included).
  */
 function measuredBounds(id: number, target: THREE.Box3): THREE.Box3 | null {
   const group = instanceRefMap.get(id);
   if (!group) return null;
   group.updateWorldMatrix(true, true);
-  let proxy: SplatHitProxy | null = null;
+  let proxy: BoxHitProxy | null = null;
   group.traverse((object) => {
-    if (!proxy && object instanceof SplatHitProxy && !object.box.isEmpty()) proxy = object;
+    if (!proxy && object instanceof BoxHitProxy && !object.userData.bookHitProxy && !object.box.isEmpty()) proxy = object;
   });
   if (proxy) {
-    const hit: SplatHitProxy = proxy;
+    const hit: BoxHitProxy = proxy;
     return target.copy(hit.box).applyMatrix4(hit.matrixWorld);
   }
   target.makeEmpty();

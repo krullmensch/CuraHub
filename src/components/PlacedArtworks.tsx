@@ -6,6 +6,7 @@ import { SelectableInstance } from './SelectableInstance';
 import { VideoInstance } from './VideoInstance';
 import { ModelInstance } from './ModelInstance';
 import { SplatInstance } from './SplatInstance';
+import { BookInstance } from './book/BookInstance';
 import { InstanceTransformControls } from './InstanceTransformControls';
 import { SelectionBridge } from './SelectionBridge';
 import { instanceOnFace, openFaceOf } from '../lib/wallEditor/faces';
@@ -48,6 +49,7 @@ const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProp
     const Component =
         assetType === 'video' ? VideoInstance :
         assetType === 'model3d' ? ModelInstance :
+        assetType === 'book' ? BookInstance :
         assetType === 'splat' ? SplatInstance :
         SelectableInstance;
 

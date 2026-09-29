@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { instanceWorldBounds } from './instanceBounds';
-import { SplatHitProxy } from './splats';
+import { BoxHitProxy } from './boxHitProxy';
 import { instanceRefMap } from '@/store/editorStore';
 import type { ArtworkInstanceData } from '@/store/editorStore';
 
@@ -41,7 +41,7 @@ describe('instanceWorldBounds for splats', () => {
   it('measures the hit proxy box, not the splat quad mesh', () => {
     const group = new THREE.Group();
     const quad = new THREE.Mesh(new THREE.PlaneGeometry(4, 4));
-    const proxy = new SplatHitProxy();
+    const proxy = new BoxHitProxy();
     proxy.box.set(new THREE.Vector3(-0.5, 0, -0.5), new THREE.Vector3(0.5, 2, 0.5));
     group.add(quad, proxy);
     group.position.set(3, 0, 0);

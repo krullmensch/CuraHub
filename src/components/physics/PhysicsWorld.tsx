@@ -7,6 +7,7 @@ import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '
 import { SATELLIT_MODEL_URL } from '../../lib/modelUrls';
 import { Player, PlayerController } from '../Player';
 import { PLAYER_EYE_OFFSET } from '../../lib/playerDimensions';
+import { bookSizeOf, pedestalSize } from '../../lib/book/geometry';
 
 /**
  * RND-08: everything that needs @react-three/rapier. Loaded lazily (Rapier is a ~2.3 MB chunk
@@ -128,6 +129,10 @@ export default function PhysicsWorld({ mode, viewerWalls, viewerInstances, child
         () => instances.filter((i) => (i.artwork?.asset?.type || 'image') === 'model3d'),
         [instances],
     );
+    const bookInstances = useMemo(
+        () => instances.filter((i) => i.artwork?.asset?.type === 'book'),
+        [instances],
+    );
 
     return (
         <Physics gravity={[0, -9.81, 0]}>
@@ -140,6 +145,16 @@ export default function PhysicsWorld({ mode, viewerWalls, viewerInstances, child
                     <ModelCollider instance={instance} />
                 </Suspense>
             ))}
+            {bookInstances.map((instance) => {
+                const pedestal = pedestalSize(bookSizeOf(instance));
+                return (
+                    <RigidBody key={`book-${instance.id}`} type="fixed" colliders={false}
+                        position={[instance.position_x, instance.position_y, instance.position_z]}
+                        rotation={[0, instance.rotation_y, 0]}>
+                        <CuboidCollider args={[pedestal.width / 2, pedestal.height / 2, pedestal.depth / 2]} position={[0, pedestal.height / 2, 0]} />
+                    </RigidBody>
+                );
+            })}
             {mode === 'viewer' ? (
                 <Player />
             ) : (

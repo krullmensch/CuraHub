@@ -4,7 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import * as THREE from 'three';
 import { instanceRefMap, useEditorStore, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '@/store/editorStore';
 import { artworkFrameLayout } from '@/lib/wallEditor/footprint';
-import { SplatHitProxy } from '@/lib/splats';
+import { BoxHitProxy } from '@/lib/boxHitProxy';
 import { WE_COLORS } from './wall-editor/theme';
 
 /**
@@ -60,7 +60,7 @@ function localBounds(group: THREE.Object3D): THREE.Box3 | null {
     group.traverse((o) => { if (o.userData.selectionBounds) flagged = true; });
     const box = new THREE.Box3();
     group.traverse((o) => {
-        if (o instanceof SplatHitProxy) {
+        if (o instanceof BoxHitProxy) {
             if (!o.box.isEmpty()) {
                 _relative.multiplyMatrices(_inverse, o.matrixWorld);
                 box.union(_meshBox.copy(o.box).applyMatrix4(_relative));

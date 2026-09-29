@@ -3,7 +3,8 @@ import { useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { gooeyToast } from 'goey-toast';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
-import { SPLAT_UP_FLIP, SplatHitProxy, loadSplat, splatAnchor, type SplatHandle } from '../lib/splats';
+import { SPLAT_UP_FLIP, loadSplat, splatAnchor, type SplatHandle } from '../lib/splats';
+import { BoxHitProxy } from '../lib/boxHitProxy';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
 
 interface SplatInstanceProps {
@@ -39,7 +40,7 @@ export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
         const [result, setResult] = useState<{ url: string; state: LoadState } | null>(null);
         const load = result?.url === url ? result.state : LOADING;
         const hitProxy = useMemo(() => {
-            const proxy = new SplatHitProxy();
+            const proxy = new BoxHitProxy();
             // SelectionOutline measures the splat by this box
             proxy.userData.selectionBounds = true;
             return proxy;

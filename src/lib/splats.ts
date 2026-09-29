@@ -73,37 +73,6 @@ export function splatAnchor(frame: SplatFrame): { offset: [number, number, numbe
     };
 }
 
-const _inverse = new THREE.Matrix4();
-const _ray = new THREE.Ray();
-const _point = new THREE.Vector3();
-
-/**
- * Invisible Object3D that answers raycasts with a box (in its local space). Clicking and the
- * first-person info raycast test this box instead of millions of splats; R3F raycasts every
- * pointer move. Rays starting inside the box don't hit — a room-sized capture would otherwise
- * swallow every click made from within it.
- */
-export class SplatHitProxy extends THREE.Object3D {
-    readonly box = new THREE.Box3();
-
-    constructor() {
-        super();
-        this.name = 'SplatHitProxy';
-    }
-
-    raycast(raycaster: THREE.Raycaster, intersects: THREE.Intersection[]): void {
-        if (this.box.isEmpty()) return;
-        _inverse.copy(this.matrixWorld).invert();
-        _ray.copy(raycaster.ray).applyMatrix4(_inverse);
-        if (this.box.containsPoint(_ray.origin)) return;
-        if (!_ray.intersectBox(this.box, _point)) return;
-        _point.applyMatrix4(this.matrixWorld);
-        const distance = raycaster.ray.origin.distanceTo(_point);
-        if (distance < raycaster.near || distance > raycaster.far) return;
-        intersects.push({ distance, point: _point.clone(), object: this });
-    }
-}
-
 /** A loaded splat, ready to be added below the SPLAT_UP_FLIP group. */
 export interface SplatHandle {
     object: THREE.Object3D;
