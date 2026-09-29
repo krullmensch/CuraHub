@@ -3,7 +3,7 @@ import path from 'path';
 import { PrismaClient } from '@prisma/client';
 import { readOptionalUser, userCanAccessProject } from '../lib/middleware';
 import { booksDir, readBookMetadata } from '../lib/bookPdf';
-import { canReadBookPdf, safeBookFile } from '../lib/bookAccess';
+import { canReadBookPdf, publishedPlacementWhere, safeBookFile } from '../lib/bookAccess';
 
 export const booksRouter = Router();
 const prisma = new PrismaClient();
@@ -30,8 +30,9 @@ booksRouter.get('/:assetId/pdf', async (req, res) => {
         const hasProjectAccess = !!user && (user.role === 'admin'
             || (asset.projectId !== null && await userCanAccessProject(prisma, user.userId, asset.projectId, false)));
         const publicReadable = asset.artwork?.publicReadable === true;
-        const inPublishedVersion = !hasProjectAccess && publicReadable && asset.artwork
-            ? await prisma.artworkInstance.count({ where: { artworkId: asset.artwork.id, version: { is_published: true } } }) > 0
+        const placementWhere = asset.artwork ? publishedPlacementWhere(asset.artwork.id, asset.projectId) : null;
+        const inPublishedVersion = !hasProjectAccess && publicReadable && placementWhere
+            ? await prisma.artworkInstance.count({ where: placementWhere }) > 0
             : false;
         if (!canReadBookPdf({ hasProjectAccess, publicReadable, inPublishedVersion })) return notFound(res);
 

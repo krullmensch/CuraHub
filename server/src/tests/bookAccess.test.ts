@@ -1,4 +1,4 @@
-import { canReadBookPdf, safeBookFile } from '../lib/bookAccess';
+import { canReadBookPdf, publishedPlacementWhere, safeBookFile } from '../lib/bookAccess';
 
 describe('canReadBookPdf', () => {
     const cases: [boolean, boolean, boolean, boolean][] = [
@@ -22,5 +22,17 @@ describe('safeBookFile', () => {
         expect(safeBookFile('sub/abc.pdf')).toBeNull();
         expect(safeBookFile('abc.webp')).toBeNull();
         expect(safeBookFile('')).toBeNull();
+    });
+});
+
+describe('publishedPlacementWhere', () => {
+    it('denies (null) when the asset has no project', () => {
+        expect(publishedPlacementWhere(7, null)).toBeNull();
+    });
+    it('only counts published versions of the book\'s own project', () => {
+        expect(publishedPlacementWhere(7, 3)).toEqual({
+            artworkId: 7,
+            version: { is_published: true, exhibition: { projectId: 3 } },
+        });
     });
 });
