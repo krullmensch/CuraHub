@@ -21,8 +21,8 @@ import {
     type FrameStyleId,
     type PassepartoutPlacement,
 } from '@/lib/frameStyles';
-import { NumericInput } from './NumericInput';
 import type { PassepartoutValue } from '@/lib/passepartout';
+import { NumericInput } from './NumericInput';
 
 const formatCm = (value: number) => value.toLocaleString('de-DE', { maximumFractionDigits: 1 });
 const formatMm = (value: number) => value.toLocaleString('de-DE', { maximumFractionDigits: 1 });
@@ -44,13 +44,8 @@ export interface FrameControlsProps {
     passepartout: PassepartoutValue;
     onPassepartoutToggle: (on: boolean) => void;
     onPassepartoutChange: (passepartout: PassepartoutValue) => void;
-    /**
-     * Current picture size in cm (the frame opening without passepartout). Left out for a
-     * multi-selection: outer size and the maker's format range are per picture.
-     */
-    pictureCm?: { w: number; h: number };
-    /** The selected pictures differ — a change applies to all of them. */
-    mixed?: boolean;
+    /** Current picture size in cm (the frame opening without passepartout). */
+    pictureCm: { w: number; h: number };
 }
 
 const selectClass = "w-full h-8 text-xs bg-zinc-900 border border-zinc-700 text-zinc-100 rounded-md px-2 focus:outline-none focus:ring-1 focus:ring-blue-500";
@@ -58,7 +53,7 @@ const toggleClass = (active: boolean) => cn("flex-1 h-8 text-xs", active ? "bg-b
 
 /** Frame profile and colour (the HALBE and Max Aab ranges) plus the passepartout of a picture. */
 export const FrameControls = ({
-    frameStyle, onFrameToggle, onFrameStyleChange, passepartout, onPassepartoutToggle, onPassepartoutChange, pictureCm, mixed = false,
+    frameStyle, onFrameToggle, onFrameStyleChange, passepartout, onPassepartoutToggle, onPassepartoutChange, pictureCm,
 }: FrameControlsProps) => {
     const style = frameStyleSpec(frameStyle);
     const hasPassepartout = !!style && passepartout.width > 0;
@@ -83,8 +78,8 @@ export const FrameControls = ({
         pickStyle(styleForProfile(profile, preferred));
     };
     const layout = framedArtworkLayout({
-        width: (pictureCm?.w ?? 0) / 100,
-        height: (pictureCm?.h ?? 0) / 100,
+        width: pictureCm.w / 100,
+        height: pictureCm.h / 100,
         frameStyle,
         passepartoutWidth: passepartout.width,
         passepartoutPlacement: passepartout.placement,
@@ -94,15 +89,12 @@ export const FrameControls = ({
     const openingW = layout.openingWidth * 100;
     const openingH = layout.openingHeight * 100;
     const formats = style?.profile.formats;
-    const outsideFormats = !!pictureCm && !!style && !!formats && !profileFitsFormat(style.profile, openingW, openingH);
+    const outsideFormats = !!style && !!formats && !profileFitsFormat(style.profile, openingW, openingH);
 
     return (
         <>
             <div className="space-y-2">
                 <Label className="text-xs text-zinc-400 uppercase tracking-wider">Rahmen</Label>
-                {mixed && (
-                    <p className="text-[10px] text-amber-400">Gemischt — eine Änderung gilt für alle ausgewählten Bilder.</p>
-                )}
                 <div className="flex gap-1">
                     <Button variant="secondary" size="sm" onClick={() => onFrameToggle(true)} className={toggleClass(!!style)}>Gerahmt</Button>
                     <Button variant="secondary" size="sm" onClick={() => onFrameToggle(false)} className={toggleClass(!style)}>Ohne Rahmen</Button>
@@ -210,11 +202,9 @@ export const FrameControls = ({
                             </p>
                         </>
                     )}
-                    {pictureCm && (
-                        <p className="text-[11px] text-zinc-300">
-                            Außenmaß {formatCm(outerW)} × {formatCm(outerH)} cm
-                        </p>
-                    )}
+                    <p className="text-[11px] text-zinc-300">
+                        Außenmaß {formatCm(outerW)} × {formatCm(outerH)} cm
+                    </p>
                 </div>
             )}
         </>

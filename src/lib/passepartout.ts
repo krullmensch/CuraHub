@@ -1,4 +1,4 @@
-import { isPassepartoutPlacement, type PassepartoutPlacement } from './frameStyles';
+import { isPassepartoutPlacement, type PassepartoutPlacement } from '@/lib/frameStyles';
 
 export interface PassepartoutValue {
     /** Width at the sides in cm, 0 = none. */

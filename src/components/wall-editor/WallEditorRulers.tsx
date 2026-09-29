@@ -2,7 +2,8 @@ import { memo } from 'react';
 import type { Rect } from '@/lib/wallEditor/layout';
 import { right, top } from '@/lib/wallEditor/layout';
 import { formatCm } from '@/lib/wallEditor/format';
-import { RULER_SIZE, type RulerGuide, type ViewTransform } from '@/store/wallEditorViewStore';
+import { RULER_SIZE, type ViewTransform } from '@/store/wallEditorViewStore';
+import type { GuideAxis } from '@/lib/wallEditor/guides';
 import { WE_COLORS, WE_FONT } from './theme';
 
 const STEPS_CM = [1, 2, 5, 10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000];
@@ -16,6 +17,13 @@ function pickSteps(pxPerM: number): { major: number; minor: number } {
     return { major, minor };
 }
 
+export interface RulerGuideMark {
+    id: number;
+    axis: GuideAxis;
+    /** Wall coordinate: u for vertical guides, v for horizontal ones. */
+    pos: number;
+}
+
 interface RulersProps {
     vt: ViewTransform;
     width: number;
@@ -24,13 +32,14 @@ interface RulersProps {
     left: number;
     selection: Rect | null;
     pointer: { u: number; v: number } | null;
-    guides: RulerGuide[];
-    onRulerPointerDown: (axis: 'x' | 'y', e: React.PointerEvent) => void;
+    guides: RulerGuideMark[];
+    /** Top ruler → horizontal guide, left ruler → vertical guide (like Photoshop/Figma). */
+    onRulerPointerDown: (ruler: 'top' | 'left', e: React.PointerEvent) => void;
 }
 
 const label = (cm: number) => String(Math.round(cm * 10) / 10).replace('.', ',');
 
-/** Rulers along the top (cm from the wall's left edge) and left side (cm above the floor). */
+/** Rulers along the top (cm from the wall's left edge) and left side (cm above the floor). Dragging out of the top ruler creates a horizontal guide, out of the left one a vertical one. */
 export const WallEditorRulers = memo(({ vt, width, height, left, selection, pointer, guides, onRulerPointerDown }: RulersProps) => {
     const { major, minor } = pickSteps(vt.pxPerM);
     const R = RULER_SIZE;
@@ -79,7 +88,7 @@ export const WallEditorRulers = memo(({ vt, width, height, left, selection, poin
     return (
         <g>
             {/* Top ruler */}
-            <g onPointerDown={(e) => onRulerPointerDown('x', e)} style={{ cursor: 'row-resize' }}>
+            <g onPointerDown={(e) => onRulerPointerDown('top', e)} style={{ cursor: 'row-resize' }}>
                 <rect x={0} y={0} width={width} height={R} fill={WE_COLORS.rulerBg} />
                 {selection && selX2 > selX1 && (
                     <rect x={selX1} y={0} width={selX2 - selX1} height={R} fill={WE_COLORS.select} opacity={0.25} />
@@ -94,14 +103,14 @@ export const WallEditorRulers = memo(({ vt, width, height, left, selection, poin
                 {pointer && vt.toScreenX(pointer.u) > 0 && (
                     <line x1={vt.toScreenX(pointer.u)} x2={vt.toScreenX(pointer.u)} y1={0} y2={R} stroke="#fff" strokeWidth={1} opacity={0.7} />
                 )}
-                {guides.filter((g) => g.axis === 'x').map((g) => (
-                    <path key={g.id} d={`M ${vt.toScreenX(g.value) - 4} ${R - 6} L ${vt.toScreenX(g.value) + 4} ${R - 6} L ${vt.toScreenX(g.value)} ${R} Z`} fill={WE_COLORS.guide} />
+                {guides.filter((g) => g.axis === 'v').map((g) => (
+                    <path key={g.id} d={`M ${vt.toScreenX(g.pos) - 4} ${R - 6} L ${vt.toScreenX(g.pos) + 4} ${R - 6} L ${vt.toScreenX(g.pos)} ${R} Z`} fill={WE_COLORS.guide} />
                 ))}
                 <line x1={0} x2={width} y1={R - 0.5} y2={R - 0.5} stroke="rgba(255,255,255,0.12)" />
             </g>
 
             {/* Left ruler */}
-            <g onPointerDown={(e) => onRulerPointerDown('y', e)} style={{ cursor: 'col-resize' }}>
+            <g onPointerDown={(e) => onRulerPointerDown('left', e)} style={{ cursor: 'col-resize' }}>
                 <rect x={left} y={R} width={R} height={Math.max(0, height - R)} fill={WE_COLORS.rulerBg} />
                 {selection && selY2 > selY1 && (
                     <rect x={left} y={selY1} width={R} height={selY2 - selY1} fill={WE_COLORS.select} opacity={0.25} />
@@ -110,8 +119,8 @@ export const WallEditorRulers = memo(({ vt, width, height, left, selection, poin
                 {pointer && vt.toScreenY(pointer.v) > R && (
                     <line y1={vt.toScreenY(pointer.v)} y2={vt.toScreenY(pointer.v)} x1={left} x2={left + R} stroke="#fff" strokeWidth={1} opacity={0.7} />
                 )}
-                {guides.filter((g) => g.axis === 'y').map((g) => (
-                    <path key={g.id} d={`M ${left + R - 6} ${vt.toScreenY(g.value) - 4} L ${left + R - 6} ${vt.toScreenY(g.value) + 4} L ${left + R} ${vt.toScreenY(g.value)} Z`} fill={WE_COLORS.guide} />
+                {guides.filter((g) => g.axis === 'h').map((g) => (
+                    <path key={g.id} d={`M ${left + R - 6} ${vt.toScreenY(g.pos) - 4} L ${left + R - 6} ${vt.toScreenY(g.pos) + 4} L ${left + R} ${vt.toScreenY(g.pos)} Z`} fill={WE_COLORS.guide} />
                 ))}
                 <line y1={R} y2={height} x1={left + R - 0.5} x2={left + R - 0.5} stroke="rgba(255,255,255,0.12)" />
             </g>

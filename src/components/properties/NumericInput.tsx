@@ -3,7 +3,7 @@ import { Input } from '@/components/ui/input';
 
 // Numeric input that holds local string state while focused, only committing on blur/Enter.
 // This prevents React from snapping the value back mid-edit (e.g. after typing "-" or "1.").
-export interface NumericInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
+interface NumericInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 'onChange' | 'value'> {
     value: string | number;
     onChange: (raw: string) => void;
     className?: string;

@@ -34,8 +34,9 @@ import {
     type AxisEdge,
     type WorldAxis,
 } from '@/lib/selectionOperations';
-import { FrameControls } from './FrameControls';
-import { NumericInput } from './NumericInput';
+import { FrameControls } from './properties/FrameControls';
+import { NumericInput } from './properties/NumericInput';
+import { pictureSize } from '@/lib/wallEditor/footprint';
 
 const SCALE_STEP = 0.1;
 
@@ -84,6 +85,8 @@ export const MultiSelectionPanel = () => {
     const framePrimary = framable.find((i) => i.id === primaryId) ?? framable[0];
     const frameStyle = framePrimary ? frameStyleOf(framePrimary.frameStyle) : DEFAULT_FRAME_STYLE;
     const passepartout = framePrimary ? passepartoutOf(framePrimary) : { width: 0, placement: 'center' as const };
+    const framePictureSize = framePrimary ? pictureSize(framePrimary) : { w: 0, h: 0 };
+    const framePictureCm = { w: framePictureSize.w * 100, h: framePictureSize.h * 100 };
     const frameMixed = framable.some((i) => {
         const p = passepartoutOf(i);
         return frameStyleOf(i.frameStyle) !== frameStyle || p.width !== passepartout.width || p.placement !== passepartout.placement;
@@ -204,6 +207,11 @@ export const MultiSelectionPanel = () => {
             {framable.length > 0 && (
                 <>
                     <Separator className="bg-zinc-800" />
+                    {frameMixed && (
+                        <p className="text-[10px] text-amber-400 leading-relaxed">
+                            Rahmen/Passepartout: Gemischt. Eine Änderung gilt für alle Bilder der Auswahl.
+                        </p>
+                    )}
                     <FrameControls
                         frameStyle={frameStyle}
                         onFrameToggle={(framed) => onFrameStyleChange(framed ? (frameStyle === 'none' ? DEFAULT_FRAME_STYLE : frameStyle) : 'none')}
@@ -214,7 +222,7 @@ export const MultiSelectionPanel = () => {
                             placement: passepartout.placement,
                         })}
                         onPassepartoutChange={onPassepartoutChange}
-                        mixed={frameMixed}
+                        pictureCm={framePictureCm}
                     />
                     {framable.length < selected.length && (
                         <p className="text-[10px] text-zinc-500">Gilt für die {framable.length} Bilder der Auswahl.</p>

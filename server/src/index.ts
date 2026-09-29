@@ -12,6 +12,7 @@ import { foldersRouter } from './routes/folders';
 import { projectsRouter } from './routes/projects';
 import { versionsRouter } from './routes/versions';
 import { wallsRouter } from './routes/walls';
+import { scaleFiguresRouter } from './routes/scaleFigures';
 import { exhibitionsRouter } from './routes/exhibitions';
 import { publicRouter } from './routes/public';
 import { adminRouter } from './routes/admin';
@@ -70,6 +71,7 @@ app.use('/artworks', artworksRouter);
 app.use('/instances', instancesRouter);
 app.use('/projects', projectsRouter);
 app.use('/walls', wallsRouter);
+app.use('/scale-figures', scaleFiguresRouter);
 app.use('/exhibitions', exhibitionsRouter);
 app.use('/admin', adminRouter);
 app.use('/public', publicRouter);
@@ -84,6 +86,7 @@ app.use('/api/artworks', artworksRouter);
 app.use('/api/instances', instancesRouter);
 app.use('/api/projects', projectsRouter);
 app.use('/api/walls', wallsRouter);
+app.use('/api/scale-figures', scaleFiguresRouter);
 app.use('/api/exhibitions', exhibitionsRouter);
 app.use('/api/admin', adminRouter);
 app.use('/api/public', publicRouter);
@@ -147,7 +150,7 @@ if (process.env.NODE_ENV === 'production') {
     // every unmatched API URL still returns the JSON 404.
     const API_NAMESPACE_SEGMENTS = new Set([
         'api', 'auth', 'upload', 'uploads', 'public', 'assets',
-        'folders', 'artworks', 'instances', 'projects', 'walls', 'admin',
+        'folders', 'artworks', 'instances', 'projects', 'walls', 'scale-figures', 'admin',
     ]);
 
     // Frontend route patterns, mirroring src/App.tsx <Route path="..."> entries

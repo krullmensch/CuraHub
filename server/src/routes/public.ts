@@ -86,6 +86,8 @@ publicRouter.get('/exhibition/:slug', async (req, res) => {
                     },
                 },
                 walls: true,
+                // Only figures the curator switched on for the viewer
+                scaleFigures: { where: { isPublic: true } },
             },
         });
         if (!version) {
@@ -97,6 +99,7 @@ publicRouter.get('/exhibition/:slug', async (req, res) => {
             version: { id: version.id, comment: version.comment, published_at: version.published_at },
             instances: version.instances,
             walls: version.walls,
+            scaleFigures: version.scaleFigures,
         });
     } catch (err) {
         console.error('Error fetching exhibition by slug:', err);
