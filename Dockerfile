@@ -35,8 +35,8 @@ RUN npm run build
 
 # Production Stage
 FROM node:20-alpine
-# Runtime dependencies — ffmpeg is required for video transcoding and thumbnail generation
-RUN apk add --no-cache openssl libc6-compat ca-certificates curl ffmpeg
+# Runtime dependencies — ffmpeg for video transcoding/thumbnails, poppler-utils (pdfinfo, pdftoppm) for book covers
+RUN apk add --no-cache openssl libc6-compat ca-certificates curl ffmpeg poppler-utils
 WORKDIR /app
 
 # Copy Frontend Build
