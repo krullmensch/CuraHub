@@ -142,6 +142,11 @@ Frontal, Figma-like editing of one wall face (`src/components/wall-editor/`, `sr
 - Layout math (align, distribute, spacing, snapping, measuring) is pure and lives in `lib/wallEditor/layout.ts`; commands on the selection in `lib/wallEditor/operations.ts`.
 - `artworkTextureManager` also sizes textures for orthographic cameras (on-screen size = `sizeM × pxPerM`).
 - EditorPage's keyboard handler ignores everything but undo/redo while the editor is open; the overlay handles its own keys.
+- Measures in 3D: the toggles `showHangingLine` / `showFloorDistances` / `showGaps` are shared by 2D and 3D and persisted (`lib/wallEditor/measureToggles.ts`, localStorage `curahub-wall-measures`); the tool bar's "Maße" popover switches them too. `lib/wallEditor/annotations.ts` computes them for every face with artworks (`collectMeasuredFaces`, `faceAnnotations`, `floorLeaders` — pure, Vitest). `WallMeasurements3D` draws them in the orbit view only: lines as merged quads 3 mm in front of the wall (one mesh per colour), labels as `sizeAttenuation: false` sprites (textures from `lib/measureLabelTextures.ts`). Labels are depth-tested but slide along the view ray towards the camera (screen position unchanged) so they don't cut into their own wall at oblique angles, and hide when the camera is behind their face.
+
+### Selection Outline
+
+`SelectionOutline.tsx`: `SelectionOutlineTracker` (inside the Canvas) projects the selected artwork's corners every frame into one SVG path (`SelectionOutlineSvg`, over the canvas): constant 2.5 px, no depth test, same on WebGPU and WebGL. Framed pictures use `artworkFrameLayout` (the frame is instanced elsewhere), videos the front rectangle of their mesh bounds, models/splats the 12 box edges; a splat is measured by its `SplatHitProxy` box (`userData.selectionBounds`). The instance components no longer tint or box the selection themselves.
 
 ### Picture Frames & Passepartouts
 
