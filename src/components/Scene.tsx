@@ -10,6 +10,7 @@ import { ShaderWarmup } from './ShaderWarmup';
 import { WindowView } from './WindowView';
 import { EditorGrid } from './EditorGrid';
 import { WallEditorRoomFace } from './wall-editor/WallEditorRoomFace';
+import { WallMeasurements3D } from './WallMeasurements3D';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
@@ -85,6 +86,9 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, onShaders
 
                 {/* 2D wall editor: the open room wall, drawn on its own */}
                 {isEditor && <WallEditorRoomFace />}
+
+                {/* Hanging line, heights above floor and gaps on the walls (orbit view only) */}
+                {isEditor && <WallMeasurements3D />}
 
                 {/* Street outside the windows — first person only; loads when entering it. */}
                 {showWindowView && (
