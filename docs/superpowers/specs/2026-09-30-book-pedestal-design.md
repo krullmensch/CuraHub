@@ -227,3 +227,16 @@ interface BookViewerState {
 - **Vitest (client):** `lib/book/geometry`; `bookViewerStore` + `useControlsLocked`; open order (store set before `exitPointerLock`, spy).
 - **Rendering:** headless Chrome over CDP, WebGPU and WebGL: book on pedestal, label plate, hover outline.
 - **Manual, on the test stack (SSH tunnel, not locally):** upload → badge phases → place → cover override → thickness slider; first person: open by click, ESC → „Klicken zum Weitergehen" → click re-locks; close button re-locks at once; public viewer with the switch on and off.
+
+---
+
+## Plan refinements (2026-09-30, while writing the implementation plan)
+
+- **Cover files are versioned** — `<stem>-cover-<n>.webp` + `-thumb-512/256.webp`; every change bumps `metadata.coverVersion` and writes new files (old ones deleted). Replaces the `?v=` query: `/uploads` is cached 7 days and the `-thumb-512 → -thumb-256` naming convention would break with a query string.
+- **Failure message key** is `metadata.processingError` (same as videos, already read by `/assets/:id/processing`), not `metadata.error`.
+- **The job creates the Artwork** (upsert by `assetId`, title from the filename, artist empty, width/height from the page size) — uploads don't create artworks for other types, but the book settings need one before placement.
+- **ESC in the editor's first person** closes the book and returns to the orbit view (an unlocked pointer means „out of first person" in the editor, and ESC is no user gesture to re-lock). The public viewer shows its existing entry overlay instead. The close button re-locks at once in both.
+- **`VideoProcessingBadge` / `useVideoProcessing` are reused unchanged**; only the phase list and labels gain `cover` („Cover wird erzeugt") and `tiers` („Vorschaubilder"). No rename.
+- **Books are fixed-size media** like monitors (`isFixedSizeMedium`): no scale gizmo, no `S`, skipped by group scaling and height alignment.
+- **`SplatHitProxy` becomes `BoxHitProxy`** in `src/lib/boxHitProxy.ts`, used by splats and books.
+- **Server `INSTANCE_MEDIA`** gains `book` (the instances route validates `medium`).
