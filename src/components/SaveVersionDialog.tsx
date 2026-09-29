@@ -57,6 +57,7 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
               frameStyle: frameStyleOf(inst.frameStyle),
               passepartoutWidth: inst.passepartoutWidth ?? 0,
               passepartoutPlacement: inst.passepartoutPlacement ?? 'center',
+              opacity: inst.opacity ?? 1,
               position_x: inst.position_x,
               position_y: inst.position_y,
               position_z: inst.position_z,

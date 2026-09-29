@@ -49,6 +49,7 @@ const createVersionSchema = z.object({
         frameStyle: frameStyleSchema.optional(),
         passepartoutWidth: passepartoutWidthSchema.optional(),
         passepartoutPlacement: passepartoutPlacementSchema.optional(),
+        opacity: z.number().min(0).max(1).optional(),
         position_x: z.number(),
         position_y: z.number(),
         position_z: z.number(),
@@ -347,6 +348,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                         frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
                         passepartoutWidth: inst.passepartoutWidth ?? 0,
                         passepartoutPlacement: inst.passepartoutPlacement ?? 'center',
+                        opacity: inst.opacity ?? 1,
                         // Keep the wall index on the instance itself: skipped instances
                         // (missing assets) would otherwise shift a positional lookup.
                         _wallIndex: inst.wallIndex ?? null,
@@ -380,6 +382,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                 frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
                 passepartoutWidth: inst.passepartoutWidth,
                 passepartoutPlacement: inst.passepartoutPlacement,
+                opacity: inst.opacity,
                 _wallIndex: inst.wallId ? (oldWallIdToIndex.get(inst.wallId) ?? null) : null,
                 position_x: inst.position_x,
                 position_y: inst.position_y,
@@ -702,6 +705,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
             frameStyle: inst.frameStyle ?? DEFAULT_FRAME_STYLE,
             passepartoutWidth: inst.passepartoutWidth,
             passepartoutPlacement: inst.passepartoutPlacement,
+            opacity: inst.opacity,
             _wallIndex: inst.wallId ? (oldWallIdToIndex.get(inst.wallId) ?? null) : null,
             position_x: inst.position_x,
             position_y: inst.position_y,

@@ -9,6 +9,9 @@ import { artworkTitleFromFilename } from '../lib/artworkTitle';
 export const instancesRouter = Router();
 const prisma = new PrismaClient();
 
+/** Opacity of a beamer projection (1 = opaque). */
+const opacitySchema = z.number().min(0).max(1);
+
 const instanceSchema = z.object({
   versionId: z.number(),
   artworkId: z.number().optional(),
@@ -18,6 +21,7 @@ const instanceSchema = z.object({
   frameStyle: frameStyleSchema.optional(),
   passepartoutWidth: passepartoutWidthSchema.optional(),
   passepartoutPlacement: passepartoutPlacementSchema.optional(),
+  opacity: opacitySchema.optional(),
   position: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   rotation: z.object({ x: z.number(), y: z.number(), z: z.number() }),
   scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional()
@@ -85,6 +89,7 @@ instancesRouter.post('/', authenticate, idempotency, async (req: Request, res) =
                 frameStyle: data.frameStyle ?? DEFAULT_FRAME_STYLE,
                 passepartoutWidth: data.passepartoutWidth ?? 0,
                 passepartoutPlacement: data.passepartoutPlacement ?? 'center',
+                opacity: data.opacity ?? 1,
                 position_x: data.position.x,
                 position_y: data.position.y,
                 position_z: data.position.z,
@@ -155,6 +160,7 @@ const patchInstanceSchema = z.object({
     frameStyle: frameStyleSchema.optional(),
     passepartoutWidth: passepartoutWidthSchema.optional(),
     passepartoutPlacement: passepartoutPlacementSchema.optional(),
+    opacity: opacitySchema.optional(),
     position: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
     rotation: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
     scale: z.object({ x: z.number(), y: z.number(), z: z.number() }).optional(),
@@ -195,6 +201,9 @@ instancesRouter.patch('/:id', authenticate, async (req: Request, res) => {
         }
         if (data.passepartoutPlacement !== undefined) {
             updateData.passepartoutPlacement = data.passepartoutPlacement;
+        }
+        if (data.opacity !== undefined) {
+            updateData.opacity = data.opacity;
         }
         if (data.position) {
             updateData.position_x = data.position.x;

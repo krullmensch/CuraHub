@@ -328,6 +328,8 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
 
         // Branch B: Beamer — frameless plane sized by user scale × video aspect.
         if (medium === 'beamer') {
+            const opacity = Math.min(Math.max(instance.opacity ?? 1, 0), 1);
+            const translucent = opacity < 1;
             return (
                 <group
                     ref={ref}
@@ -339,10 +341,15 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 >
                     <mesh position={[0, 0, 0.001]} frustumCulled>
                         <planeGeometry args={[beamerWidth, beamerHeight]} />
+                        {/* Switching `transparent` needs a new program — remount instead of patching. */}
                         <meshBasicMaterial
+                            key={translucent ? 'translucent' : 'opaque'}
                             map={texture}
                             side={THREE.DoubleSide}
                             toneMapped={false}
+                            transparent={translucent}
+                            opacity={opacity}
+                            depthWrite={!translucent}
                         />
                     </mesh>
                 </group>
