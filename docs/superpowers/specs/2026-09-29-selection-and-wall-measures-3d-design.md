@@ -65,12 +65,12 @@ der vier Seiten) und Raumwände.
 ### Daten und Store
 
 - Die drei Toggles bleiben in `wallEditorViewStore` — eine Quelle für 2D und 3D.
-- **Persistenz:** `toggle()` schreibt `showHangingLine`, `showFloorDistances`, `showGaps` als JSON nach
+- **Persistenz** (Helfer in `lib/wallEditor/measureToggles.ts`, Zod-validiert): `toggle()` schreibt `showHangingLine`, `showFloorDistances`, `showGaps` als JSON nach
   localStorage (`curahub-wall-measures`); beim Start werden sie gelesen, mit try/catch und Fallback auf
   die Defaults wie `readHangingHeight`. Defaults unverändert (Hängehöhe an, Rest aus).
   `showRulers` und `snapping` bleiben unpersistiert.
 - **Flächen sammeln:** neue pure Funktion
-  `collectMeasuredFaces(instances, walls, roomFaces): WallFace[]` in `lib/wallEditor/wallArtworks.ts`:
+  `collectMeasuredFaces(instances, walls, roomFaces): WallFace[]` in `lib/wallEditor/annotations.ts`:
   1. pro Instanz `targetForInstance` → nach `targetKey` gruppieren,
   2. pro Gruppe `resolveFace` + `collectWallFace` (gleiche Rects wie im 2D, inkl. Rahmen/Passepartout),
   3. Flächen ohne Werke fallen weg, Werke ohne Fläche werden ignoriert.
@@ -95,11 +95,14 @@ Alles in Wandkoordinaten (`u` ab linker Kante, `v` Höhe über Boden). Formatier
 
 - **Hängehöhe:** horizontal von `u = 0` bis Flächenbreite bei `v = bottom + hangingHeight`, gestrichelt
   (6 cm Strich, 4 cm Lücke). Label „Hängehöhe 150 cm“ am linken Ende. Farbe `WE_COLORS.hanging`,
-  Text dunkel (`#1c1917`) wie im 2D.
+  Text dunkel (`#1c1917`) wie im 2D. Liegt die Hängehöhe über der Fläche (größer als ihre Höhe),
+  entfallen Linie und Label auf dieser Fläche.
 - **Höhen über Boden (`floorLeaders`):** pro Werk senkrechte Linie mittig von der Unterkante des
   Außenmaßes bis zum Boden (`v = bottom`), kurze Querstriche an beiden Enden. Label
   „Mitte 148 cm“ (Bildmitte über Boden) auf halber Strecke. Pill-Farbe wie 2D
-  (`rgba(24,24,27,0.85)`), Linie `WE_COLORS.floor`. Hängen zwei Werke übereinander, läuft der Strich
+  (`rgba(24,24,27,0.85)`), Linie dunkel `#18181b` (`WE_COLORS.floor` ist halbtransparentes Weiß
+  und wäre auf weißen Galeriewänden unsichtbar). Werke, deren Unterkante am oder unter dem Boden
+  liegt, bekommen keinen Strich. Hängen zwei Werke übereinander, läuft der Strich
   des oberen hinter dem unteren durch.
 - **Abstände:** `rowGaps(rects)` wie im 2D → horizontale Maßlinien mit Endstrichen, Label mittig,
   Farbe `WE_COLORS.spacing`.
@@ -124,9 +127,9 @@ gibt `null` zurück, wenn die Sichtbarkeitsbedingung oben nicht erfüllt ist.
   FOV-Änderung, nicht pro Frame.
 - **Interaktion:** `raycast` auf Linien und Sprites ist leer — sie blockieren weder Werk-Klicks noch
   Doppelklicks auf Raumwände noch die Drop-Platzierung.
-- **Fensterglas:** Bei der Offscreen-Capture der Glasreflexion (`Satellit`, analog `hideSplats`)
-  werden die Annotationen ausgeblendet.
 - Keine Arbeit in `useFrame`.
+- Die Glasreflexion (`Satellit`) wird nur in der Ego-Perspektive aufgenommen, wo keine Maße gezeichnet
+  werden — kein Ausblenden nötig.
 
 ### Bedienung
 
