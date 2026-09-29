@@ -23,6 +23,7 @@ import { WallEditor } from '../components/wall-editor/WallEditorChrome';
 import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
+import { commonFaceTarget } from '../lib/selectionFaces';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
@@ -186,10 +187,10 @@ function openWallEditorForSelection(): boolean {
     store.openWallEditor({ kind: 'wall', wallId: wall.id, side: camera ? sideSeenFrom(wall, camera) : 'front' });
     return true;
   }
-  const inst = store.selectedInstanceId !== null ? store.localInstances.find(i => i.id === store.selectedInstanceId) : undefined;
-  const target = inst ? targetForInstance(inst, store.localWalls, useWallEditorView.getState().roomFaces) : null;
-  if (!inst || !target) return false;
-  store.openWallEditor(target, [inst.id]);
+  const selected = store.localInstances.filter(i => store.selectedInstanceIds.includes(i.id));
+  const target = commonFaceTarget(selected, store.localWalls, useWallEditorView.getState().roomFaces);
+  if (!target) return false;
+  store.openWallEditor(target, selected.map(i => i.id));
   return true;
 }
 
@@ -248,12 +249,10 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const setTransformAxisLock = useEditorStore((state) => state.setTransformAxisLock);
   const showTraverses = useEditorStore((state) => state.showTraverses);
   const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
-  const selectedInstanceId = useEditorStore((state) => state.selectedInstanceId);
-  const isMonitorSelected = useEditorStore((state) => {
-    if (!state.selectedInstanceId) return false;
-    const inst = state.localInstances.find(i => i.id === state.selectedInstanceId);
-    return inst?.medium === 'monitor';
-  });
+  const hasInstanceSelection = useEditorStore((state) => state.selectedInstanceIds.length > 0);
+  // Monitors keep the size of their model — one in the selection locks scaling for all.
+  const isMonitorSelected = useEditorStore((state) =>
+    state.localInstances.some(i => i.medium === 'monitor' && state.selectedInstanceIds.includes(i.id)));
   const transformMode = useEditorStore((state) => state.transformMode);
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
   const selectWall = useEditorStore((state) => state.selectWall);
@@ -262,8 +261,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   // 2D wall editor: the selected wall, or the wall the selected artwork hangs on
   const canOpenWallEditor = useEditorStore((state) => {
     if (state.selectedWallId !== null) return true;
-    const inst = state.selectedInstanceId !== null ? state.localInstances.find(i => i.id === state.selectedInstanceId) : undefined;
-    return !!inst && targetForInstance(inst, state.localWalls, useWallEditorView.getState().roomFaces) !== null;
+    const selected = state.localInstances.filter(i => state.selectedInstanceIds.includes(i.id));
+    return commonFaceTarget(selected, state.localWalls, useWallEditorView.getState().roomFaces) !== null;
   });
   // RND-11: preset-dependent pixel ratio; antialiasing is a context attribute and stays as
   // chosen when the Canvas was created.
@@ -509,7 +508,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       }
 
       const store = useEditorStore.getState();
-      const hasSelection = !!(store.selectedInstanceId || store.selectedWallId || store.selectedZoneId);
+      const hasSelection = store.selectedInstanceIds.length > 0 || !!store.selectedWallId || !!store.selectedZoneId;
+      const hasInstances = store.selectedInstanceIds.length > 0;
       const key = e.key.toLowerCase();
 
       // The 2D wall editor handles its own keys (WallEditorOverlay); only undo/redo above apply.
@@ -518,6 +518,13 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       // Open the 2D wall editor for the selected wall / the wall of the selected artwork
       if (key === 'e' && !cmdOrCtrl && store.plannerViewMode !== 'firstPerson') {
         if (openWallEditorForSelection()) e.preventDefault();
+        return;
+      }
+
+      // Select all artworks of the version
+      if (cmdOrCtrl && key === 'a' && store.plannerViewMode !== 'firstPerson') {
+        e.preventDefault();
+        store.selectAllInstances();
         return;
       }
 
@@ -579,7 +586,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         case 's':
           if (!cmdOrCtrl && hasSelection) { // Don't conflict with Cmd+S
             // Monitor size is fixed by the 3D model — scaling is disabled
-            if (store.localInstances.find(i => i.id === store.selectedInstanceId)?.medium === 'monitor') break;
+            if (store.localInstances.some(i => i.medium === 'monitor' && store.selectedInstanceIds.includes(i.id))) break;
             e.preventDefault();
             setTransformMode('scale');
             setTransformAxisLock('none');
@@ -590,17 +597,17 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
         // Axis lock
         case 'x':
-          if (store.selectedInstanceId) {
+          if (hasInstances) {
             setTransformAxisLock(store.transformAxisLock === 'x' ? 'none' : 'x');
           }
           break;
         case 'y':
-          if (store.selectedInstanceId) {
+          if (hasInstances) {
             setTransformAxisLock(store.transformAxisLock === 'y' ? 'none' : 'y');
           }
           break;
         case 'z':
-          if (!cmdOrCtrl && store.selectedInstanceId) {
+          if (!cmdOrCtrl && hasInstances) {
             setTransformAxisLock(store.transformAxisLock === 'z' ? 'none' : 'z');
           }
           break;
@@ -608,7 +615,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         // Delete selected instance
         case 'delete':
         case 'backspace':
-          if (store.selectedInstanceId) {
+          if (hasInstances) {
             e.preventDefault();
             store.deleteSelectedInstance();
           }
@@ -703,16 +710,16 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           backdropFilter: 'blur(12px)',
         }}>
           {/* Transform modes */}
-          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!selectedInstanceId} />
-          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!selectedInstanceId} />
-          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!selectedInstanceId || isMonitorSelected} />
+          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!hasInstanceSelection} />
+          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!hasInstanceSelection} />
+          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!hasInstanceSelection || isMonitorSelected} />
 
           <ToolSeparator />
 
           {/* Axis lock */}
-          <ToolButton icon="X" tooltip="Lock X (X)" active={transformAxisLock === 'x'} activeColor="rgba(239,68,68,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'x' ? 'none' : 'x')} disabled={!selectedInstanceId} />
-          <ToolButton icon="Y" tooltip="Lock Y (Y)" active={transformAxisLock === 'y'} activeColor="rgba(34,197,94,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'y' ? 'none' : 'y')} disabled={!selectedInstanceId} />
-          <ToolButton icon="Z" tooltip="Lock Z (Z)" active={transformAxisLock === 'z'} activeColor="rgba(59,130,246,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'z' ? 'none' : 'z')} disabled={!selectedInstanceId} />
+          <ToolButton icon="X" tooltip="Lock X (X)" active={transformAxisLock === 'x'} activeColor="rgba(239,68,68,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'x' ? 'none' : 'x')} disabled={!hasInstanceSelection} />
+          <ToolButton icon="Y" tooltip="Lock Y (Y)" active={transformAxisLock === 'y'} activeColor="rgba(34,197,94,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'y' ? 'none' : 'y')} disabled={!hasInstanceSelection} />
+          <ToolButton icon="Z" tooltip="Lock Z (Z)" active={transformAxisLock === 'z'} activeColor="rgba(59,130,246,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'z' ? 'none' : 'z')} disabled={!hasInstanceSelection} />
 
           <ToolSeparator />
 

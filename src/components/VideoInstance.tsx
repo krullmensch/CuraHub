@@ -7,6 +7,7 @@ import { getMaxAnisotropy, isWebGPURenderer } from '../lib/rendererBackend';
 import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { pickVideoSource, videoStreamUrl } from '../lib/videoSource';
+import { consumeMarqueeClick } from '@/lib/selectionBridge';
 
 // Monitor GLB preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing
 // this component no longer downloads the model on every route, including the home page
@@ -21,7 +22,7 @@ interface VideoInstanceProps {
 export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
     ({ instance, selected, isEditor = true }, ref) => {
         const asset = instance.artwork.asset;
-        const selectInstance = useEditorStore((state) => state.selectInstance);
+        const pickInstance = useEditorStore((state) => state.pickInstance);
         const gl = useThree((state) => state.gl);
         const invalidate = useThree((state) => state.invalidate);
         const [muted, setMuted] = useState(true);
@@ -207,7 +208,8 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
         const handleClick = (e: ThreeEvent<MouseEvent>) => {
             if (!isEditor) return;
             e.stopPropagation();
-            selectInstance(instance.id);
+            if (consumeMarqueeClick()) return;
+            pickInstance(instance.id, e.nativeEvent.shiftKey);
         };
 
         const handleDoubleClick = (e: ThreeEvent<MouseEvent>) => {

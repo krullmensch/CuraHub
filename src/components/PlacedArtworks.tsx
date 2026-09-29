@@ -35,7 +35,7 @@ interface InstanceSlotProps {
 // (commitLocalChange keeps untouched instance objects). The ref callback is stable per id —
 // a new callback on every render made React detach/re-attach all refs on each list render.
 const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProps) => {
-    const selected = useEditorStore((state) => isEditor && state.selectedInstanceId === instance.id);
+    const selected = useEditorStore((state) => isEditor && state.selectedInstanceIds.includes(instance.id));
     // 2D wall editor: only the artworks of the open face stay visible
     const hidden = useEditorStore((state) => {
         if (!isEditor || !state.wallEditor) return false;
