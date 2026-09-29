@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { BookPropertiesActions } from './book/BookPropertiesActions';
 import { useEditorStore, videoRefMap, modelBBoxMap, isFloorAssetType } from '../store/editorStore';
 import type { TransformMode, MediumType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
@@ -534,6 +535,7 @@ const ArtworkPropertiesContent = ({
     // Splats get the same floor-object controls as 3D models.
     const isModel = isFloorAssetType(assetType);
     const isVideo = assetType === 'video';
+    const isBook = assetType === 'book';
     const sizeLocked  = isVideo && medium === 'monitor';
     const sizeIsBeamer = isVideo && medium === 'beamer';
     const hideAspectToggle = sizeLocked || sizeIsBeamer;
@@ -580,7 +582,7 @@ const ArtworkPropertiesContent = ({
         <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
             <div className="flex gap-1">
                 {modeButtons.map(({ mode, icon: Icon, label }) => {
-                    const isScaleDisabled = mode === 'scale' && sizeLocked;
+                    const isScaleDisabled = mode === 'scale' && (sizeLocked || isBook);
                     return (
                         <Button key={mode} variant={transformMode === mode ? 'default' : 'secondary'} size="sm" onClick={() => setTransformMode(mode)} className={cn("flex-1 h-9 text-xs gap-1.5", transformMode === mode ? "bg-blue-600 hover:bg-blue-500" : "bg-zinc-800 text-zinc-400 hover:bg-zinc-700", isScaleDisabled && "opacity-40 cursor-not-allowed")} title={label} disabled={isScaleDisabled}>
                             <Icon className="h-3.5 w-3.5" />
@@ -639,30 +641,32 @@ const ArtworkPropertiesContent = ({
                     pictureCm={{ w: baseCm.x * Math.abs(transform.scale.x), h: baseCm.y * Math.abs(transform.scale.y) }}
                 />
             )}
-            <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                    <Label className="text-xs text-zinc-400 uppercase tracking-wider">{isModel ? 'Größe (m)' : 'Size (cm)'}</Label>
-                    {!hideAspectToggle && (
-                        <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => setAspectLocked(!aspectLocked)} title={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}>
-                            {aspectLocked ? <Link className="h-3.5 w-3.5" /> : <Unlink className="h-3.5 w-3.5" />}
-                        </Button>
+            {!isBook && (
+                <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                        <Label className="text-xs text-zinc-400 uppercase tracking-wider">{isModel ? 'Größe (m)' : 'Size (cm)'}</Label>
+                        {!hideAspectToggle && (
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-zinc-400 hover:text-white" onClick={() => setAspectLocked(!aspectLocked)} title={aspectLocked ? 'Unlock aspect ratio' : 'Lock aspect ratio'}>
+                                {aspectLocked ? <Link className="h-3.5 w-3.5" /> : <Unlink className="h-3.5 w-3.5" />}
+                            </Button>
+                        )}
+                    </div>
+                    <div className={cn("grid gap-2", isModel ? "grid-cols-3" : "grid-cols-2")}>
+                        {(isModel
+                            ? [['x', 'W'], ['y', 'H'], ['z', 'T']] as [string, string][]
+                            : [['x', 'W'], ['y', 'H']] as [string, string][]
+                        ).map(([axis, label]) => (
+                            <div key={axis} className="space-y-1">
+                                <Label className="text-[10px] text-zinc-500 uppercase">{label}</Label>
+                                <NumericInput step={isModel ? "0.01" : "0.1"} min="0.001" value={toFixed(baseCm[axis as 'x' | 'y' | 'z'] * transform.scale[axis as 'x' | 'y' | 'z'], isModel ? 3 : 1)} onChange={(raw) => handleScaleChange(axis as 'x' | 'y' | 'z', raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" disabled={sizeLocked} />
+                            </div>
+                        ))}
+                    </div>
+                    {sizeLocked && (
+                        <p className="text-[10px] text-zinc-500 italic">Größe durch Modell vorgegeben</p>
                     )}
                 </div>
-                <div className={cn("grid gap-2", isModel ? "grid-cols-3" : "grid-cols-2")}>
-                    {(isModel
-                        ? [['x', 'W'], ['y', 'H'], ['z', 'T']] as [string, string][]
-                        : [['x', 'W'], ['y', 'H']] as [string, string][]
-                    ).map(([axis, label]) => (
-                        <div key={axis} className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">{label}</Label>
-                            <NumericInput step={isModel ? "0.01" : "0.1"} min="0.001" value={toFixed(baseCm[axis as 'x' | 'y' | 'z'] * transform.scale[axis as 'x' | 'y' | 'z'], isModel ? 3 : 1)} onChange={(raw) => handleScaleChange(axis as 'x' | 'y' | 'z', raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" disabled={sizeLocked} />
-                        </div>
-                    ))}
-                </div>
-                {sizeLocked && (
-                    <p className="text-[10px] text-zinc-500 italic">Größe durch Modell vorgegeben</p>
-                )}
-            </div>
+            )}
             {isVideo && (
                 <>
                     <Separator className="bg-zinc-800" />
@@ -691,7 +695,8 @@ const ArtworkPropertiesContent = ({
                     </div>
                 </>
             )}
-            <OpenArtworkWallButton instanceId={selectedInstanceId} />
+            {isBook && selectedInstanceId !== null && <BookPropertiesActions instanceId={selectedInstanceId} />}
+            {!isBook && <OpenArtworkWallButton instanceId={selectedInstanceId} />}
             <Separator className="bg-zinc-800" />
             <div className="flex gap-2">
                 <Button variant="secondary" size="sm" onClick={handleFocus} className="flex-1 bg-zinc-800 text-zinc-100 hover:bg-zinc-700">

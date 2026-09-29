@@ -1,5 +1,6 @@
 import { useBookViewerStore, type OpenBook } from '@/store/bookViewerStore';
-import { useEditorStore } from '@/store/editorStore';
+import { useEditorStore, type ArtworkInstanceData } from '@/store/editorStore';
+import { displayArtworkTitle } from '@/lib/artworkTitle';
 
 export interface PointerEnv {
   pointerLocked(): boolean;
@@ -39,4 +40,16 @@ export function closeBook(reason: 'button' | 'escape', env: PointerEnv = domPoin
   if (!resumeFirstPerson) return;
   if (reason === 'button') env.requestPointerLock();
   else if (!book.publicView) env.leaveFirstPerson();
+}
+
+/** Opens the book of a placed instance (editor double-click, „Buch öffnen"). */
+export function openBookForInstance(inst: ArtworkInstanceData, publicView: boolean): void {
+  const assetId = inst.artwork.asset.id ?? inst.assetId;
+  if (!assetId) return;
+  openBook({
+    assetId,
+    title: displayArtworkTitle(inst.artwork.title ?? '') || 'Buch',
+    pageCount: inst.artwork.asset.metadata?.pageCount ?? 0,
+    publicView,
+  });
 }

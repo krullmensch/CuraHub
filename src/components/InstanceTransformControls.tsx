@@ -2,7 +2,7 @@ import { useRef, useCallback } from 'react';
 import { TransformControls } from '@react-three/drei';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
-import { useEditorStore, artworkMinY, resolveInstanceId } from '../store/editorStore';
+import { useEditorStore, artworkMinY, isFixedSizeMedium, resolveInstanceId } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { finalizeGroupMember, finalizeInstanceTransform, movesInWallPlane } from '../lib/instanceTransform';
 import { useSelectionPivot } from './SelectionPivot';
@@ -27,8 +27,10 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     const selectedId = useEditorStore((state) => state.selectedInstanceId);
     // More than one artwork: the gizmo drives the selection pivot and the group follows it.
     const isGroup = useEditorStore((state) => state.selectedInstanceIds.length > 1);
-    const monitorInSelection = useEditorStore((state) =>
-        state.localInstances.some(i => i.medium === 'monitor' && state.selectedInstanceIds.includes(i.id)));
+    const fixedSizeInSelection = useEditorStore((state) =>
+        state.localInstances.some(i => isFixedSizeMedium(i.medium) && state.selectedInstanceIds.includes(i.id)));
+    const bookSelected = useEditorStore((state) =>
+        state.selectedInstanceIds.length === 1 && state.localInstances.some(i => i.id === state.selectedInstanceId && i.medium === 'book'));
     const transformMode = useEditorStore((state) => state.transformMode);
     const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
     // A single wall-hung artwork moves along its wall only: local axes, no handle along the normal.
@@ -43,8 +45,12 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     const controlsRef = useRef<any>(null);
     const lastLiveUpdate = useRef(-Infinity);
     const selectionPivot = useSelectionPivot();
-    // A monitor keeps the size of its model — a group containing one cannot be scaled.
-    const groupMode = isGroup && monitorInSelection && transformMode === 'scale' ? 'translate' : transformMode;
+    // Monitors and books keep their size — scale mode moves them instead.
+    const effectiveMode = fixedSizeInSelection && transformMode === 'scale' ? 'translate' : transformMode;
+    const groupMode = isGroup ? effectiveMode : transformMode;
+    // Books: move on the floor (X/Z), turn about Y only.
+    const showX = (transformAxisLock === 'none' || transformAxisLock === 'x') && !(bookSelected && effectiveMode === 'rotate');
+    const showY = (transformAxisLock === 'none' || transformAxisLock === 'y') && !(bookSelected && effectiveMode === 'translate');
 
     const selectedGroup = selectedId ? instanceRefs.current.get(selectedId) ?? null : null;
 
@@ -65,7 +71,7 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
         if (!group) return;
 
         // Clamp Y live during translate so the artwork never visually passes through the floor
-        if (store.transformMode === 'translate') {
+        if (effectiveMode === 'translate') {
             const inst = store.localInstances.find(i => i.id === id);
             if (inst) {
                 group.position.y = Math.max(artworkMinY(inst, group.scale.y), group.position.y);
@@ -115,11 +121,11 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
 
         if (!currentSelectedId || !currentToken || !group) return;
 
-        const currentMode = store.transformMode;
+        const currentMode = effectiveMode;
         store.commitLocalChange(store.localInstances.map(inst =>
             inst.id === currentSelectedId ? finalizeInstanceTransform(inst, group, currentMode, store.localWalls) : inst
         ));
-    }, [setIsTransforming, instanceRefs, selectionPivot, groupMode]);
+    }, [setIsTransforming, instanceRefs, selectionPivot, groupMode, effectiveMode]);
 
     const handleMouseDown = useCallback(() => {
         if (useEditorStore.getState().selectedInstanceIds.length > 1) selectionPivot.begin();
@@ -129,7 +135,8 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
     // Attach event listeners to the TransformControls gizmo via props
 
     const target = isGroup ? selectionPivot.pivot : selectedGroup;
-    const wallPlaneMove = !isGroup && inWallPlane && transformMode === 'translate';
+    const wallPlaneMove = !isGroup && inWallPlane && effectiveMode === 'translate';
+    const showZ = !wallPlaneMove && (transformAxisLock === 'none' || transformAxisLock === 'z') && !(bookSelected && effectiveMode === 'rotate');
 
     return (
         <>
@@ -138,12 +145,12 @@ export const InstanceTransformControls = ({ instanceRefs }: InstanceTransformCon
                 <TransformControls
                     ref={controlsRef}
                     object={target}
-                    mode={isGroup ? groupMode : transformMode}
+                    mode={effectiveMode}
                     size={0.75}
                     space={wallPlaneMove ? 'local' : 'world'}
-                    showX={transformAxisLock === 'none' || transformAxisLock === 'x'}
-                    showY={transformAxisLock === 'none' || transformAxisLock === 'y'}
-                    showZ={!wallPlaneMove && (transformAxisLock === 'none' || transformAxisLock === 'z')}
+                    showX={showX}
+                    showY={showY}
+                    showZ={showZ}
                     onMouseDown={handleMouseDown}
                     onMouseUp={handleMouseUp}
                 />

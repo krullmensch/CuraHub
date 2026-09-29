@@ -98,3 +98,17 @@ describe('duplicateSelection', () => {
     expect(duplicateSelection([pic(1, 0, 1.5)], [], null, [])).toBeNull();
   });
 });
+
+describe('books in a selection', () => {
+  const book = (id: number) => pic(id, 3, 0, 21, 30, { medium: 'book', artwork: { width: 21, height: 30, asset: { path: '', width: 1, height: 1, dpi: 72, type: 'book' } } });
+
+  it('are never scaled', () => {
+    const out = scaleSelection([pic(1, 0, 1.5), book(2)], [1, 2], 1.25);
+    expect(byId(out, 2).scale_x).toBe(1);
+    expect(byId(out, 1).scale_x).toBeCloseTo(1.25);
+  });
+  it('stay on the floor when heights are aligned', () => {
+    const out = alignHeight([pic(1, 0, 1.5), book(2)], [1, 2], [], 'center', 1.6);
+    expect(byId(out, 2).position_y).toBe(0);
+  });
+});

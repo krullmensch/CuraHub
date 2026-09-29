@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { instanceRefMap, useEditorStore, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '@/store/editorStore';
 import { artworkFrameLayout } from '@/lib/wallEditor/footprint';
 import { BoxHitProxy } from '@/lib/boxHitProxy';
+import { useBookViewerStore } from '@/store/bookViewerStore';
 import { WE_COLORS } from './wall-editor/theme';
 
 /**
@@ -19,8 +20,24 @@ const setPath = (d: string) => {
     if (pathElement && pathElement.getAttribute('d') !== d) pathElement.setAttribute('d', d);
 };
 
+// Thinner, fainter outline of the artwork under the cursor (books).
+let hoverPathElement: SVGPathElement | null = null;
+
+const setHoverPath = (d: string) => {
+    if (hoverPathElement && hoverPathElement.getAttribute('d') !== d) hoverPathElement.setAttribute('d', d);
+};
+
 export const SelectionOutlineSvg = () => (
     <svg style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', pointerEvents: 'none', zIndex: 5 }}>
+        <path
+            ref={(el) => { hoverPathElement = el; }}
+            fill="none"
+            stroke={WE_COLORS.select}
+            strokeOpacity={0.55}
+            strokeWidth={1.5}
+            strokeLinejoin="round"
+            strokeLinecap="round"
+        />
         <path
             ref={(el) => { pathElement = el; }}
             fill="none"
@@ -126,6 +143,27 @@ function outlineShape(inst: ArtworkInstanceData, group: THREE.Object3D): Outline
 const _world = new THREE.Vector3();
 const _view = new THREE.Vector3();
 
+/** Projects the shape's edges to an SVG path segment ('' while a corner is behind the camera). */
+function projectShape(
+    shape: OutlineShape, group: THREE.Object3D, camera: THREE.Camera, size: { width: number; height: number },
+): string {
+    const perspective = camera instanceof THREE.PerspectiveCamera;
+    group.updateWorldMatrix(true, false);
+    const pts: { x: number; y: number }[] = [];
+    for (const p of shape.points) {
+        _world.copy(p).applyMatrix4(group.matrixWorld);
+        // A corner behind the camera would project to the wrong side of the screen.
+        if (perspective && _view.copy(_world).applyMatrix4(camera.matrixWorldInverse).z > -camera.near) return '';
+        _world.project(camera);
+        pts.push({ x: ((_world.x + 1) / 2) * size.width, y: ((1 - _world.y) / 2) * size.height });
+    }
+    let d = '';
+    for (const [a, b] of shape.edges) {
+        d += `M${pts[a].x.toFixed(1)} ${pts[a].y.toFixed(1)}L${pts[b].x.toFixed(1)} ${pts[b].y.toFixed(1)}`;
+    }
+    return d;
+}
+
 export const SelectionOutlineTracker = () => {
     const instances = useEditorStore(useShallow((s) =>
         s.localInstances.filter((i) => s.selectedInstanceIds.includes(i.id))));
@@ -144,34 +182,40 @@ export const SelectionOutlineTracker = () => {
     }, [instances, active]);
     useEffect(() => () => setPath(''), []);
 
+    const hoveredBookId = useBookViewerStore((s) => s.hoveredBookId);
+    // Outline of the hovered book; rebuilt when the hovered id changes, retried until it has bounds.
+    const hoverShape = useRef<{ id: number; shape: OutlineShape | null } | null>(null);
+    useEffect(() => {
+        hoverShape.current = hoveredBookId === null ? null : { id: hoveredBookId, shape: null };
+        if (hoveredBookId === null) setHoverPath('');
+    }, [hoveredBookId]);
+    useEffect(() => () => setHoverPath(''), []);
+
     useFrame(({ camera, size }) => {
-        if (!active || shapes.current.size === 0) return;
-        const perspective = camera instanceof THREE.PerspectiveCamera;
+        if (!active) {
+            setHoverPath('');
+            return;
+        }
+        const hover = hoverShape.current;
+        let hoverD = '';
+        if (hover && !useEditorStore.getState().selectedInstanceIds.includes(hover.id)) {
+            const group = instanceRefMap.get(hover.id);
+            const instance = group ? useEditorStore.getState().localInstances.find((i) => i.id === hover.id) : undefined;
+            if (group && instance) {
+                if (!hover.shape) hover.shape = outlineShape(instance, group);
+                if (hover.shape) hoverD = projectShape(hover.shape, group, camera, size);
+            }
+        }
+        setHoverPath(hoverD);
+
+        if (shapes.current.size === 0) return;
         let d = '';
         for (const entry of shapes.current.values()) {
             const group = instanceRefMap.get(entry.instance.id);
             if (!group) continue;
             // Models and splats load asynchronously: retry until they have bounds.
             if (!entry.shape) entry.shape = outlineShape(entry.instance, group);
-            const shape = entry.shape;
-            if (!shape) continue;
-            group.updateWorldMatrix(true, false);
-            const pts: { x: number; y: number }[] = [];
-            let behind = false;
-            for (const p of shape.points) {
-                _world.copy(p).applyMatrix4(group.matrixWorld);
-                // A corner behind the camera would project to the wrong side of the screen.
-                if (perspective && _view.copy(_world).applyMatrix4(camera.matrixWorldInverse).z > -camera.near) {
-                    behind = true;
-                    break;
-                }
-                _world.project(camera);
-                pts.push({ x: ((_world.x + 1) / 2) * size.width, y: ((1 - _world.y) / 2) * size.height });
-            }
-            if (behind) continue;
-            for (const [a, b] of shape.edges) {
-                d += `M${pts[a].x.toFixed(1)} ${pts[a].y.toFixed(1)}L${pts[b].x.toFixed(1)} ${pts[b].y.toFixed(1)}`;
-            }
+            if (entry.shape) d += projectShape(entry.shape, group, camera, size);
         }
         setPath(d);
     });

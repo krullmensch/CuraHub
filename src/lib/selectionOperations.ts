@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { artworkMinY, nextTempId, type ArtworkInstanceData, type ModularWallData } from '@/store/editorStore';
+import { artworkMinY, isFixedSizeMedium, nextTempId, type ArtworkInstanceData, type ModularWallData } from '@/store/editorStore';
 import type { FrameStyleId, PassepartoutPlacement } from './frameStyles';
 import { instanceWorldBounds } from './instanceBounds';
 import { detachIfOffWall } from './instanceTransform';
@@ -64,6 +64,7 @@ export function alignHeight(
   const goal = target ?? heightOf(instanceWorldBounds(primaryOf(members, ids)), edge);
   const patches = new Map<number, Partial<ArtworkInstanceData>>();
   for (const inst of members) {
+    if (inst.medium === 'book') continue;
     const dy = goal - heightOf(instanceWorldBounds(inst), edge);
     patches.set(inst.id, { position_y: Math.max(artworkMinY(inst), inst.position_y + dy) });
   }
@@ -110,12 +111,12 @@ export function distributeAxis(instances: ArtworkInstanceData[], ids: number[], 
   return patchAll(instances, patches, walls, true);
 }
 
-/** Scales every artwork by `factor` about its own centre; monitors keep the size of their model. */
+/** Scales every artwork by `factor` about its own centre; monitors and books keep their size. */
 export function scaleSelection(instances: ArtworkInstanceData[], ids: number[], factor: number) {
   if (!(factor > 0) || factor === 1) return null;
   const patches = new Map<number, Partial<ArtworkInstanceData>>();
   for (const inst of selectedOf(instances, ids)) {
-    if (inst.medium === 'monitor') continue;
+    if (isFixedSizeMedium(inst.medium)) continue;
     const scaleY = inst.scale_y * factor;
     patches.set(inst.id, {
       scale_x: inst.scale_x * factor,

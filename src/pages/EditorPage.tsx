@@ -13,7 +13,7 @@ import { MeasurementsControl } from '../components/MeasurementsControl';
 import { SelectionOutlineSvg, SelectionOutlineTracker } from '../components/SelectionOutline';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
-import { useEditorStore, nextTempId, isFloorAssetType, type MediumType } from '../store/editorStore';
+import { useEditorStore, nextTempId, isFloorAssetType, isFixedSizeMedium, type MediumType } from '../store/editorStore';
 import { gooeyToast } from 'goey-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings, PersonStanding } from 'lucide-react';
@@ -32,12 +32,14 @@ import { SelectionMarquee } from '../components/SelectionMarquee';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
 import { MAX_SCALE_FIGURES_PER_VERSION, scaleFigureBridge } from '../lib/scaleFigure';
 import { startWallLayoutSync } from '../lib/wallEditor/layoutSync';
+import { openBookForInstance } from '../lib/book/viewerActions';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
 const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
   if (issue === 'unlocked-wall') return 'Die Wand ist nicht gesperrt. Wand sperren, dann Werke daran platzieren.';
   if (assetType === 'model3d') return '3D-Modelle lassen sich nur auf dem Boden platzieren.';
   if (assetType === 'splat') return 'Splats lassen sich nur auf dem Boden platzieren.';
+  if (assetType === 'book') return 'Bücher lassen sich nur auf dem Boden platzieren.';
   if (issue === 'not-vertical') return 'Werke lassen sich nur an senkrechten Wandflächen platzieren.';
   return 'Hier lässt sich nichts platzieren. Werk auf eine Wand ziehen.';
 };
@@ -157,6 +159,10 @@ function handleCanvasDoubleClick(e: MouseEvent) {
   }
   if (instanceId !== undefined) {
     const inst = store.localInstances.find(i => i.id === instanceId);
+    if (inst?.artwork.asset.type === 'book') {
+      openBookForInstance(inst, false);
+      return;
+    }
     // Videos keep their double-click (mute toggle).
     if (!inst || inst.artwork.asset.type === 'video') return;
     const target = targetForInstance(inst, store.localWalls, rooms);
@@ -200,9 +206,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   // An unlocked wall can be moved and turned by its gizmo (G/R), same as by the shortcuts.
   const isMovableWallSelected = useEditorStore((state) =>
     state.selectedWallId !== null && state.localWalls.some(w => w.id === state.selectedWallId && !w.isLocked));
-  // Monitors keep the size of their model — one in the selection locks scaling for all.
-  const isMonitorSelected = useEditorStore((state) =>
-    state.localInstances.some(i => i.medium === 'monitor' && state.selectedInstanceIds.includes(i.id)));
+  // Monitors and books keep their size — one in the selection locks scaling for all.
+  const isFixedSizeSelected = useEditorStore((state) =>
+    state.localInstances.some(i => isFixedSizeMedium(i.medium) && state.selectedInstanceIds.includes(i.id)));
   const transformMode = useEditorStore((state) => state.transformMode);
   const transformAxisLock = useEditorStore((state) => state.transformAxisLock);
   const selectWall = useEditorStore((state) => state.selectWall);
@@ -278,7 +284,17 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
         id: draggedAsset.type === 'artwork' ? draggedAsset.id : undefined,
         width: draggedAsset.artworkWidth,
         height: draggedAsset.artworkHeight,
+        ...(draggedAsset.book ? {
+          title: draggedAsset.book.title,
+          artist: draggedAsset.book.artist,
+          year: draggedAsset.book.year,
+          depth: draggedAsset.book.depth,
+          publicReadable: draggedAsset.book.publicReadable,
+        } : {}),
         asset: {
+          id: draggedAsset.book?.assetId,
+          thumbnailPath: draggedAsset.book?.thumbnailPath ?? undefined,
+          metadata: draggedAsset.book ? { pageCount: draggedAsset.book.pageCount } : undefined,
           path: draggedAsset.videoUrl || draggedAsset.url,
           width: draggedAsset.width,
           height: draggedAsset.height,
@@ -289,9 +305,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       position_x: snapshot.position[0],
       position_y: clampedY,
       position_z: snapshot.position[2],
-      rotation_x: snapshot.rotation[0],
+      rotation_x: medium === 'book' ? 0 : snapshot.rotation[0],
       rotation_y: snapshot.rotation[1],
-      rotation_z: snapshot.rotation[2],
+      rotation_z: medium === 'book' ? 0 : snapshot.rotation[2],
       scale_x: 1,
       scale_y: 1,
       scale_z: 1,
@@ -399,10 +415,10 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
             if (assetType === 'video') {
               setPendingVideoDrop(snapshot);
             } else {
-              const medium: MediumType = assetType === 'model3d' || assetType === 'splat' ? assetType : 'frame';
+              const medium: MediumType = assetType === 'model3d' || assetType === 'splat' || assetType === 'book' ? assetType : 'frame';
               const placedId = placeInstanceRef.current(medium, snapshot);
               if (useEditorStore.getState().wallEditor) useEditorStore.getState().setWallEditorSelection([placedId]);
-              const label = assetType === 'model3d' ? '3D-Modell' : assetType === 'splat' ? 'Splat' : 'Werk';
+              const label = assetType === 'model3d' ? '3D-Modell' : assetType === 'splat' ? 'Splat' : assetType === 'book' ? 'Buch' : 'Werk';
               gooeyToast.success(`${label} platziert`, {
                 description: draggedAsset.url.split('/').pop(),
               });
@@ -574,8 +590,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           break;
         case 's':
           if (!cmdOrCtrl && hasSelection) { // Don't conflict with Cmd+S
-            // Monitor size is fixed by the 3D model — scaling is disabled
-            if (store.localInstances.some(i => i.medium === 'monitor' && store.selectedInstanceIds.includes(i.id))) break;
+            // Monitor and book sizes are fixed — scaling is disabled
+            if (store.localInstances.some(i => isFixedSizeMedium(i.medium) && store.selectedInstanceIds.includes(i.id))) break;
             e.preventDefault();
             setTransformMode('scale');
             setTransformAxisLock('none');
@@ -711,7 +727,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           {/* Transform modes */}
           <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!hasInstanceSelection && selectedFigureId === null && !isMovableWallSelected} />
           <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!hasInstanceSelection && selectedFigureId === null && !isMovableWallSelected} />
-          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!hasInstanceSelection || isMonitorSelected} />
+          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!hasInstanceSelection || isFixedSizeSelected} />
 
           <ToolSeparator />
 

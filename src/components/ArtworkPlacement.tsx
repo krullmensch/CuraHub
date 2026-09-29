@@ -6,6 +6,7 @@ import { getMaxAnisotropy } from '../lib/rendererBackend';
 import { useEditorStore, WALL_PLACEMENT_OFFSET, isFloorAssetType } from '../store/editorStore';
 import { ModularFrame } from './ModularFrame';
 import { Passepartout } from './Passepartout';
+import { BookGhost } from './book/BookGhost';
 import { framedArtworkLayout } from '../lib/frameStyles';
 import { placementFeedback, placementResolver, type PlacementResult } from '../lib/placementFeedback';
 
@@ -310,6 +311,10 @@ export const ArtworkPlacement = () => {
 
     // 3D model ghost
     if (isFloorAssetType(draggedAsset.assetType)) {
+        if (draggedAsset.assetType === 'book') {
+            return <BookGhost position={ghostState.position} valid={ghostState.isValid}
+                widthCm={draggedAsset.artworkWidth} heightCm={draggedAsset.artworkHeight} book={draggedAsset.book} />;
+        }
         return <ModelGhostPreview position={ghostState.position} isValid={ghostState.isValid} />;
     }
 
