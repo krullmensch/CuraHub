@@ -80,6 +80,8 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
   const thickness = parseThickness(depth);
   const sliderValue = typeof thickness === 'number' ? thickness : auto;
   const locked = disabled || !artwork;
+  // Cover actions only need the asset; artwork fields need the artwork.
+  const coverLocked = disabled || !asset.id;
 
   const afterChange = (update: BookUpdate | null) => {
     onSaved?.();
@@ -223,11 +225,11 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
             }} />
           <div className={cn('space-y-2', inline && 'min-w-0 flex-1')}>
             <Button variant="secondary" size="sm" className={cn('w-full text-xs', inline && 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700')}
-              disabled={busy || locked} onClick={() => fileInput.current?.click()}>
+              disabled={busy || coverLocked} onClick={() => fileInput.current?.click()}>
               Ersatz-Cover hochladen
             </Button>
             {coverSource === 'override' && (
-              <Button variant="ghost" size="sm" className="w-full text-xs" disabled={busy || locked}
+              <Button variant="ghost" size="sm" className="w-full text-xs" disabled={busy || coverLocked}
                 onClick={() => void coverAction(() => resetBookCover(asset.id, token!), 'Cover aus PDF wiederhergestellt')}>
                 Cover aus PDF verwenden
               </Button>

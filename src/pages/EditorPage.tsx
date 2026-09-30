@@ -35,6 +35,7 @@ import { wallEditorBridge } from '../lib/wallEditor/bridge';
 import { MAX_SCALE_FIGURES_PER_VERSION, scaleFigureBridge } from '../lib/scaleFigure';
 import { startWallLayoutSync } from '../lib/wallEditor/layoutSync';
 import { openBookForInstance } from '../lib/book/viewerActions';
+import { isFormControlTarget } from '../lib/keyboardTargets';
 
 /** Explains a rejected drop (ArtworkPlacement records why the last drag position was invalid). */
 const placementIssueText = (assetType: string | undefined, issue: PlacementIssue | null) => {
@@ -472,6 +473,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     const handleKeyDown = (e: KeyboardEvent) => {
       // Don't trigger shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      // Delete/Backspace after a click on a panel button or control must not remove the selection
+      if ((e.key === 'Delete' || e.key === 'Backspace') && isFormControlTarget(e.target)) return;
       if (useBookViewerStore.getState().book) return; // the book viewer handles its own keys
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;

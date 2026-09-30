@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useEditorStore } from '@/store/editorStore';
 import { openBookForInstance } from '@/lib/book/viewerActions';
+import { displayArtworkTitle } from '@/lib/artworkTitle';
 import { BookSettingsForm } from './BookSettingsForm';
 
 /** Properties panel of a selected book: open it, edit its settings inline. */
@@ -29,7 +30,8 @@ export function BookPropertiesActions({ instanceId }: { instanceId: number }) {
           disabled={!saved}
           asset={{
             id: asset.id ?? 0,
-            filename: artwork.title ?? '',
+            // Server instances carry the file name; a freshly dropped one only has its title.
+            filename: displayArtworkTitle(asset.filename ?? artwork.title ?? ''),
             thumbnailPath: asset.thumbnailPath,
             metadata: asset.metadata,
             artwork: artwork.id

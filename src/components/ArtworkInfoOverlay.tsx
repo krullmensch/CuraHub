@@ -56,6 +56,14 @@ export const ArtworkInfoOverlay = () => {
     // looks at another artwork in between.
     const [dismissed, setDismissed] = useState(false);
 
+    // A readable book coming in reach brings the panel (and its "Klicken zum Lesen" hint) back.
+    // Adjusted during render (no effect), keyed on the id so it fires once per book.
+    const [seenBookId, setSeenBookId] = useState(bookInReachId);
+    if (seenBookId !== bookInReachId) {
+        setSeenBookId(bookInReachId);
+        if (bookInReachId !== null && dismissed) setDismissed(false);
+    }
+
     const exitTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const enterFrame = useRef<number | null>(null);
     const descRef = useRef<HTMLDivElement>(null);

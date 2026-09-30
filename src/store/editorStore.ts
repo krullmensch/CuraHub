@@ -125,6 +125,8 @@ export interface ArtworkInstanceData {
     publicReadable?: boolean;
     asset: {
       id?: number;
+      /** Original file name (present on instances fetched from the server). */
+      filename?: string;
       path: string;
       width: number;
       height: number;
