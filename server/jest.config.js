@@ -2,6 +2,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
+  setupFiles: ['<rootDir>/src/tests/jestSetup.ts'],
   modulePathIgnorePatterns: ['<rootDir>/dist/'],
   transformIgnorePatterns: [
     'node_modules/(?!(uuid|image-size|property-graph|@gltf-transform)/)',

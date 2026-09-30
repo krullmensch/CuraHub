@@ -21,8 +21,14 @@ import { adminRouter } from './routes/admin';
 import { resumeVideoJobs } from './lib/videoJobs';
 import { resumeBookJobs } from './lib/bookJobs';
 import { videoStreamHandler } from './lib/videoRanges';
+import { PrismaClient } from '@prisma/client';
+import { API_NAMESPACE_SEGMENTS, isFrontendExhibitionPath, NOINDEX_ROUTE_PATTERNS } from './lib/apiNamespaces';
+import { setupGate } from './lib/setupGate';
+import { ensureSetupSecrets, formatSetupBanner, loadSetupState } from './lib/setupState';
+import { createHealthRouter } from './routes/health';
 
 const app = express();
+const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
 // --- CORS (SEC-07) ---
@@ -53,13 +59,21 @@ app.use((req, res, next) => {
     (VERSIONS_ROUTE_RE.test(req.path) ? urlencodedLarge : urlencodedSmall)(req, res, next);
 });
 
+const uploadsDirPath = path.join(__dirname, '../uploads');
+
+// SETUP: nothing but the wizard, health and the frontend answers until the instance is set up.
+app.use(setupGate);
+
+const healthRouter = createHealthRouter(() => prisma.$queryRaw`SELECT 1`);
+app.use('/health', healthRouter);
+app.use('/api/health', healthRouter);
+
 // Serve uploaded files statically.
 // LOAD-06: cacheable but not immutable — pre-SEC-04 filenames were not
 // guaranteed unique, so a filename could in principle be reused.
 const uploadsCacheHeaders = (res: express.Response) => {
     res.setHeader('Cache-Control', 'public, max-age=604800');
 };
-const uploadsDirPath = path.join(__dirname, '../uploads');
 // Videos played in the scene stream in short ranges (see lib/videoRanges.ts).
 app.get(['/uploads/stream', '/api/uploads/stream'], videoStreamHandler(uploadsDirPath));
 app.use('/uploads', express.static(uploadsDirPath, { setHeaders: uploadsCacheHeaders }));
@@ -153,31 +167,6 @@ if (process.env.NODE_ENV === 'production') {
     //
     // This makes every frontend URL return html regardless of Accept header, while
     // every unmatched API URL still returns the JSON 404.
-    const API_NAMESPACE_SEGMENTS = new Set([
-        'api', 'auth', 'upload', 'uploads', 'public', 'assets',
-        'folders', 'artworks', 'instances', 'projects', 'walls', 'scale-figures', 'books', 'admin',
-    ]);
-
-    // Frontend route patterns, mirroring src/App.tsx <Route path="..."> entries
-    // that live under /exhibition or /exhibitions (every other frontend route is
-    // covered by the default "serve html" case below since it can't collide with
-    // an API namespace segment).
-    const EXHIBITION_FRONTEND_ROUTE_PATTERNS = [
-        /^\/exhibitions$/,
-        /^\/exhibition$/,
-        /^\/exhibition\/[^/]+$/,           // /exhibition/:slug (public viewer)
-        /^\/exhibition\/[^/]+\/assets$/,   // /exhibition/:projectSlug/assets
-        /^\/exhibition\/[^/]+\/edit$/,     // /exhibition/:projectSlug/edit
-    ];
-
-    // Editor/admin-only frontend routes — excluded from search indexing.
-    const NOINDEX_ROUTE_PATTERNS = [
-        /^\/exhibition\/[^/]+\/edit$/,
-        /^\/exhibition\/[^/]+\/assets$/,
-        /^\/project$/,
-        /^\/users$/,
-    ];
-
     app.use((req, res, next) => {
         if ((req.method !== 'GET' && req.method !== 'HEAD') || req.path.includes('.')) {
             return next();
@@ -189,8 +178,7 @@ if (process.env.NODE_ENV === 'production') {
         }
 
         if (firstSegment === 'exhibition' || firstSegment === 'exhibitions') {
-            const matchesFrontendRoute = EXHIBITION_FRONTEND_ROUTE_PATTERNS.some((re) => re.test(req.path));
-            if (!matchesFrontendRoute) {
+            if (!isFrontendExhibitionPath(req.path)) {
                 return next();
             }
         }
@@ -214,12 +202,22 @@ app.use((req, res) => {
     res.status(404).json({ error: 'Endpoint not found' });
 });
 
-if (process.env.NODE_ENV !== 'test') {
+async function start() {
+    // SETUP: the gate needs the state before the first request.
+    const setup = await loadSetupState(prisma);
+    if (!setup.complete) console.log(formatSetupBanner(ensureSetupSecrets().code));
     app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
         // VID-03: continue video jobs interrupted by a restart.
         resumeVideoJobs().catch((err) => console.error('[VideoJobs] Resume failed:', err));
         resumeBookJobs().catch((err) => console.error('[BookJobs] Resume failed:', err));
+    });
+}
+
+if (process.env.NODE_ENV !== 'test') {
+    start().catch((err) => {
+        console.error('[Startup] Failed:', err);
+        process.exit(1);
     });
 }
 
