@@ -1,6 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { useEditorStore, videoRefMap } from '../store/editorStore';
-import { Volume2, VolumeX } from 'lucide-react';
+import { BookOpen, Volume2, VolumeX } from 'lucide-react';
 import { useBookViewerStore } from '../store/bookViewerStore';
 
 const MouseLeftIcon = ({ size = 20, color = "white" }: { size?: number, color?: string }) => (
@@ -46,7 +46,7 @@ const Kbd = ({ children }: { children: React.ReactNode }) => (
  */
 export const ArtworkInfoOverlay = () => {
     const fpvHoveredInfo = useEditorStore((s) => s.fpvHoveredInfo);
-    const bookInReach = useBookViewerStore((s) => s.bookInReachId !== null);
+    const bookInReachId = useBookViewerStore((s) => s.bookInReachId);
 
     const [displayInfo, setDisplayInfo] = useState<typeof fpvHoveredInfo>(null);
     const [isActive, setIsActive] = useState(false);
@@ -123,6 +123,8 @@ export const ArtworkInfoOverlay = () => {
         const onMouseDown = (e: MouseEvent) => {
             if (e.button !== 0 || !isLockedRef.current) return;
             if (!fpvHoveredInfoRef.current) return;
+            // A click that opens a book must not hide the panel (it would stay hidden after closing).
+            if (useBookViewerStore.getState().bookInReachId !== null) return;
             setDismissed((prev) => !prev);
         };
         window.addEventListener('mousedown', onMouseDown);
@@ -208,12 +210,6 @@ export const ArtworkInfoOverlay = () => {
                     background: 'rgba(255, 255, 255, 0.85)',
                 }} />
             </div>
-
-            {bookInReach && (
-                <div className="pointer-events-none fixed left-1/2 top-1/2 z-20 mt-6 -translate-x-1/2 rounded bg-black/60 px-2 py-1 text-xs text-white">
-                    Klicken zum Lesen
-                </div>
-            )}
 
             {/* ── Extension line + Info panel ── */}
             {displayInfo && (
@@ -312,6 +308,24 @@ export const ArtworkInfoOverlay = () => {
                                 }}>
                                     <Kbd>M</Kbd>
                                     {isMuted ? 'Ton aktivieren' : 'Stummschalten'}
+                                </span>
+                            </div>
+                        )}
+
+                        {/* Book: click opens the reader */}
+                        {bookInReachId !== null && bookInReachId === displayInfo.instanceId && (
+                            <div style={{
+                                display: 'flex', alignItems: 'center', gap: 6,
+                                marginTop: 10, paddingTop: 8,
+                                borderTop: '1px solid rgba(255, 255, 255, 0.12)',
+                            }}>
+                                <BookOpen size={14} color="rgba(255,255,255,0.6)" />
+                                <span style={{
+                                    fontFamily: '"Albert Sans", sans-serif',
+                                    fontSize: 11, color: 'rgba(255, 255, 255, 0.5)',
+                                    letterSpacing: '0.02em',
+                                }}>
+                                    Klicken zum Lesen
                                 </span>
                             </div>
                         )}

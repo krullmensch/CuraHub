@@ -5,6 +5,7 @@ import * as THREE from 'three';
 import { instanceRefMap, useEditorStore, WALL_PLACEMENT_OFFSET, type ArtworkInstanceData } from '@/store/editorStore';
 import { artworkFrameLayout } from '@/lib/wallEditor/footprint';
 import { BoxHitProxy } from '@/lib/boxHitProxy';
+import { BOX_EDGES, visibleBoxEdges, type BoxEdge } from '@/lib/boxOutline';
 import { useBookViewerStore } from '@/store/bookViewerStore';
 import { WE_COLORS } from './wall-editor/theme';
 
@@ -55,12 +56,6 @@ interface OutlineShape {
 }
 
 const RECT_EDGES: [number, number][] = [[0, 1], [1, 2], [2, 3], [3, 0]];
-// Corner i: x = bit 0, y = bit 1, z = bit 2.
-const BOX_EDGES: [number, number][] = [
-    [0, 1], [2, 3], [4, 5], [6, 7],
-    [0, 2], [1, 3], [4, 6], [5, 7],
-    [0, 4], [1, 5], [2, 6], [3, 7],
-];
 
 const EPS = 1e-4;
 const safe = (s: number) => (Math.abs(s) > EPS ? s : 1);
@@ -142,6 +137,9 @@ function outlineShape(inst: ArtworkInstanceData, group: THREE.Object3D): Outline
 
 const _world = new THREE.Vector3();
 const _view = new THREE.Vector3();
+const _eye = new THREE.Vector3();
+const _corners: THREE.Vector3[] = Array.from({ length: 8 }, () => new THREE.Vector3());
+const _visibleEdges: BoxEdge[] = [];
 
 /** Projects the shape's edges to an SVG path segment ('' while a corner is behind the camera). */
 function projectShape(
@@ -149,16 +147,25 @@ function projectShape(
 ): string {
     const perspective = camera instanceof THREE.PerspectiveCamera;
     group.updateWorldMatrix(true, false);
+    const isBox = shape.edges === BOX_EDGES;
     const pts: { x: number; y: number }[] = [];
-    for (const p of shape.points) {
-        _world.copy(p).applyMatrix4(group.matrixWorld);
+    for (let i = 0; i < shape.points.length; i++) {
+        _world.copy(shape.points[i]).applyMatrix4(group.matrixWorld);
+        if (isBox) _corners[i].copy(_world);
         // A corner behind the camera would project to the wrong side of the screen.
         if (perspective && _view.copy(_world).applyMatrix4(camera.matrixWorldInverse).z > -camera.near) return '';
         _world.project(camera);
         pts.push({ x: ((_world.x + 1) / 2) * size.width, y: ((1 - _world.y) / 2) * size.height });
     }
+    let edges = shape.edges;
+    if (isBox) {
+        // Solid boxes: no edges that only border faces turned away from the camera.
+        edges = perspective
+            ? visibleBoxEdges(_corners, { position: _eye.setFromMatrixPosition(camera.matrixWorld) }, _visibleEdges)
+            : visibleBoxEdges(_corners, { direction: camera.getWorldDirection(_eye) }, _visibleEdges);
+    }
     let d = '';
-    for (const [a, b] of shape.edges) {
+    for (const [a, b] of edges) {
         d += `M${pts[a].x.toFixed(1)} ${pts[a].y.toFixed(1)}L${pts[b].x.toFixed(1)} ${pts[b].y.toFixed(1)}`;
     }
     return d;
