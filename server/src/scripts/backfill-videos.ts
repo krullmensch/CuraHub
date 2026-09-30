@@ -13,6 +13,7 @@
  * Originals are NOT deleted — remove them manually once the new files are checked.
  * Idempotent: compatible assets (including already converted ones) are skipped.
  */
+import '../lib/loadSecretEnv';
 import path from 'path';
 import fs from 'fs';
 import { PrismaClient } from '@prisma/client';

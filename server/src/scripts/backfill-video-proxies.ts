@@ -11,6 +11,7 @@
  * Writes `<stem>-proxy-<height>.mp4` next to the web version and sets metadata.videoProxies.
  * Idempotent: videos with metadata.videoProxies (or no smaller size to create) are skipped.
  */
+import '../lib/loadSecretEnv';
 import path from 'path';
 import fs from 'fs';
 import { PrismaClient, type Prisma } from '@prisma/client';

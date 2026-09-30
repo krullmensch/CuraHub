@@ -12,6 +12,7 @@
  * after a partial --apply run just picks up where it left off. Missing
  * source files are skipped with a warning, not fatal.
  */
+import '../lib/loadSecretEnv';
 import path from 'path';
 import fs from 'fs';
 import { PrismaClient } from '@prisma/client';

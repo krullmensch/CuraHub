@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import type { PrismaClient } from '@prisma/client';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
+import { JWT_SECRET } from './jwtSecret';
 
 export type AppRole = 'user' | 'curator' | 'prof' | 'admin';
 

@@ -8,7 +8,7 @@ import { loginRateLimit, resetLoginAttempts } from '../lib/loginRateLimit';
 export const authRouter = Router();
 const prisma = new PrismaClient();
 
-const JWT_SECRET = process.env.JWT_SECRET || 'supersecret_dev_key';
+import { JWT_SECRET } from '../lib/jwtSecret';
 // SEC-06: was 365 days. /auth/me hands out a fresh token while the editor is in use, so
 // active users stay logged in; a leaked token expires after a month.
 const TOKEN_TTL = '30d';
