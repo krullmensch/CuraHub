@@ -137,7 +137,12 @@ describe('applyArtworkUpdate', () => {
     expect(s.localInstances[2]).toBe(c);
     expect(s.selectedInstanceId).toBe(1);
     expect(s.selectedInstanceIds).toEqual([1, 3]);
-    expect(s.pastInstances).toBe(past);
+    expect(s.pastInstances).toHaveLength(1);
+    expect(s.pastInstances[0].map((i) => i.id)).toEqual([1, 2, 3]);
+    expect(s.pastInstances[0][0].artwork).toMatchObject({ title: 'neu', depth: 2.5 });
+    expect(s.pastInstances[0][1].artwork.title).toBe('neu');
+    expect(s.pastInstances[0][2]).toBe(c);
     expect(s.futureInstances).toHaveLength(1);
+    expect(s.futureInstances[0][0].artwork.title).toBe('neu');
   });
 });

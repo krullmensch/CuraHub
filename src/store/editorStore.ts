@@ -496,7 +496,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         : { ...i, artwork: { ...i.artwork, ...artwork, asset: asset ? { ...i.artwork.asset, ...asset } : i.artwork.asset } };
     // The sync diff ignores `artwork`; keeping the persisted snapshot current avoids stale data later.
     prevInstances = prevInstances.map(merge);
-    set((state) => ({ localInstances: state.localInstances.map(merge) }));
+    // Artwork data lives on the server, not in the undo history: undo/redo must not bring back old values.
+    set((state) => ({
+      localInstances: state.localInstances.map(merge),
+      pastInstances: state.pastInstances.map((snap) => snap.map(merge)),
+      futureInstances: state.futureInstances.map((snap) => snap.map(merge)),
+    }));
   },
 
   // Phase 4.2 actions
