@@ -3,6 +3,7 @@ import { Routes, Route } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { SetupGate } from './components/setup/SetupGate';
 import { GooeyToaster } from 'goey-toast';
 import './App.css';
 
@@ -12,6 +13,7 @@ const AssetLibraryPage = lazy(() => import('./pages/AssetLibraryPage').then((m) 
 const ExhibitionsPage = lazy(() => import('./pages/ExhibitionsPage').then((m) => ({ default: m.ExhibitionsPage })));
 const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
 const KeinZugriffPage = lazy(() => import('./pages/KeinZugriffPage'));
+const SetupPage = lazy(() => import('./pages/SetupPage').then((m) => ({ default: m.SetupPage })));
 
 const RouteFallback = () => (
   <div className="h-screen w-screen flex items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
@@ -23,9 +25,11 @@ function App() {
   return (
     <>
       <Suspense fallback={<RouteFallback />}>
+        <SetupGate fallback={<RouteFallback />}>
         <Routes>
           <Route path="/" element={<HomePage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/setup" element={<SetupPage />} />
           <Route path="/kein-zugriff" element={<KeinZugriffPage />} />
           <Route path="/exhibitions" element={<ExhibitionsPage />} />
           <Route path="/exhibition" element={<ExhibitionsPage />} />
@@ -56,6 +60,7 @@ function App() {
             </div>
           } />
         </Routes>
+        </SetupGate>
       </Suspense>
       <GooeyToaster position="bottom-right" theme="dark" preset="smooth" />
     </>
