@@ -17,7 +17,7 @@ import { scaleFiguresRouter } from './routes/scaleFigures';
 import { exhibitionsRouter } from './routes/exhibitions';
 import { publicRouter } from './routes/public';
 import { booksRouter } from './routes/books';
-import { adminRouter } from './routes/admin';
+import { adminRouter, setAdminSystemDeps } from './routes/admin';
 import { resumeVideoJobs } from './lib/videoJobs';
 import { resumeBookJobs } from './lib/bookJobs';
 import { videoStreamHandler } from './lib/videoRanges';
@@ -76,6 +76,7 @@ app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
 
 const checkDeps = defaultCheckDeps(prisma, uploadsDirPath);
+setAdminSystemDeps(checkDeps);
 const setupRouter = createSetupRouter({
     runChecks: (req) => runSystemChecks(checkDeps, requestInfo(req)),
     validateHSBI,
