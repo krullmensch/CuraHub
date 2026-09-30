@@ -30,6 +30,7 @@ import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/face
 import { commonFaceTarget } from '../lib/selectionFaces';
 import { consumeMarqueeClick } from '../lib/selectionBridge';
 import { duplicateCurrentSelection, openFaceWithSelection } from '../lib/selectionActions';
+import { focusSelection } from '../lib/focusSelection';
 import { SelectionMarquee } from '../components/SelectionMarquee';
 import { wallEditorBridge } from '../lib/wallEditor/bridge';
 import { MAX_SCALE_FIGURES_PER_VERSION, scaleFigureBridge } from '../lib/scaleFigure';
@@ -505,6 +506,12 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
       // The 2D wall editor handles its own keys (WallEditorOverlay); only undo/redo above apply.
       if (store.wallEditor) return;
+
+      // Focus the camera on the selection
+      if (key === 'f' && !cmdOrCtrl && store.plannerViewMode !== 'firstPerson') {
+        if (focusSelection()) e.preventDefault();
+        return;
+      }
 
       // Open the 2D wall editor for the selected wall / the wall of the selected artwork
       if (key === 'e' && !cmdOrCtrl && store.plannerViewMode !== 'firstPerson') {

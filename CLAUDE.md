@@ -138,6 +138,8 @@ The editor layout is structured as follows:
 
 Keyboard shortcuts: `G` grab, `R` rotate, `S` scale, `X/Y/Z` axis lock, `Shift` fine-tune, `Esc` cancel. Implemented via Three.js TransformControls + custom `ModalTransformSystem`.
 
+`F` (and the panel's "Focus" button) focuses the selection: `lib/focusSelection.ts` builds the bounds of the selected artworks (`instanceWorldBounds`), modular wall or scale figure, `lib/focusFraming.ts` (`focusDistance`, `boundsFocus`, pure) turns them into an orbit distance from the perspective camera's fov/aspect (`cameraInfoBridge`, set by `PlannerCameraSystem`) and stores it as `focusTarget.distance`. Not in first person or the 2D wall editor. Modular wall labels ("Wall A") are drawn only while that wall is selected.
+
 ### 2D Wall Editor
 
 Frontal, Figma-like editing of one wall face (`src/components/wall-editor/`, `src/lib/wallEditor/`): any of the four faces of a modular wall, or a wall of the room model.

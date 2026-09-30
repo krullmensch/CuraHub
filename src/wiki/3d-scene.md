@@ -22,6 +22,7 @@ Wenn du ein Objekt auswählst, erscheinen 3D-Gizmos. Du kannst aber auch Tastenk
 - **R (Rotate):** Rotieren
 - **S (Scale):** Skalieren
 - **X, Y, Z:** Achse sperren
+- **F (Fokus):** Kamera auf die Auswahl ausrichten
 
 Für exakte Einstellungen (z.B. "Zentrum des Bildes genau auf 1,45m Höhe") nutzt du das **Properties-Panel** auf der rechten Seite.
 

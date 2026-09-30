@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import { PerspectiveCamera, OrbitControls, PointerLockControls } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
+import { cameraInfoBridge } from '@/lib/cameraInfoBridge';
 import { useEditorStore } from '../store/editorStore';
 import { isControlsLocked, useControlsLocked } from '../lib/controlsLock';
 import { firstPersonTransition } from '../lib/cameraTransition';
@@ -92,6 +93,7 @@ export const PlannerCameraSystem = () => {
     const wallEditor = useEditorStore(state => state.wallEditor);
     const wallPhase = useWallEditorView(state => state.phase);
     const gl = useThree(state => state.gl);
+    const viewSize = useThree(state => state.size);
 
     const perspRef = useRef<THREE.PerspectiveCamera>(null);
     // OrbitControls must always drive the orbit camera. Without an explicit camera it binds to the
@@ -314,6 +316,16 @@ export const PlannerCameraSystem = () => {
         };
     }, [viewMode, updateFPState, updateOrbitState]);
 
+    // Fov/aspect of the orbit camera for focusSelection (outside the Canvas).
+    useEffect(() => {
+        cameraInfoBridge.get = () => {
+            const cam = perspRef.current;
+            if (!cam || viewSize.height <= 0) return null;
+            return { fov: cam.fov, aspect: viewSize.width / viewSize.height };
+        };
+        return () => { cameraInfoBridge.get = null; };
+    }, [viewSize.width, viewSize.height]);
+
     // Listen for 'H' key to center room
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -387,7 +399,7 @@ export const PlannerCameraSystem = () => {
 
                 t.lerp(targetV, dampFactor);
                 
-                const distance = isHoming ? 15 : 3.5;
+                const distance = focusTarget.distance ?? (isHoming ? 15 : 3.5);
                 const dir = new THREE.Vector3().subVectors(p, targetV);
                 if (dir.lengthSq() === 0) dir.set(0, 0, 1);
                 else dir.normalize();

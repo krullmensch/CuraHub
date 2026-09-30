@@ -229,7 +229,7 @@ interface EditorState {
   transformMode: TransformMode;
   isTransforming: boolean;
   liveTransform: { position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } } | null;
-  focusTarget: { target: [number, number, number]; isHoming: boolean } | null;
+  focusTarget: { target: [number, number, number]; isHoming: boolean; distance?: number } | null;
 
   // Blender-style modal transform
   modalTransformActive: boolean;
@@ -318,7 +318,7 @@ interface EditorState {
   setIsTransforming: (v: boolean) => void;
   setLiveTransform: (t: EditorState['liveTransform']) => void;
   toggleRightSidebar: () => void;
-  setFocusTarget: (focus: { target: [number, number, number]; isHoming: boolean } | null) => void;
+  setFocusTarget: (focus: { target: [number, number, number]; isHoming: boolean; distance?: number } | null) => void;
   // Blender-style actions
   setTransformAxisLock: (axis: TransformAxisLock) => void;
   setShiftHeld: (held: boolean) => void;

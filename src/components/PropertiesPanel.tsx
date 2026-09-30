@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { focusSelection } from '@/lib/focusSelection';
 import { BookPropertiesActions } from './book/BookPropertiesActions';
 import { useEditorStore, videoRefMap, modelBBoxMap, isFloorAssetType } from '../store/editorStore';
 import type { TransformMode, MediumType } from '../store/editorStore';
@@ -72,7 +73,6 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const transformMode = useEditorStore((state) => state.transformMode);
     const setTransformMode = useEditorStore((state) => state.setTransformMode);
     const selectInstance = useEditorStore((state) => state.selectInstance);
-    const setFocusTarget = useEditorStore((state) => state.setFocusTarget);
     const liveTransform = useEditorStore((state) => state.liveTransform);
     const token = useAuthStore((state) => state.token);
     const activeVersionId = useEditorStore((state) => state.activeVersionId);
@@ -355,10 +355,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     }, [assetMeta?.type, instanceMedium, handleMediumChange]);
 
     const handleFocus = () => {
-        setFocusTarget({ 
-            target: [displayTransform.position.x, displayTransform.position.y, displayTransform.position.z],
-            isHoming: false
-        });
+        focusSelection();
     };
 
     const toDeg = (rad: number) => ((rad * 180) / Math.PI).toFixed(1);

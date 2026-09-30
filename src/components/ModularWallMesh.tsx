@@ -25,6 +25,7 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
         const selectWall = useEditorStore((state) => state.selectWall);
         const openWallEditor = useEditorStore((state) => state.openWallEditor);
         const inWallEditor = hidden || flat;
+        const isSelectedWall = useEditorStore((state) => state.selectedWallId === wall.id);
 
         const handleClick = isEditor ? (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
@@ -115,7 +116,7 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
                 )}
 
                 {/* Wall label (editor only) */}
-                {isEditor && !inWallEditor && wall.label && (
+                {isEditor && !inWallEditor && isSelectedWall && wall.label && (
                     <Html
                         position={[0, -wall.height / 2 - 0.15, 0]}
                         center
