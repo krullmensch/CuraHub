@@ -6,7 +6,7 @@
 
 ## Overview
 
-Curators upload PDFs in the asset browser. The server reads page count and page size, renders page 1 as the cover and stores the PDF privately. In the room a book is one placeable instance: a **closed book lying flat, cover up, on a 1.20 m pedestal**, with a label plate (artist, title, year) on the pedestal. Clicking the book opens a 2D flip-through viewer; while it is open the 3D controls are locked. ESC or the close button closes it and releases the controls.
+Curators upload PDFs in the asset browser. The server reads page count and page size, renders page 1 as the cover and stores the PDF privately. In the room a book is one placeable instance: a **closed book lying flat, cover up, on a 1.10 m pedestal**. Clicking the book opens a 2D flip-through viewer; while it is open the 3D controls are locked. ESC or the close button closes it and releases the controls.
 
 Decisions taken in chat:
 
@@ -33,7 +33,7 @@ model Artwork {
 ```
 
 - `Asset.type = "book"` (type is a string, no enum change).
-- `ArtworkInstance.medium = "book"`, `wallId = null`, `position_y = 0`, scale 1. The pedestal is **not** a separate record: one instance = pedestal + book + label plate, so they cannot come apart.
+- `ArtworkInstance.medium = "book"`, `wallId = null`, `position_y = 0`, scale 1. The pedestal is **not** a separate record: one instance = pedestal + book, so they cannot come apart.
 
 ### Files
 
@@ -132,7 +132,7 @@ Otherwise 404 (not 403 — don't confirm existence). File path from `metadata.pd
 
 - `autoThicknessCm(pages) = clamp(ceil(pages / 2) × 0.01 + 0.4, 0.3, 8)` — 0.1 mm per sheet (80 g/m²) + 2 × 2 mm board. 200 pages → 1.4 cm.
 - `bookSize(artwork, meta)` → `{ w, h, d }` in m (w/h from artwork cm, d from `depth ?? auto`).
-- `pedestalSize(book)` → footprint = book + 0.10 m margin per side, minimum 0.40 × 0.40 m; height `PEDESTAL_HEIGHT = 1.20`.
+- `pedestalSize(book)` → footprint = book + 0.10 m margin per side, minimum 0.40 × 0.40 m; height `PEDESTAL_HEIGHT = 1.10`.
 - `bookHitBox(book)` → book footprint + 0.01 m per side, height `max(d, 0.05)`.
 
 ### 4.2 Component tree (`src/components/book/`)
@@ -140,7 +140,6 @@ Otherwise 404 (not 403 — don't confirm existence). File path from `metadata.pd
 ```tsx
 <group ref={registerRef} userData={{ instanceId, medium: 'book' }}>  // instance transform (x/z, rotY)
   <PedestalMesh size={pedestal} />                   // box, origin bottom centre, white matte
-  <LabelPlate artist title year pedestal={pedestal} />  // front face, near the top, tilted ~15°
   <group position={[0, PEDESTAL_HEIGHT, 0]}>
     <BookMesh size={book} coverUrl={coverUrl} />      // lies flat; cover on +Y, cover top edge towards −Z, spine on −X
     <primitive object={hitProxy} />                   // BoxHitProxy, userData.selectionBounds
@@ -148,9 +147,8 @@ Otherwise 404 (not 403 — don't confirm existence). File path from `metadata.pd
 </group>
 ```
 
-- **Front** of the pedestal (label side) is local +Z; a curator standing there reads the cover upright.
+- **Front** of the pedestal is local +Z; a curator standing there reads the cover upright.
 - `BookMesh`: one shared unit box geometry scaled to x = w, y = d (thickness), z = h; material array — cover (top), back (bottom, neutral), spine and page edges (procedural paper colour, slight line pattern). Cover texture through `artworkTextureManager` (`sizeM = w`), so the existing LOD tiers apply. Missing/failed cover → neutral grey cover.
-- `LabelPlate`: canvas texture (pattern of `measureLabelTextures`), Albert Sans, on a thin plate; redrawn when metadata changes.
 - `BoxHitProxy`: `SplatHitProxy` generalised (box in local space, custom `raycast`, no geometry, no draw call). `SplatInstance` switches to it.
 - Pedestal gets a fixed cuboid collider so the first-person player cannot walk through it (same physics setup as other static geometry — the plan checks where instances sit relative to `<Physics>`).
 
@@ -225,7 +223,7 @@ interface BookViewerState {
 
 - **Jest (server):** `pdfGeometry` (pt → mm, `/Rotate` 90/270, CropBox → MediaBox fallback, encrypted flag); magic-byte check; `bookJobs` with fixture PDFs (plain, rotated, encrypted, broken, 0 pages) and a mocked `execFile` timeout; PDF route access matrix (owner, other user, anonymous × `publicReadable` × published) and that `/uploads/.books/<file>` returns 404.
 - **Vitest (client):** `lib/book/geometry`; `bookViewerStore` + `useControlsLocked`; open order (store set before `exitPointerLock`, spy).
-- **Rendering:** headless Chrome over CDP, WebGPU and WebGL: book on pedestal, label plate, hover outline.
+- **Rendering:** headless Chrome over CDP, WebGPU and WebGL: book on pedestal, hover outline.
 - **Manual, on the test stack (SSH tunnel, not locally):** upload → badge phases → place → cover override → thickness slider; first person: open by click, ESC → „Klicken zum Weitergehen" → click re-locks; close button re-locks at once; public viewer with the switch on and off.
 
 ---
@@ -246,3 +244,4 @@ interface BookViewerState {
 - **Overlay ESC stops propagation** so the editor's escape handler doesn't also fire after the book closes.
 - **Book double-clicks don't pass through** to walls behind the pedestal.
 - **Public `/public` route** returns all book instances (only `pdfFile` stripped); `publicReadable` gates opening, not visibility.
+- 2026-09-30 follow-up: pedestal 1.10 m; label plate removed — title/artist/year show at the first-person crosshair.

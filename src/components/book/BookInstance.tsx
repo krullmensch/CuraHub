@@ -7,7 +7,6 @@ import { BoxHitProxy } from '@/lib/boxHitProxy';
 import { bookHitBox, bookSizeOf, pedestalSize, PEDESTAL_HEIGHT } from '@/lib/book/geometry';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
 import { BookMesh } from './BookMesh';
-import { LabelPlate } from './LabelPlate';
 
 interface BookInstanceProps {
   instance: ArtworkInstanceData;
@@ -66,7 +65,6 @@ export const BookInstance = forwardRef<THREE.Group, BookInstanceProps>(({ instan
         <boxGeometry args={[pedestal.width, pedestal.height, pedestal.depth]} />
         <meshStandardMaterial color={PEDESTAL_COLOR} roughness={0.85} />
       </mesh>
-      <LabelPlate title={instance.artwork.title} artist={instance.artwork.artist} year={instance.artwork.year} pedestal={pedestal} />
       <group position={[0, PEDESTAL_HEIGHT, 0]}>
         <BookMesh
           instanceId={instance.id}

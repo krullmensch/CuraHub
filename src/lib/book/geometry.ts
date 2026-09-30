@@ -5,7 +5,7 @@ import type { ArtworkInstanceData } from '@/store/editorStore';
  * is the centre of its bottom face, the book group's origin the centre of the pedestal top.
  */
 
-export const PEDESTAL_HEIGHT = 1.2;
+export const PEDESTAL_HEIGHT = 1.1;
 export const PEDESTAL_MARGIN = 0.1;
 export const PEDESTAL_MIN = 0.4;
 export const HIT_PAD = 0.01;

@@ -26,9 +26,9 @@ describe('bookSize', () => {
 });
 
 describe('pedestalSize', () => {
-  it('adds 10 cm per side, at least 40 × 40 cm, 1.20 m high', () => {
+  it('adds 10 cm per side, at least 40 × 40 cm, 1.10 m high', () => {
     expect(pedestalSize({ width: 0.21, length: 0.297, thickness: 0.014 })).toEqual({ width: 0.41, depth: 0.497, height: PEDESTAL_HEIGHT });
-    expect(pedestalSize({ width: 0.1, length: 0.15, thickness: 0.01 })).toEqual({ width: 0.4, depth: 0.4, height: 1.2 });
+    expect(pedestalSize({ width: 0.1, length: 0.15, thickness: 0.01 })).toEqual({ width: 0.4, depth: 0.4, height: 1.1 });
   });
 });
 
