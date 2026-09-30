@@ -2,6 +2,7 @@ import { createContext, forwardRef, useCallback, useContext, useEffect, useMemo,
 import HTMLFlipBook from 'react-pageflip';
 import type * as pdfjs from 'pdfjs-dist';
 import { MIN_PAGE_WIDTH, isNearPage, needsRerender, pageRenderScale } from '@/lib/book/flipPages';
+import { stopRenderLoop } from '@/lib/book/flipRenderLoop';
 import './BookFlipbook.css';
 
 /**
@@ -24,13 +25,22 @@ interface PageProps {
   side: 'left' | 'right';
 }
 
+/** Canvas → compressed blob: a kept page costs its file size, not width × height × 4 bytes. */
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob | null> {
+  const encode = (type: string, quality: number) =>
+    new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, type, quality));
+  // Browsers that cannot encode WebP hand back a PNG blob (or null); ask for JPEG then.
+  return encode('image/webp', 0.85).then((blob) => (blob && blob.type === 'image/webp' ? blob : encode('image/jpeg', 0.9)));
+}
+
 const Page = forwardRef<HTMLDivElement, PageProps>(({ doc, index, side }, ref) => {
   const current = useContext(CurrentPageContext);
   const box = useContext(PageBoxContext);
   const near = isNearPage(index, current);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  // Box the page is (to be) rendered for. Once set the canvas stays, so flipping back never shows a blank page.
+  // Box the page is (to be) rendered for. Once set the image stays, so flipping back never shows a blank page.
   const [target, setTarget] = useState<PageBox | null>(null);
+  const [src, setSrc] = useState<string | null>(null);
+  const srcRef = useRef<string | null>(null);
 
   // Adjusted while rendering (guarded, so it settles at once): a page enters or outgrows its render box.
   if (near && box.width > 0 && box.height > 0 && needsRerender(target?.width ?? null, box.width)) {
@@ -41,42 +51,57 @@ const Page = forwardRef<HTMLDivElement, PageProps>(({ doc, index, side }, ref) =
     if (!target) return;
     let cancelled = false;
     let task: pdfjs.RenderTask | null = null;
-    doc
-      .getPage(index + 1)
-      .then(async (page) => {
-        if (cancelled) return;
-        const base = page.getViewport({ scale: 1 });
-        const scale = pageRenderScale({
-          baseWidth: base.width,
-          baseHeight: base.height,
-          boxWidth: target.width,
-          boxHeight: target.height,
-          dpr: window.devicePixelRatio || 1,
-        });
-        const viewport = page.getViewport({ scale });
-        // Render off screen and swap in, so a re-render at a larger size never blanks the page.
-        const off = document.createElement('canvas');
-        off.width = Math.max(1, Math.floor(viewport.width));
-        off.height = Math.max(1, Math.floor(viewport.height));
-        task = page.render({ canvas: off, viewport });
-        await task.promise;
-        const canvas = canvasRef.current;
-        if (cancelled || !canvas) return;
-        canvas.width = off.width;
-        canvas.height = off.height;
-        canvas.getContext('2d')?.drawImage(off, 0, 0);
-        page.cleanup();
-      })
-      .catch(() => undefined); // cancelled render or destroyed document
+    let pdfPage: pdfjs.PDFPageProxy | null = null;
+    // Render off screen, then swap the finished image in, so a re-render at a larger size never blanks the page.
+    const off = document.createElement('canvas');
+    (async () => {
+      pdfPage = await doc.getPage(index + 1);
+      if (cancelled) return;
+      const base = pdfPage.getViewport({ scale: 1 });
+      const scale = pageRenderScale({
+        baseWidth: base.width,
+        baseHeight: base.height,
+        boxWidth: target.width,
+        boxHeight: target.height,
+        dpr: window.devicePixelRatio || 1,
+      });
+      const viewport = pdfPage.getViewport({ scale });
+      off.width = Math.max(1, Math.floor(viewport.width));
+      off.height = Math.max(1, Math.floor(viewport.height));
+      task = pdfPage.render({ canvas: off, viewport });
+      await task.promise;
+      if (cancelled) return;
+      const blob = await canvasToBlob(off);
+      if (cancelled || !blob) return;
+      const url = URL.createObjectURL(blob);
+      const previous = srcRef.current;
+      srcRef.current = url;
+      setSrc(url);
+      if (previous) URL.revokeObjectURL(previous);
+    })()
+      .catch(() => undefined) // cancelled render or destroyed document
+      .finally(() => {
+        pdfPage?.cleanup();
+        off.width = 0; // free the pixels now instead of at the next GC
+        off.height = 0;
+      });
     return () => {
       cancelled = true;
       task?.cancel();
     };
   }, [doc, index, target]);
 
+  useEffect(
+    () => () => {
+      if (srcRef.current) URL.revokeObjectURL(srcRef.current);
+      srcRef.current = null;
+    },
+    [],
+  );
+
   return (
     <div className={`zf-page zf-page--${side}`} ref={ref} data-density="soft">
-      <canvas ref={canvasRef} role="img" aria-label={`Seite ${index + 1}`} />
+      {src && <img src={src} alt={`Seite ${index + 1}`} draggable={false} decoding="async" />}
       <div className="zf-page__paper" aria-hidden />
       <div className="zf-page__spine" aria-hidden />
     </div>
@@ -89,6 +114,7 @@ interface FlipRender {
   getRect(): { left: number; top: number; height: number; pageWidth: number };
   getDirection(): number;
   drawInnerShadow(): void;
+  render: (timer: number) => void;
   shadow: { opacity: number };
   innerShadow: HTMLElement;
   __matte?: boolean;
@@ -102,6 +128,7 @@ interface FlipApi {
   getRender(): FlipRender | null;
   getPage(index: number): { setDensity(density: 'soft' | 'hard'): void };
   update(): void;
+  destroy(): void;
 }
 type FlipBookHandle = { pageFlip: () => FlipApi | null | undefined };
 
@@ -123,6 +150,19 @@ function makeShadowsMatte(flip: FlipApi) {
       rgba(45, 35, 25, 0) 100%)`;
   };
   render.__matte = true;
+}
+
+/**
+ * react-pageflip 2.0.3 never destroys its PageFlip, and page-flip's render loop never stops on its
+ * own. Stop the loop first (it would otherwise keep writing every page's style each frame), then
+ * destroy: that removes the resize/mouse/touch listeners on window and the book's DOM.
+ */
+function teardownFlip(flip: FlipApi) {
+  const render = flip.getRender();
+  // Before loadFromHTML there is neither a render loop nor a UI, and destroy() would throw.
+  if (!render) return;
+  stopRenderLoop(render);
+  flip.destroy();
 }
 
 type ShadowRect = { left: number; top: number; width: number; height: number };
@@ -154,11 +194,17 @@ export default function BookFlipbook({ doc, pageSize }: BookFlipbookProps) {
   const [shadow, setShadow] = useState<ShadowRect | null>(null);
   const [box, setBox] = useState<PageBox>({ width: 0, height: 0 });
   const bookRef = useRef<FlipBookHandle>(null);
+  // The PageFlip instance once react-pageflip has created it; kept for teardown (bookRef is detached by then).
+  const flipRef = useRef<FlipApi | null>(null);
+  // False after unmount: page-flip callbacks must not touch state any more.
+  const aliveRef = useRef(true);
   const stageRef = useRef<HTMLDivElement>(null);
 
   // Closed book (front/back cover) sits centered instead of hugging one half
   const updateOffset = useCallback((index: number) => {
+    if (!aliveRef.current) return;
     const flip = bookRef.current?.pageFlip();
+    if (flip) flipRef.current = flip;
     const rect = flip?.getRender()?.getRect();
     if (!flip || !rect) return;
     makeShadowsMatte(flip);
@@ -190,6 +236,7 @@ export default function BookFlipbook({ doc, pageSize }: BookFlipbookProps) {
 
   const onFlip = useCallback(
     (e: { data: number }) => {
+      if (!aliveRef.current) return;
       setCurrent(e.data);
       updateOffset(e.data);
     },
@@ -199,7 +246,7 @@ export default function BookFlipbook({ doc, pageSize }: BookFlipbookProps) {
   // Leaving a cover can only open the book, so start centering right away
   const onChangeState = useCallback((e: { data: string }) => {
     const flip = bookRef.current?.pageFlip();
-    if (!flip || e.data !== 'flipping' || flip.getOrientation() === 'portrait') return;
+    if (!aliveRef.current || !flip || e.data !== 'flipping' || flip.getOrientation() === 'portrait') return;
     const index = flip.getCurrentPageIndex();
     if (index === 0 || index >= flip.getPageCount() - 1) {
       setOffset(0);
@@ -212,6 +259,17 @@ export default function BookFlipbook({ doc, pageSize }: BookFlipbookProps) {
     const flip = bookRef.current?.pageFlip();
     if (flip) updateOffset(flip.getCurrentPageIndex());
   }, [updateOffset]);
+
+  // Unmount: stop and destroy page-flip (react-pageflip does neither).
+  useEffect(() => {
+    aliveRef.current = true;
+    return () => {
+      aliveRef.current = false;
+      const flip = flipRef.current;
+      flipRef.current = null;
+      if (flip) teardownFlip(flip);
+    };
+  }, []);
 
   // page-flip only listens to window resize; also react to container changes
   useEffect(() => {

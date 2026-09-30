@@ -64,13 +64,14 @@
   mix-blend-mode: multiply;
 }
 
-/* The page print: pdf.js renders into this canvas (the zine has an <img> here) */
-.zf-page canvas {
+/* The page print: pdf.js renders it, BookFlipbook shows it as an image (blob URL) like the zine */
+.zf-page img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: cover;
   pointer-events: none;
+  -webkit-user-drag: none;
 }
 
 /* Subtle binding shadow so a spread reads as a physical book */
