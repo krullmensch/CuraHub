@@ -23,7 +23,6 @@ This file gives Claude Code full context about the project — its architecture,
 - `cd server && npm test` — Jest (ts-jest)
 - `cd server && npx prisma migrate dev` — apply migrations
 - `cd server && npx prisma studio` — database browser
-- `cd server && npx prisma db seed` — seed via `prisma/seed.ts`
 - `cd server && npm run build && node dist/scripts/backfill-splats.js --apply` — convert existing splat assets to `.spz` and render their thumbnails
 
 Both frontend and backend must run simultaneously for development. The backend requires a MySQL database configured via `DATABASE_URL` in `server/.env`.
@@ -219,6 +218,13 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 ### Backend API
 
 Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/scale-figures`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
+
+### Setup & Deployment
+
+- Fresh install = `docker compose up -d` + web wizard at `/setup` (runbook: `docs/deployment.md`, Apache snippet: `deploy/apache/curahub.conf`). The `init` service writes `db_root_password`, `db_password`, `jwt_secret` into volume `secrets` (`/run/curahub-secrets`); `lib/loadSecretEnv` fills `DATABASE_URL`/`JWT_SECRET` from them when unset (env always wins) — import it first in every entry point and script. `JWT_SECRET` comes from `lib/jwtSecret` only (production refuses to start without one).
+- `SystemSetting` (`setup_completed_at`, `public_url`); `lib/setupState` caches it. Until completion `lib/setupGate` answers 503 `setup_required` on every API namespace; the one-time code is printed to the log, setup tokens are signed with an in-memory secret (never `JWT_SECRET`). `/setup` routes 404 afterwards; `scripts/reset-setup.js` re-opens.
+- Local emergency accounts: `User.email` without `@`, bcrypt hash, `POST /auth/local-login` („Notfall-Login" on the login page); `scripts/reset-local-admin.js <name>`.
+- CORS: `CORS_ORIGINS` else `public_url`; `trust proxy` = loopback + private ranges; `cf-connecting-ip` only with `BEHIND_CLOUDFLARE=true` (`lib/rateLimit`). System checks (`lib/systemChecks`) show in the wizard and on `/users`.
 
 ### Database Schema (key models)
 
