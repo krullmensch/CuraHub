@@ -3,24 +3,10 @@
  * Run: docker compose exec app node dist/scripts/reset-local-admin.js <benutzername>
  */
 import '../lib/loadSecretEnv';
-import readline from 'readline';
 import { PrismaClient } from '@prisma/client';
+import { askHiddenLines } from '../lib/askHidden';
 import { hashPassword } from '../lib/setupStore';
 import { LOCAL_USERNAME_RE, MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH } from '../lib/setupValidation';
-
-function askHidden(question: string): Promise<string> {
-    return new Promise((resolve) => {
-        const rl = readline.createInterface({ input: process.stdin, output: process.stdout, terminal: true });
-        process.stdout.write(question);
-        // Suppress the echo of typed characters.
-        (rl as unknown as { _writeToOutput: (s: string) => void })._writeToOutput = () => {};
-        rl.question('', (answer) => {
-            rl.close();
-            process.stdout.write('\n');
-            resolve(answer);
-        });
-    });
-}
 
 async function main() {
     const username = (process.argv[2] ?? '').trim().toLowerCase();
@@ -28,8 +14,7 @@ async function main() {
         console.error('Aufruf: node dist/scripts/reset-local-admin.js <benutzername>  (3–32 Zeichen: a–z, 0–9, . _ -)');
         process.exit(1);
     }
-    const password = await askHidden('Neues Passwort: ');
-    const repeat = await askHidden('Passwort wiederholen: ');
+    const [password, repeat] = await askHiddenLines(['Neues Passwort: ', 'Passwort wiederholen: '], process.stdin, process.stdout);
     if (password !== repeat) throw new Error('Die Passwörter stimmen nicht überein.');
     if (password.length < MIN_PASSWORD_LENGTH || password.length > MAX_PASSWORD_LENGTH) {
         throw new Error(`Das Passwort muss ${MIN_PASSWORD_LENGTH}–${MAX_PASSWORD_LENGTH} Zeichen lang sein.`);

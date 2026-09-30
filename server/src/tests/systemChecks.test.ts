@@ -61,4 +61,10 @@ describe('runSystemChecks', () => {
         expect(db.status).toBe('fail');
         expect(db.detail).toMatch(/Zeitüberschreitung/);
     });
+    it('reports an aborted fetch (AbortSignal.timeout) in German', async () => {
+        const reachHsbi = async () => { throw new DOMException('The operation was aborted due to timeout', 'TimeoutError'); };
+        const hsbi = (await runSystemChecks(deps({ reachHsbi }), viaProxy)).find((c) => c.id === 'hsbi')!;
+        expect(hsbi.status).toBe('warn');
+        expect(hsbi.detail).toBe('Zeitüberschreitung');
+    });
 });

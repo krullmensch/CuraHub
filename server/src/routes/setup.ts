@@ -45,13 +45,10 @@ export function createSetupRouter(deps: SetupRouterDeps): Router {
         res.json({ complete: getSetupState()?.complete === true });
     });
 
-    // Everything below exists only while the instance is not set up.
-    router.use((_req, res, next) => {
-        if (getSetupState()?.complete) {
-            res.status(404).json({ error: 'Endpoint not found' });
-            return;
-        }
-        next();
+    // Everything below exists only while the instance is not set up. Afterwards requests leave
+    // the router: API calls end in the JSON 404, GET /setup reaches the SPA (which sends to /login).
+    router.use((_req, _res, next) => {
+        next(getSetupState()?.complete ? 'router' : undefined);
     });
 
     router.post('/verify-code', codeLimiter.middleware, (req, res) => {

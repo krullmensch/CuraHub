@@ -36,6 +36,10 @@ function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 
 function reason(err: unknown): string {
     if (err instanceof TimeoutError) return 'Zeitüberschreitung';
+    // fetch with AbortSignal.timeout() rejects with a DOMException named TimeoutError/AbortError.
+    if (typeof err === 'object' && err !== null && 'name' in err && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+        return 'Zeitüberschreitung';
+    }
     return err instanceof Error ? err.message : String(err);
 }
 

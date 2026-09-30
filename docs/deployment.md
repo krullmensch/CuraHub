@@ -31,6 +31,13 @@ docker compose exec db sh -c 'exec mariadb-dump -uroot -p"$(cat /run/curahub-sec
 
 Ohne das Volume `secrets` kommt man nicht mehr an die Datenbank. Ein neues JWT-Secret meldet nur alle Nutzer:innen ab.
 
+Bei einer bestehenden Installation (Datenbank vor dieser Compose-Datei angelegt) gilt weiter das Root-Passwort aus der alten `.env` (`DB_ROOT_PASSWORD`); die erzeugte Datei ist dort unbenutzt, und der Container hat keine Variable `MARIADB_ROOT_PASSWORD` mehr. Dump dann so (Datenbankname aus `DB_NAME`):
+
+```bash
+set -a; . ./.env; set +a
+docker compose exec -e P="$DB_ROOT_PASSWORD" -e D="$DB_NAME" db sh -c 'exec mariadb-dump -uroot -p"$P" --single-transaction --routines "$D"' > curahub-$(date +%Y%m%d-%H%M%S).sql
+```
+
 ## Update
 
 ```bash

@@ -24,6 +24,8 @@ function makeApp(deps: SetupRouterDeps) {
     app.use(express.json());
     app.use('/api/setup', createSetupRouter(deps));
     app.get('/api/protected', authenticate, (_req, res) => res.json({ ok: true }));
+    // Stands in for the SPA fallback / JSON 404 of index.ts.
+    app.use((_req, res) => res.status(404).json({ error: 'fallthrough' }));
     return app;
 }
 
@@ -133,6 +135,12 @@ describe('setup API', () => {
         expect((await request(app).get('/api/setup/status')).body).toEqual({ complete: true });
         expect((await request(app).get('/api/setup/checks').set('Authorization', `Bearer ${t}`)).status).toBe(404);
         expect((await request(app).post('/api/setup/verify-code').send({ code })).status).toBe(404);
+    });
+
+    it('hands requests to the next handler once set up (so GET /setup reaches the SPA)', async () => {
+        setSetupState({ complete: true, publicUrl: 'https://curahub.hsbi.de' });
+        const res = await request(makeApp(makeDeps())).get('/api/setup');
+        expect(res.body).toEqual({ error: 'fallthrough' });
     });
 
     // Keep last: exhausts the per-IP code limit for this router.
