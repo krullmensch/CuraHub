@@ -1,0 +1,148 @@
+/* Ported from the zine flipbook (Flipbook.css); class prefix kept as `zf-`. */
+.zf-flipbook {
+  --zf-ink: #2c2c2c;
+  /* Uncoated, slightly warm recycled stock */
+  --zf-paper: #f7f7f5;
+  --zf-grain: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='240' height='240'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 0.42 0 0 0 0 0.41 0 0 0 0 0.38 0 0 0 0.35 -0.14'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* The stage defines the space the book may occupy; page-flip fits the book inside it */
+.zf-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.zf-book {
+  position: absolute;
+  inset: 0;
+  transition: transform 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
+  will-change: transform;
+}
+
+/* Soft drop shadow grounding the book; follows the visible pages (cover vs. spread) */
+.zf-book__shadow {
+  position: absolute;
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.05),
+    0 8px 24px -6px rgba(0, 0, 0, 0.1),
+    0 24px 48px -16px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+  transition:
+    left 0.6s cubic-bezier(0.22, 0.61, 0.36, 1),
+    width 0.6s cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* page-flip ships a typo (.sft__wrapper), so the wrapper never gets a height */
+.zf-book .stf__wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.zf-page {
+  background: var(--zf-paper);
+  overflow: hidden;
+}
+
+/* Paper tone + grain, multiplied onto the print so whites turn matte and off-white */
+.zf-page__paper {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--zf-grain), var(--zf-paper);
+  background-size: 240px 240px, auto;
+  mix-blend-mode: multiply;
+}
+
+/* The page print: pdf.js renders into this canvas (the zine has an <img> here) */
+.zf-page canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  pointer-events: none;
+}
+
+/* Subtle binding shadow so a spread reads as a physical book */
+.zf-page__spine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 12%;
+  pointer-events: none;
+}
+
+.zf-page--left .zf-page__spine {
+  right: 0;
+  background: linear-gradient(to left, rgba(45, 35, 25, 0.14), rgba(45, 35, 25, 0.04) 35%, transparent);
+}
+
+.zf-page--right .zf-page__spine {
+  left: 0;
+  background: linear-gradient(to right, rgba(45, 35, 25, 0.12), rgba(45, 35, 25, 0.03) 35%, transparent);
+}
+
+/* Single-page mode: every page is bound on the left */
+.zf-flipbook--single .zf-page--left .zf-page__spine {
+  right: auto;
+  left: 0;
+  background: linear-gradient(to right, rgba(45, 35, 25, 0.12), rgba(45, 35, 25, 0.03) 35%, transparent);
+}
+
+.zf-controls {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 14px 0 4px;
+}
+
+.zf-btn {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1.25px solid var(--zf-ink);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--zf-ink);
+  cursor: pointer;
+  transition: background-color 0.2s, color 0.2s, opacity 0.2s;
+}
+
+.zf-btn svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.zf-btn:hover:not(:disabled) {
+  background: var(--zf-ink);
+  color: #fff;
+}
+
+.zf-btn:focus-visible {
+  outline: 2px solid var(--zf-ink);
+  outline-offset: 3px;
+}
+
+.zf-btn:disabled {
+  opacity: 0.25;
+  cursor: default;
+}

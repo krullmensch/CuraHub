@@ -8,7 +8,7 @@ export function BookViewerHost() {
   const book = useBookViewerStore((s) => s.book);
   if (!book) return null;
   return (
-    <Suspense fallback={<div className="fixed inset-0 z-[1100] bg-black/85" />}>
+    <Suspense fallback={<div className="fixed inset-0 z-[1100] bg-[#eef0f5]" />}>
       <BookViewerOverlay key={book.assetId} book={book} />
     </Suspense>
   );

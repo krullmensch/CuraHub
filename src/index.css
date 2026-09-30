@@ -266,10 +266,3 @@ h1, h2, h3, h4, h5, h6 {
   color: #e4e4e7;               /* zinc-200 */
   font-weight: 600;
 }
-
-/* Book viewer: the page that turns in rotates about the spine. */
-@keyframes bookTurnNext { from { transform: perspective(2400px) rotateY(-80deg); } to { transform: perspective(2400px) rotateY(0deg); } }
-@keyframes bookTurnPrev { from { transform: perspective(2400px) rotateY(80deg); } to { transform: perspective(2400px) rotateY(0deg); } }
-.book-turn-next { transform-origin: left center; animation: bookTurnNext 400ms ease-out; }
-.book-turn-prev { transform-origin: right center; animation: bookTurnPrev 400ms ease-out; }
-@media (prefers-reduced-motion: reduce) { .book-turn-next, .book-turn-prev { animation: none; } }

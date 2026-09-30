@@ -16,7 +16,7 @@ interface BookInstanceProps {
 
 const PEDESTAL_COLOR = '#f2f2f0';
 
-/** One instance = pedestal + book + label plate; only this outer group is ever transformed. */
+/** One instance = pedestal + book; only this outer group is ever transformed. */
 export const BookInstance = forwardRef<THREE.Group, BookInstanceProps>(({ instance, selected, isEditor = true }, ref) => {
   const pickInstance = useEditorStore((s) => s.pickInstance);
   const setHoveredBook = useBookViewerStore((s) => s.setHoveredBook);

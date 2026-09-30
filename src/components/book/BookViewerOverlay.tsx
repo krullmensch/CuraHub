@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ChevronLeft, ChevronRight, Loader2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { Loader2, X } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
@@ -8,52 +8,20 @@ import { useAuthStore } from '@/store/authStore';
 import type { OpenBook } from '@/store/bookViewerStore';
 import { closeBook } from '@/lib/book/viewerActions';
 import { bookPdfUrl } from '@/lib/book/api';
-import { buildSpreads, spreadLabel, type Spread } from '@/lib/book/spread';
+import { flipPageSize } from '@/lib/book/flipPages';
+import BookFlipbook from './BookFlipbook';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-const SINGLE_BELOW_PX = 900;
-
-function PageCanvas({ doc, page, maxHeight, maxWidth }: { doc: pdfjs.PDFDocumentProxy; page: number; maxHeight: number; maxWidth: number }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    let cancelled = false;
-    let task: pdfjs.RenderTask | null = null;
-    doc.getPage(page).then((p) => {
-      if (cancelled || !canvasRef.current) return;
-      const base = p.getViewport({ scale: 1 });
-      const fit = Math.min(maxHeight / base.height, maxWidth / base.width);
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const viewport = p.getViewport({ scale: fit * dpr });
-      const canvas = canvasRef.current;
-      canvas.width = Math.floor(viewport.width);
-      canvas.height = Math.floor(viewport.height);
-      canvas.style.width = `${Math.floor(viewport.width / dpr)}px`;
-      canvas.style.height = `${Math.floor(viewport.height / dpr)}px`;
-      task = p.render({ canvas, viewport });
-      task.promise.catch(() => undefined);
-    }).catch(() => undefined);
-    return () => {
-      cancelled = true;
-      task?.cancel();
-    };
-  }, [doc, page, maxHeight, maxWidth]);
-  return <canvas ref={canvasRef} className="block bg-white shadow-2xl" />;
+interface LoadedBook {
+  doc: pdfjs.PDFDocumentProxy;
+  pageSize: { width: number; height: number };
 }
 
 export default function BookViewerOverlay({ book }: { book: OpenBook }) {
   const token = useAuthStore((s) => s.token);
-  const [doc, setDoc] = useState<pdfjs.PDFDocumentProxy | null>(null);
+  const [loaded, setLoaded] = useState<LoadedBook | null>(null);
   const [failed, setFailed] = useState(false);
-  const [index, setIndex] = useState(0);
-  const [turn, setTurn] = useState<'next' | 'prev' | null>(null);
-  const [viewport, setViewport] = useState({ w: window.innerWidth, h: window.innerHeight });
-
-  useEffect(() => {
-    const onResize = () => setViewport({ w: window.innerWidth, h: window.innerHeight });
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
 
   useEffect(() => {
     const task = pdfjs.getDocument({
@@ -63,44 +31,30 @@ export default function BookViewerOverlay({ book }: { book: OpenBook }) {
       disableStream: true,
       rangeChunkSize: 1 << 20,
     });
-    task.promise.then(setDoc, () => setFailed(true));
-    return () => { void task.destroy(); };
-  }, [book.assetId, book.publicView, token]);
-
-  const pageCount = doc?.numPages ?? book.pageCount;
-  const single = viewport.w < SINGLE_BELOW_PX;
-  const spreads = useMemo(() => buildSpreads(pageCount, single), [pageCount, single]);
-  const current: Spread | undefined = spreads[Math.min(index, spreads.length - 1)];
-
-  const go = useCallback((delta: 1 | -1) => {
-    setIndex((i) => {
-      const next = Math.max(0, Math.min(spreads.length - 1, i + delta));
-      if (next !== i) setTurn(delta > 0 ? 'next' : 'prev');
-      return next;
-    });
-  }, [spreads.length]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowRight') { e.preventDefault(); go(1); }
-      if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1); }
+    let cancelled = false;
+    // page-flip lays every page out at the size of page 1
+    task.promise
+      .then(async (doc) => {
+        const first = await doc.getPage(1);
+        const view = first.getViewport({ scale: 1 });
+        if (!cancelled) setLoaded({ doc, pageSize: flipPageSize(view.width, view.height) });
+      })
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      });
+    return () => {
+      cancelled = true;
+      void task.destroy();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [go]);
-
-  const pageMaxH = viewport.h - 140;
-  const pageMaxW = single ? viewport.w - 120 : (viewport.w - 160) / 2;
-  // Neighbouring spreads are rendered hidden so turning shows a finished page.
-  const neighbours = [spreads[index - 1], spreads[index + 1]].filter(Boolean) as Spread[];
+  }, [book.assetId, book.publicView, token]);
 
   return (
     <Dialog open onOpenChange={(open) => { if (!open) closeBook('escape'); }}>
       <DialogPortal>
-        <DialogOverlay className="fixed inset-0 z-[1100] bg-black/85" />
+        <DialogOverlay className="fixed inset-0 z-[1100] bg-[#eef0f5]" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
-          className="fixed inset-0 z-[1101] flex flex-col items-center justify-center outline-none"
+          className="fixed inset-0 z-[1101] flex flex-col px-[clamp(16px,3vw,40px)] pb-[clamp(12px,2vw,28px)] pt-16 text-[#2c2c2c] outline-none"
           onEscapeKeyDown={(e) => {
             // Radix listens on document in the capture phase: stop here so EditorPage's window keydown (escape branch) never sees this ESC.
             e.stopPropagation();
@@ -108,46 +62,23 @@ export default function BookViewerOverlay({ book }: { book: OpenBook }) {
             closeBook('escape');
           }}
         >
-          <DialogTitle className="absolute left-6 top-5 text-sm font-medium text-white/80">{book.title}</DialogTitle>
+          <DialogTitle className="absolute left-6 top-5 max-w-[60vw] truncate text-sm font-medium text-[#2c2c2c]">{book.title}</DialogTitle>
           <button
             type="button"
             onClick={() => closeBook('button')}
-            className="absolute right-5 top-4 flex items-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm text-white/80 hover:bg-white/10 hover:text-white"
+            className="absolute right-5 top-4 flex items-center gap-2 rounded-full border-[1.25px] border-[#2c2c2c] px-4 py-1.5 text-sm text-[#2c2c2c] transition-colors hover:bg-[#2c2c2c] hover:text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#2c2c2c]"
           >
             <X className="h-4 w-4" /> Schließen
           </button>
 
           {failed ? (
-            <p className="text-sm text-white/80">Buch konnte nicht geladen werden</p>
-          ) : !doc || !current ? (
-            <Loader2 className="h-8 w-8 animate-spin text-white/70" />
+            <p className="m-auto text-sm">Buch konnte nicht geladen werden</p>
+          ) : !loaded ? (
+            <Loader2 className="m-auto h-8 w-8 animate-spin text-[#2c2c2c]/60" />
           ) : (
-            <>
-              <div className="flex items-center gap-0" key={index}>
-                {!single && (
-                  <div className={turn === 'prev' ? 'book-turn-prev' : ''} style={{ minWidth: 1 }} onClick={() => go(-1)}>
-                    {current.left !== null && <PageCanvas doc={doc} page={current.left} maxHeight={pageMaxH} maxWidth={pageMaxW} />}
-                  </div>
-                )}
-                <div className={turn === 'next' ? 'book-turn-next' : ''} onClick={() => go(1)}>
-                  {current.right !== null && <PageCanvas doc={doc} page={current.right} maxHeight={pageMaxH} maxWidth={pageMaxW} />}
-                </div>
-              </div>
-              <div className="hidden" aria-hidden>
-                {neighbours.flatMap((s) => [s.left, s.right]).filter((p): p is number => p !== null).map((p) => (
-                  <PageCanvas key={p} doc={doc} page={p} maxHeight={pageMaxH} maxWidth={pageMaxW} />
-                ))}
-              </div>
-              <div className="mt-4 flex items-center gap-4 text-sm text-white/80">
-                <button type="button" onClick={() => go(-1)} disabled={index === 0} className="rounded p-2 hover:bg-white/10 disabled:opacity-30" aria-label="Zurückblättern">
-                  <ChevronLeft className="h-5 w-5" />
-                </button>
-                <span className="tabular-nums">{spreadLabel(current, pageCount)}</span>
-                <button type="button" onClick={() => go(1)} disabled={index >= spreads.length - 1} className="rounded p-2 hover:bg-white/10 disabled:opacity-30" aria-label="Weiterblättern">
-                  <ChevronRight className="h-5 w-5" />
-                </button>
-              </div>
-            </>
+            <div className="min-h-0 flex-1">
+              <BookFlipbook doc={loaded.doc} pageSize={loaded.pageSize} />
+            </div>
           )}
         </DialogPrimitive.Content>
       </DialogPortal>

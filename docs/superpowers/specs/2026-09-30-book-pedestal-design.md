@@ -245,3 +245,4 @@ interface BookViewerState {
 - **Book double-clicks don't pass through** to walls behind the pedestal.
 - **Public `/public` route** returns all book instances (only `pdfFile` stripped); `publicReadable` gates opening, not visibility.
 - 2026-09-30 follow-up: pedestal 1.10 m; label plate removed — title/artist/year show at the first-person crosshair.
+- **2026-09-30 follow-up: flip viewer rebuilt on react-pageflip/page-flip 2.0.7 in the look of the zine flipbook (light stage, matte curl, paper grain, spine shadow, centered covers); pages still come from pdf.js.**
