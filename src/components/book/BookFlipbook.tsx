@@ -1,4 +1,4 @@
-import { createContext, forwardRef, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, forwardRef, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import HTMLFlipBook from 'react-pageflip';
 import type * as pdfjs from 'pdfjs-dist';
 import { MIN_PAGE_WIDTH, isNearPage, needsRerender, pageRenderScale } from '@/lib/book/flipPages';
@@ -157,10 +157,13 @@ function makeShadowsMatte(flip: FlipApi) {
  * own. Stop the loop first (it would otherwise keep writing every page's style each frame), then
  * destroy: that removes the resize/mouse/touch listeners on window and the book's DOM.
  */
+const tornDown = new WeakSet<FlipApi>();
 function teardownFlip(flip: FlipApi) {
+  if (tornDown.has(flip)) return;
   const render = flip.getRender();
   // Before loadFromHTML there is neither a render loop nor a UI, and destroy() would throw.
   if (!render) return;
+  tornDown.add(flip);
   stopRenderLoop(render);
   flip.destroy();
 }
@@ -260,12 +263,16 @@ export default function BookFlipbook({ doc, pageSize }: BookFlipbookProps) {
     if (flip) updateOffset(flip.getCurrentPageIndex());
   }, [updateOffset]);
 
-  // Unmount: stop and destroy page-flip (react-pageflip does neither).
-  useEffect(() => {
+  // Unmount: stop and destroy page-flip (react-pageflip does neither). The handle is copied at mount
+  // (a child's layout effects, i.e. its useImperativeHandle, run before ours) and its pageFlip() reads
+  // react-pageflip's own ref lazily, so the instance is reachable at cleanup even when the `init` event
+  // or the ResizeObserver never captured it into flipRef, and independent of when React detaches bookRef.
+  useLayoutEffect(() => {
     aliveRef.current = true;
+    const handle = bookRef.current;
     return () => {
       aliveRef.current = false;
-      const flip = flipRef.current;
+      const flip = handle?.pageFlip() ?? flipRef.current;
       flipRef.current = null;
       if (flip) teardownFlip(flip);
     };
