@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Card, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play, AlertCircle } from 'lucide-react';
+import { SidebarTabs } from './SidebarTabs';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { gooeyToast } from 'goey-toast';
 import { cn } from '@/lib/utils';
@@ -65,6 +66,11 @@ interface Asset {
 
 type FolderFilter = 'all' | number;
 
+
+const SIDEBAR_VIEWS: readonly { value: SidebarView; label: string }[] = [
+    { value: 'assets', label: 'Assets' },
+    { value: 'placed', label: 'Im Raum' },
+];
 
 const isAssetReady = (asset: Asset) => asset.status !== 'processing' && asset.status !== 'failed';
 
@@ -241,31 +247,14 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                     !isOpen && "-translate-x-[calc(100%+2rem)]" // Slide off screen
                 )}
             >
-                <CardHeader className="p-4 border-b border-zinc-800 bg-blue-600 flex flex-row items-center justify-between space-y-0">
-                    <CardTitle className="flex gap-1 text-sm font-medium text-white">
-                        {([['assets', 'Assets'], ['placed', 'Im Raum']] as const).map(([value, label]) => (
-                            <button
-                                key={value}
-                                type="button"
-                                onClick={() => chooseView(value)}
-                                className={cn(
-                                    'rounded-md px-2 py-0.5 text-xs transition-colors',
-                                    view === value ? 'bg-white/20 text-white' : 'text-blue-100 hover:bg-white/10 hover:text-white',
-                                )}
-                            >
-                                {label}
-                            </button>
-                        ))}
-                    </CardTitle>
-                    <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="h-6 w-6 text-blue-100 hover:text-white hover:bg-blue-700"
-                        onClick={onToggle}
-                    >
-                        <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                </CardHeader>
+                <SidebarTabs
+                    tabs={SIDEBAR_VIEWS}
+                    value={view}
+                    onChange={chooseView}
+                    collapseIcon={<ChevronLeft className="h-4 w-4" />}
+                    onCollapse={onToggle}
+                    collapseLabel="Seitenleiste einklappen"
+                />
                 {view === 'placed' ? <PlacedArtworkList /> : <>
                 {folders.length > 0 && (
                     <div data-asset-drop-zone className="flex gap-1.5 px-3 py-2 border-b border-zinc-800 overflow-x-auto no-scrollbar">

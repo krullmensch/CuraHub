@@ -6,6 +6,7 @@ import type { TransformMode, MediumType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { gooeyToast } from 'goey-toast';
 import { Card } from '@/components/ui/card';
+import { SidebarTabs } from './SidebarTabs';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { Separator } from '@/components/ui/separator';
@@ -63,6 +64,11 @@ interface PropertiesPanelProps {
 }
 
 type RightTab = 'controls' | 'properties';
+
+const PANEL_TABS: readonly { value: RightTab; label: string }[] = [
+    { value: 'controls', label: 'Controls' },
+    { value: 'properties', label: 'Properties' },
+];
 
 export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const [activeTab, setActiveTab] = useState<RightTab>('controls');
@@ -377,19 +383,15 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                 !isOpen && "translate-x-[calc(100%+2rem)]"
             )}>
                 {wallEditorOpen ? <WallEditorPanel onToggle={onToggle} /> : <>
-                <div className={cn("flex items-center border-b border-zinc-800", headerAccent)}>
-                    <button onClick={() => setActiveTab('controls')} className={cn(
-                        "flex-1 py-2.5 text-xs font-medium transition-colors",
-                        activeTab === 'controls' ? "text-white bg-white/15" : "text-white/60 hover:text-white hover:bg-white/5"
-                    )}>Controls</button>
-                    <button onClick={() => setActiveTab('properties')} className={cn(
-                        "flex-1 py-2.5 text-xs font-medium transition-colors",
-                        activeTab === 'properties' ? "text-white bg-white/15" : "text-white/60 hover:text-white hover:bg-white/5"
-                    )}>Properties</button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-white/60 hover:text-white hover:bg-white/10 mr-1" onClick={onToggle}>
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
-                </div>
+                <SidebarTabs
+                    className={headerAccent}
+                    tabs={PANEL_TABS}
+                    value={activeTab}
+                    onChange={setActiveTab}
+                    collapseIcon={<ChevronRight className="h-4 w-4" />}
+                    onCollapse={onToggle}
+                    collapseLabel="Seitenleiste einklappen"
+                />
 
                 {activeTab === 'controls' && <ControlsTabContent />}
 
