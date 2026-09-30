@@ -4,7 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import path from 'path';
 import fs from 'fs';
-import { authRouter } from './routes/auth';
+import { authRouter, validateHSBI } from './routes/auth';
 import { uploadRouter } from './routes/upload';
 import { artworksRouter } from './routes/artworks';
 import { instancesRouter } from './routes/instances';
@@ -24,21 +24,28 @@ import { videoStreamHandler } from './lib/videoRanges';
 import { PrismaClient } from '@prisma/client';
 import { API_NAMESPACE_SEGMENTS, isFrontendExhibitionPath, NOINDEX_ROUTE_PATTERNS } from './lib/apiNamespaces';
 import { setupGate } from './lib/setupGate';
-import { ensureSetupSecrets, formatSetupBanner, loadSetupState } from './lib/setupState';
+import { ensureSetupSecrets, formatSetupBanner, getSetupState, loadSetupState } from './lib/setupState';
+import { allowedOrigins } from './lib/corsOrigins';
+import { defaultCheckDeps, requestInfo, runSystemChecks } from './lib/systemChecks';
+import { completeSetupInDb, hashPassword } from './lib/setupStore';
+import { createSetupRouter } from './routes/setup';
 import { createHealthRouter } from './routes/health';
 
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
 
-// --- CORS (SEC-07) ---
-// If CORS_ORIGINS is set (comma-separated list), restrict to those origins.
-// Otherwise keep the previous behaviour (reflects any origin via cors()).
-const corsOrigins = (process.env.CORS_ORIGINS || '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-app.use(corsOrigins.length > 0 ? cors({ origin: corsOrigins }) : cors());
+// Apache (host) and cloudflared reach the container through the Docker bridge / loopback;
+// trust their X-Forwarded-* so req.ip and req.protocol are the client's.
+app.set('trust proxy', 'loopback, uniquelocal');
+
+// --- CORS (SEC-07) --- see lib/corsOrigins.ts
+app.use(cors({
+    origin: (origin, callback) => {
+        const allowed = allowedOrigins(process.env, getSetupState()?.publicUrl ?? null);
+        callback(null, origin !== undefined && allowed.includes(origin));
+    },
+}));
 
 // --- Body size limits (SEC-07) ---
 // Global limit is 2mb. Routes under /exhibitions/:id/versions (mounted with and
@@ -67,6 +74,16 @@ app.use(setupGate);
 const healthRouter = createHealthRouter(() => prisma.$queryRaw`SELECT 1`);
 app.use('/health', healthRouter);
 app.use('/api/health', healthRouter);
+
+const checkDeps = defaultCheckDeps(prisma, uploadsDirPath);
+const setupRouter = createSetupRouter({
+    runChecks: (req) => runSystemChecks(checkDeps, requestInfo(req)),
+    validateHSBI,
+    hashPassword,
+    completeSetup: (input) => completeSetupInDb(prisma, input),
+});
+app.use('/setup', setupRouter);
+app.use('/api/setup', setupRouter);
 
 // Serve uploaded files statically.
 // LOAD-06: cacheable but not immutable — pre-SEC-04 filenames were not
