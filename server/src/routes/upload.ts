@@ -83,9 +83,22 @@ function makeStoredFilename(originalname: string): string {
 }
 
 // Configure storage
+// PDFs never touch the public uploads dir: they are stored straight in the dot-directory
+// `.books/` (not served statically, see routes/books.ts).
+function storageDirFor(originalname: string, mimetype: string): string {
+    if (detectAssetType(mimetype, originalname) !== 'book') return uploadDir;
+    const dir = booksDir(uploadDir);
+    fs.mkdirSync(dir, { recursive: true });
+    return dir;
+}
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    cb(null, uploadDir);
+    try {
+      cb(null, storageDirFor(file.originalname, file.mimetype));
+    } catch (err) {
+      cb(err as Error, uploadDir);
+    }
   },
   filename: (req, file, cb) => {
     cb(null, makeStoredFilename(file.originalname));
@@ -264,7 +277,7 @@ uploadRouter.post('/chunks/:id/complete', authenticate, requireCurator, async (r
 
     session.busy = true;
     try {
-        const storedPath = path.join(uploadDir, session.storedFilename);
+        const storedPath = path.join(storageDirFor(session.originalname, session.mimetype), session.storedFilename);
         await fs.promises.rename(session.partialPath, storedPath);
         session.result = await handleStoredUpload(req.user!, {
             path: storedPath,
@@ -654,8 +667,12 @@ function streamFileHash(filePath: string): Promise<string> {
 async function processBook(file: StoredFile, projectId: string | undefined, folderId?: number, fileHash?: string) {
     const stem = file.filename.replace(/\.[^.]+$/, '');
     const pdfFile = `${stem}.pdf`;
-    await fs.promises.mkdir(booksDir(uploadDir), { recursive: true });
-    await fs.promises.rename(file.path, path.join(booksDir(uploadDir), pdfFile));
+    // The upload already landed in `.books/` (storageDirFor); only move it if it did not.
+    const target = path.join(booksDir(uploadDir), pdfFile);
+    if (path.resolve(file.path) !== path.resolve(target)) {
+        await fs.promises.mkdir(booksDir(uploadDir), { recursive: true });
+        await fs.promises.rename(file.path, target);
+    }
 
     const asset = await prisma.asset.create({
         data: {

@@ -6,6 +6,7 @@ import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
 import { CANVAS_SHADOWS, createRendererFactory } from '../lib/rendererBackend';
 import { Scene } from '../components/Scene';
 import { SceneReadySignal } from '../components/SceneReadySignal';
+import { MainCanvasRegistrar } from '../components/MainCanvasRegistrar';
 import { RenderQualityControl } from '../components/RenderQualityControl';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
@@ -219,6 +220,7 @@ export const ViewerPage = () => {
                     gl={glConfig}
                     shadows={CANVAS_SHADOWS}
                 >
+                    <MainCanvasRegistrar />
                     {/* Frame timing is only meaningful with a continuous render loop. */}
                     {frameloop === 'always' && (
                         <PerformanceMonitor

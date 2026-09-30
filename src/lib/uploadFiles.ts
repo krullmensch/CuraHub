@@ -27,7 +27,7 @@ export const BOOK_EXTENSIONS = ['.pdf'];
 export const UPLOAD_ACCEPT = ['image/*', 'video/*', ...VIDEO_EXTENSIONS, ...MODEL_EXTENSIONS, ...SPLAT_EXTENSIONS, ...BOOK_EXTENSIONS].join(',');
 
 export const SUPPORTED_FORMATS_HINT =
-  'Bilder, Videos (.mp4, .mov, .webm, .mkv, …), 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …) Gaussian Splats (.ply, .sog, .spz, .splat, .ksplat) und PDF-Bücher (.pdf)';
+  'Bilder, Videos (.mp4, .mov, .webm, .mkv, …), 3D-Modelle (.glb, .fbx, .obj, .usdz, .stl, …), Gaussian Splats (.ply, .sog, .spz, .splat, .ksplat) und PDF-Bücher (.pdf)';
 
 /** A file of an upload with its path relative to the dropped/picked folder ('' for loose files). */
 export interface UploadEntry {

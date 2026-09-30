@@ -44,7 +44,7 @@ booksRouter.get('/:assetId/pdf', async (req, res) => {
                 'Content-Disposition': 'inline',
                 'X-Content-Type-Options': 'nosniff',
                 'Content-Security-Policy': 'sandbox',
-                'Cache-Control': 'private, max-age=3600',
+                'Cache-Control': 'private, no-store',
             },
         }, (err) => {
             if (err && !res.headersSent) notFound(res);

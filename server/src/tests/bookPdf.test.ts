@@ -3,7 +3,7 @@ import os from 'os';
 import path from 'path';
 import sharp from 'sharp';
 import {
-    BookProcessingError, classifyPopplerError, coverFileNames, processBookPdf, readBookMetadata,
+    BookProcessingError, classifyPopplerError, coverFileNames, isAllowedCoverFormat, processBookPdf, readBookMetadata,
     removeCoverSet, writeCoverSet, type PdfTools,
 } from '../lib/bookPdf';
 
@@ -91,4 +91,18 @@ describe('readBookMetadata', () => {
         expect(readBookMetadata({ coverVersion: 1 })).toBeNull();
         expect(readBookMetadata(null)).toBeNull();
     });
+});
+
+describe('cover source guards', () => {
+    it('allows only jpeg, png and webp', () => {
+        expect(['jpeg', 'png', 'webp'].every(isAllowedCoverFormat)).toBe(true);
+        expect(['gif', 'svg', 'tiff', 'heif', undefined].some((f) => isAllowedCoverFormat(f))).toBe(false);
+    });
+
+    it('writeCoverSet rejects an image above the pixel limit', async () => {
+        // 10001 x 10001 = 100.02 MP (> 100 MP), solid colour so the PNG stays tiny.
+        const big = path.join(uploadDir, 'big.png');
+        await sharp({ create: { width: 10001, height: 10001, channels: 3, background: '#fff' } }).png({ compressionLevel: 9 }).toFile(big);
+        await expect(writeCoverSet(big, uploadDir, 'x', 1)).rejects.toThrow();
+    }, 60000);
 });

@@ -597,7 +597,7 @@ const ArtworkPropertiesContent = ({
                     {(['x', 'y', 'z'] as const).map((axis) => (
                         <div key={axis} className="space-y-1">
                             <Label className="text-[10px] text-zinc-500 uppercase">{axis}</Label>
-                            <NumericInput step="0.01" value={toFixed(transform.position[axis])} onChange={(raw) => handleInputChange('position', axis, raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
+                            <NumericInput step="0.01" value={toFixed(transform.position[axis])} onChange={(raw) => handleInputChange('position', axis, raw)} disabled={isBook && axis === 'y'} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
                         </div>
                     ))}
                 </div>
@@ -608,7 +608,7 @@ const ArtworkPropertiesContent = ({
                     {(['x', 'y', 'z'] as const).map((axis) => (
                         <div key={axis} className="space-y-1">
                             <Label className="text-[10px] text-zinc-500 uppercase">{axis}</Label>
-                            <NumericInput step="1" value={toDeg(transform.rotation[axis])} onChange={(raw) => handleInputChange('rotation', axis, raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
+                            <NumericInput step="1" value={toDeg(transform.rotation[axis])} onChange={(raw) => handleInputChange('rotation', axis, raw)} disabled={isBook && axis !== 'y'} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
                         </div>
                     ))}
                 </div>

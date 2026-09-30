@@ -82,11 +82,18 @@ export interface CoverSet {
     height: number;
 }
 
+/** Largest cover source sharp will decode (pixels); bigger images fail fast. */
+export const COVER_MAX_INPUT_PIXELS = 100_000_000;
+
+/** Formats accepted for an uploaded replacement cover (sharp's `metadata().format`). */
+export const isAllowedCoverFormat = (format: string | undefined): boolean =>
+    format === 'jpeg' || format === 'png' || format === 'webp';
+
 /** Cover (longest edge 2048 px, WebP) + 512/256 thumbnails from any image sharp reads. */
 export async function writeCoverSet(sourcePath: string, uploadDir: string, stem: string, version: number): Promise<CoverSet> {
     const names = coverFileNames(stem, version);
     const coverPath = path.join(uploadDir, names.cover);
-    const info = await sharp(sourcePath)
+    const info = await sharp(sourcePath, { limitInputPixels: COVER_MAX_INPUT_PIXELS })
         .rotate()
         .resize({ width: 2048, height: 2048, fit: 'inside', withoutEnlargement: true })
         .webp({ quality: 80 })

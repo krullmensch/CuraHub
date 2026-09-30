@@ -8,7 +8,10 @@ import os from 'os';
 import { authenticate, userCanAccessProject } from '../lib/middleware';
 import { getVideoJobProgress } from '../lib/videoJobs';
 import { getBookJobProgress } from '../lib/bookJobs';
-import { bookStem, booksDir, coverFileNames, readBookMetadata, removeCoverSet, writeCoverSet } from '../lib/bookPdf';
+import sharp from 'sharp';
+import {
+    bookStem, booksDir, COVER_MAX_INPUT_PIXELS, coverFileNames, isAllowedCoverFormat, readBookMetadata, removeCoverSet, writeCoverSet,
+} from '../lib/bookPdf';
 
 export const assetsRouter = Router();
 const prisma = new PrismaClient();
@@ -209,6 +212,13 @@ assetsRouter.post('/:id/cover', authenticate, coverUpload.single('file'), async 
     const tmp = req.file?.path;
     try {
         if (!tmp) return res.status(400).json({ error: 'Bild konnte nicht gelesen werden' });
+        let format: string | undefined;
+        try {
+            ({ format } = await sharp(tmp, { limitInputPixels: COVER_MAX_INPUT_PIXELS }).metadata());
+        } catch {
+            format = undefined;
+        }
+        if (!isAllowedCoverFormat(format)) return res.status(400).json({ error: 'Bild konnte nicht gelesen werden' });
         const updated = await replaceCover(req, tmp, 'override');
         if (!updated) return res.status(404).json({ error: 'Buch nicht gefunden' });
         res.json(updated);

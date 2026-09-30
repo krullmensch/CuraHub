@@ -3,6 +3,7 @@ import { useEditorStore, type ArtworkInstanceData } from '@/store/editorStore';
 import { displayArtworkTitle } from '@/lib/artworkTitle';
 import type * as THREE from 'three';
 import { BOOK_OPEN_DISTANCE } from './geometry';
+import { canvasBridge } from './canvasBridge';
 
 export interface PointerEnv {
   pointerLocked(): boolean;
@@ -15,7 +16,7 @@ export const domPointerEnv: PointerEnv = {
   pointerLocked: () => !!document.pointerLockElement,
   exitPointerLock: () => document.exitPointerLock(),
   requestPointerLock: () => {
-    const canvas = document.querySelector('canvas');
+    const canvas = canvasBridge.get() ?? document.querySelector('canvas');
     // Chrome returns a promise that rejects without a user gesture; ignore that case.
     const result = canvas?.requestPointerLock() as unknown as Promise<void> | undefined;
     result?.catch?.(() => undefined);

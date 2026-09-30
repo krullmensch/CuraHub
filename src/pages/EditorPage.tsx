@@ -4,6 +4,7 @@ import { Scene } from '../components/Scene';
 // Player + colliders: components/physics/PhysicsWorld (lazy, first person only — RND-08)
 import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { FrameloopController } from '../components/FrameloopController';
+import { MainCanvasRegistrar } from '../components/MainCanvasRegistrar';
 import { SceneLoadingIndicator } from '../components/SceneLoadingIndicator';
 import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
 import { CANVAS_SHADOWS, createRendererFactory } from '../lib/rendererBackend';
@@ -685,6 +686,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
             selectInstance(null); selectWall(null); selectZone(null);
           }}
         >
+          <MainCanvasRegistrar />
           <FrameloopController isVisible={isVisible} />
           <Scene />
           <ArtworkPlacement />
