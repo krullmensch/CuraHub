@@ -4,6 +4,8 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { authenticate, requireProf, roleAtLeast, AppRole } from '../lib/middleware';
 import { loginRateLimit, resetLoginAttempts } from '../lib/loginRateLimit';
+import { createRateLimit } from '../lib/rateLimit';
+import { verifyLocalLogin } from '../lib/localLogin';
 
 export const authRouter = Router();
 const prisma = new PrismaClient();
@@ -85,6 +87,33 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ error: 'Benutzername und Passwort sind erforderlich' });
     }
+    res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
+  }
+});
+
+// ─── Emergency login (local accounts) ─────────────────────────────────────────
+
+const localLoginLimiter = createRateLimit([
+  { windowMs: 15 * 60_000, max: 5, key: (ip, username) => (username ? `local-ip-user:${ip}:${username}` : null) },
+  { windowMs: 15 * 60_000, max: 20, key: (_ip, username) => (username ? `local-user:${username}` : null) },
+], 'Zu viele Anmeldeversuche. Bitte in 15 Minuten erneut versuchen.');
+
+authRouter.post('/local-login', localLoginLimiter.middleware, async (req, res) => {
+  const parsed = loginSchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Benutzername und Passwort sind erforderlich' });
+  }
+  try {
+    const user = await verifyLocalLogin(
+      (email) => prisma.user.findUnique({ where: { email } }),
+      parsed.data.username,
+      parsed.data.password,
+    );
+    if (!user) return res.status(401).json({ error: 'Benutzername oder Passwort falsch.' });
+    const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: TOKEN_TTL });
+    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+  } catch (error) {
+    console.error('[Auth Error] local login:', error);
     res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
   }
 });
