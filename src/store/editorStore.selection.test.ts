@@ -117,3 +117,27 @@ describe('instance selection', () => {
     expect(resolveInstanceId(12)).toBe(12);
   });
 });
+
+describe('applyArtworkUpdate', () => {
+  it('updates only instances of that artwork and keeps selection and undo history', () => {
+    const withArt = (id: number, artworkId: number): ArtworkInstanceData => ({
+      ...inst(id), artworkId, artwork: { id: artworkId, title: 'alt', depth: null, asset: { path: '/a', width: 1, height: 1, dpi: 72, thumbnailPath: '/t' } },
+    });
+    const a = withArt(1, 10), b = withArt(2, 10), c = withArt(3, 20);
+    const past = [[a, b, c]];
+    useEditorStore.setState({
+      localInstances: [a, b, c], pastInstances: past, futureInstances: [[a]],
+      selectedInstanceId: 1, selectedInstanceIds: [1, 3],
+    });
+    useEditorStore.getState().applyArtworkUpdate(10, { title: 'neu', depth: 2.5 }, { thumbnailPath: '/t2' });
+    const s = useEditorStore.getState();
+    expect(s.localInstances[0].artwork).toMatchObject({ id: 10, title: 'neu', depth: 2.5 });
+    expect(s.localInstances[0].artwork.asset).toMatchObject({ path: '/a', thumbnailPath: '/t2' });
+    expect(s.localInstances[1].artwork.title).toBe('neu');
+    expect(s.localInstances[2]).toBe(c);
+    expect(s.selectedInstanceId).toBe(1);
+    expect(s.selectedInstanceIds).toEqual([1, 3]);
+    expect(s.pastInstances).toBe(past);
+    expect(s.futureInstances).toHaveLength(1);
+  });
+});

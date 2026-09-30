@@ -293,6 +293,8 @@ interface EditorState {
   setDragPosition: (pos: { x: number; y: number } | null) => void;
   setValidPlacement: (placement: { position: [number, number, number]; rotation: [number, number, number]; scale: number; wallId: number | null } | null) => void;
   triggerInstancesRefresh: () => void;
+  /** Merges fresh server data of an artwork (and its asset) into every placed instance of it. Selection and undo history stay untouched. */
+  applyArtworkUpdate: (artworkId: number, artwork: Partial<ArtworkInstanceData['artwork']>, asset?: Partial<ArtworkInstanceData['artwork']['asset']>) => void;
   cancelPlacement: () => void;
   completePlacement: () => void;
   setPlannerViewMode: (mode: PlannerViewMode) => void;
@@ -487,6 +489,15 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     dragState: { ...state.dragState, validPlacement: placement }
   })),
   triggerInstancesRefresh: () => set((state) => ({ instancesVersion: state.instancesVersion + 1 })),
+  applyArtworkUpdate: (artworkId, artwork, asset) => {
+    const merge = (i: ArtworkInstanceData): ArtworkInstanceData =>
+      (i.artworkId ?? i.artwork.id) !== artworkId
+        ? i
+        : { ...i, artwork: { ...i.artwork, ...artwork, asset: asset ? { ...i.artwork.asset, ...asset } : i.artwork.asset } };
+    // The sync diff ignores `artwork`; keeping the persisted snapshot current avoids stale data later.
+    prevInstances = prevInstances.map(merge);
+    set((state) => ({ localInstances: state.localInstances.map(merge) }));
+  },
 
   // Phase 4.2 actions
   selectInstance: (id) => set((state) => ({

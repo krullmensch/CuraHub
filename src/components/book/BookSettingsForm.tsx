@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { useAuthStore } from '@/store/authStore';
 import { useEditorStore } from '@/store/editorStore';
 import { autoThicknessCm } from '@/lib/book/geometry';
-import { parseThickness, resetBookCover, saveBookSettings, uploadBookCover } from '@/lib/book/api';
+import { parseThickness, resetBookCover, saveBookSettings, uploadBookCover, type BookUpdate } from '@/lib/book/api';
 import { effectiveTitle, formatThickness, textChange, thicknessChange, thicknessToField, titleChange } from '@/lib/book/settingsForm';
 import { cn } from '@/lib/utils';
 
@@ -66,6 +66,13 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
   const [year, setYear] = useSyncedState(storedYear);
   const [depth, setDepth] = useSyncedState(thicknessToField(storedDepth));
   const [publicReadable, setPublicReadable] = useSyncedState(storedPublic);
+  // Last value sent to the server per field: a quick edit-back before the response arrives is
+  // compared against this, not against the (still old) props. Follows the props when they change.
+  const [committedTitle, setCommittedTitle] = useSyncedState(storedTitle);
+  const [committedArtist, setCommittedArtist] = useSyncedState(storedArtist);
+  const [committedYear, setCommittedYear] = useSyncedState(storedYear);
+  const [committedDepth, setCommittedDepth] = useSyncedState(storedDepth);
+  const [committedPublic, setCommittedPublic] = useSyncedState(storedPublic);
   const [busy, setBusy] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const sliderRef = useRef<HTMLInputElement>(null);
@@ -74,10 +81,11 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
   const sliderValue = typeof thickness === 'number' ? thickness : auto;
   const locked = disabled || !artwork;
 
-  const afterChange = () => {
+  const afterChange = (update: BookUpdate | null) => {
     onSaved?.();
-    // Placed copies of this book pick up the new cover / thickness / label.
-    useEditorStore.getState().triggerInstancesRefresh();
+    // Placed copies of this book pick up the new cover / thickness / label from the server
+    // response; a refetch would drop the selection and the undo history.
+    if (update) useEditorStore.getState().applyArtworkUpdate(update.artworkId, update.artwork, update.asset);
   };
 
   const invalidThickness = () =>
@@ -97,8 +105,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
     if (change.kind === 'set') patch.depth = change.value;
     setBusy(true);
     try {
-      await saveBookSettings(artwork.id, patch, token);
-      afterChange();
+      afterChange(await saveBookSettings(artwork.id, patch, token));
       gooeyToast.success('Gespeichert', { description: 'Buch-Einstellungen aktualisiert.' });
       onClose?.();
     } catch (err) {
@@ -114,8 +121,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
     if (!token || !artwork) return;
     setBusy(true);
     try {
-      await saveBookSettings(artwork.id, patch, token);
-      afterChange();
+      afterChange(await saveBookSettings(artwork.id, patch, token));
     } catch (err) {
       gooeyToast.error((err as Error).message);
       revert();
@@ -125,34 +131,46 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
   };
 
   const commitTitle = () => {
-    const next = titleChange(storedTitle, title, asset.filename);
-    if (next === null) return setTitle(storedTitle);
+    const next = titleChange(committedTitle, title, asset.filename);
+    if (next === null) return setTitle(committedTitle);
+    const before = committedTitle;
     setTitle(next);
-    void commit({ title: next }, () => setTitle(storedTitle));
+    setCommittedTitle(next);
+    void commit({ title: next }, () => { setTitle(before); setCommittedTitle(before); });
   };
   const commitArtist = () => {
-    const next = textChange(storedArtist, artist);
-    if (next !== null) void commit({ artist: next }, () => setArtist(storedArtist));
+    const next = textChange(committedArtist, artist);
+    if (next === null) return;
+    const before = committedArtist;
+    setCommittedArtist(next);
+    void commit({ artist: next }, () => { setArtist(before); setCommittedArtist(before); });
   };
   const commitYear = () => {
-    const next = textChange(storedYear, year);
-    if (next !== null) void commit({ year: next }, () => setYear(storedYear));
+    const next = textChange(committedYear, year);
+    if (next === null) return;
+    const before = committedYear;
+    setCommittedYear(next);
+    void commit({ year: next }, () => { setYear(before); setCommittedYear(before); });
   };
   const commitDepth = (raw: string) => {
-    const change = thicknessChange(storedDepth, raw);
+    const change = thicknessChange(committedDepth, raw);
     if (change.kind === 'invalid') {
       invalidThickness();
-      setDepth(thicknessToField(storedDepth));
+      setDepth(thicknessToField(committedDepth));
     } else if (change.kind === 'unchanged') {
-      setDepth(thicknessToField(storedDepth));
+      setDepth(thicknessToField(committedDepth));
     } else {
+      const before = committedDepth;
       setDepth(thicknessToField(change.value));
-      void commit({ depth: change.value }, () => setDepth(thicknessToField(storedDepth)));
+      setCommittedDepth(change.value);
+      void commit({ depth: change.value }, () => { setDepth(thicknessToField(before)); setCommittedDepth(before); });
     }
   };
   const commitPublic = (next: boolean) => {
+    const before = committedPublic;
     setPublicReadable(next);
-    void commit({ publicReadable: next }, () => setPublicReadable(storedPublic));
+    setCommittedPublic(next);
+    void commit({ publicReadable: next }, () => { setPublicReadable(before); setCommittedPublic(before); });
   };
 
   // A range input fires `input` continuously while dragging and `change` once when the value is
@@ -169,12 +187,11 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
     return () => el.removeEventListener('change', onCommit);
   }, [inline]);
 
-  const coverAction = async (action: () => Promise<void>, done: string) => {
+  const coverAction = async (action: () => Promise<BookUpdate | null>, done: string) => {
     if (!token) return;
     setBusy(true);
     try {
-      await action();
-      afterChange();
+      afterChange(await action());
       if (!inline) gooeyToast.success(done);
     } catch (err) {
       gooeyToast.error((err as Error).message);
