@@ -25,10 +25,12 @@ export function wallWorldBox(wall: ModularWallData): THREE.Box3 {
 
 /**
  * Points the orbit camera at the current selection (artworks, wall or scale figure), at a distance
- * that frames its bounds. Returns false when nothing is selected.
+ * that frames its bounds. Returns false when nothing is selected or the view is not perspective.
  */
 export function focusSelection(): boolean {
   const store = useEditorStore.getState();
+  // Only the perspective camera consumes focusTarget; elsewhere it would linger and jump later.
+  if (store.plannerViewMode !== 'perspective') return false;
   const box = new THREE.Box3();
 
   if (store.selectedInstanceIds.length > 0) {

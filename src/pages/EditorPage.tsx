@@ -508,7 +508,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       if (store.wallEditor) return;
 
       // Focus the camera on the selection
-      if (key === 'f' && !cmdOrCtrl && store.plannerViewMode !== 'firstPerson') {
+      if (key === 'f' && !cmdOrCtrl && isVisible && store.plannerViewMode === 'perspective') {
         if (focusSelection()) e.preventDefault();
         return;
       }
