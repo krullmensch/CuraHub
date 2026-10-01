@@ -1,15 +1,15 @@
 ---
-import { getCollection } from 'astro:content';
+import { legalPages } from '../lib/legal';
 import { url } from '../lib/url';
 
-const hasImpressum = (await getCollection('legal')).some((entry) => entry.id === 'impressum');
+const legal = await legalPages();
 ---
 <footer class="site-footer">
     <div class="container row">
         <p class="muted">CuraHub — entstanden an der HSBI (Hochschule Bielefeld).</p>
         <ul>
             <li><a href="https://github.com/krullmensch/CuraHub" rel="noopener">GitHub</a></li>
-            {hasImpressum && <li><a href={url('/impressum/')}>Impressum</a></li>}
+            {legal.map(({ entry, label }) => <li><a href={url(`/${entry.id}/`)}>{label}</a></li>)}
         </ul>
     </div>
 </footer>

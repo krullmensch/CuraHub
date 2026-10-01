@@ -2,6 +2,9 @@
 import '../styles/global.css';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+// The app's own icon, one level above the site; bundled (fingerprinted, base-prefixed) instead of copied.
+// `no-inline`: below Vite's 4 kB limit it would otherwise end up as a data: URI in every page.
+import favicon from '../../../public/favicon.svg?url&no-inline';
 
 interface Props {
     title: string;
@@ -21,6 +24,7 @@ const fullTitle = title === 'CuraHub' ? title : `${title} · CuraHub`;
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>{fullTitle}</title>
         <meta name="description" content={description} />
+        <link rel="icon" type="image/svg+xml" href={favicon} />
         <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site).href} />
     </head>
     <body>

@@ -4,7 +4,7 @@
 
 - Linux-Server mit Docker Engine und dem Compose-Plugin (`docker compose version`).
 - Apache mit TLS-Zertifikat für die CuraHub-Domain und den Modulen `proxy`, `proxy_http`, `headers`.
-- Ausgehender HTTPS-Zugriff auf www.hsbi.de (HSBI-Login).
+- Ausgehender HTTPS-Zugriff auf [www.hsbi.de](https://www.hsbi.de) (HSBI-Login).
 - Mindestens 10 GB freier Speicher für Uploads.
 
 ## Neuinstallation

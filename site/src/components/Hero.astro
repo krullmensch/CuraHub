@@ -18,20 +18,49 @@ import { url } from '../lib/url';
             <a class="button button--ghost" href="https://github.com/krullmensch/CuraHub" rel="noopener">GitHub</a>
         </p>
     </div>
+    <div class="container hero-control">
+        <!-- WCAG 2.2.2: after the text in the DOM (it paints on top), shown only once the video really plays. -->
+        <button type="button" class="button button--ghost hero-pause" data-hero-pause aria-pressed="false" hidden>Hintergrundvideo anhalten</button>
+    </div>
 </section>
 
 <script>
     // Same rule as the app's HomePage: no video for reduced motion or Save-Data, and only after first paint.
     const video = document.querySelector<HTMLVideoElement>('[data-hero-video]');
+    const pauseButton = document.querySelector<HTMLButtonElement>('[data-hero-pause]');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const saveData = (navigator as Navigator & { connection?: { saveData?: boolean } }).connection?.saveData === true;
 
     if (video && !reducedMotion && !saveData) {
+        // Label and aria-pressed follow the video itself, so a pause by the browser shows up too.
+        const syncButton = () => {
+            if (!pauseButton) return;
+            pauseButton.setAttribute('aria-pressed', String(video.paused));
+            pauseButton.textContent = video.paused ? 'Hintergrundvideo fortsetzen' : 'Hintergrundvideo anhalten';
+        };
+        video.addEventListener('play', syncButton);
+        video.addEventListener('pause', syncButton);
+        pauseButton?.addEventListener('click', () => {
+            if (video.paused) {
+                video.play().catch(() => {
+                    // Playback refused — the button keeps showing "fortsetzen".
+                });
+            } else {
+                video.pause();
+            }
+        });
+
         const start = () => {
             video.src = video.dataset.src ?? '';
-            video.play().catch(() => {
-                // Autoplay blocked — the poster stays visible.
-            });
+            video.play().then(
+                () => {
+                    syncButton();
+                    if (pauseButton) pauseButton.hidden = false;
+                },
+                () => {
+                    // Autoplay blocked — the poster stays visible and there is nothing to pause.
+                },
+            );
         };
         if (typeof window.requestIdleCallback === 'function') {
             window.requestIdleCallback(start, { timeout: 2000 });
@@ -43,8 +72,12 @@ import { url } from '../lib/url';
 
 <style>
     .hero { position: relative; min-height: min(78vh, 44rem); display: flex; align-items: flex-end; overflow: hidden; }
-    .hero-video { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; }
-    .hero-shade { position: absolute; inset: 0; background: linear-gradient(to top, #09090b 5%, rgba(9, 9, 11, 0.55) 55%, rgba(9, 9, 11, 0.35)); }
+    /* Like the app's start page: greyscale under a 70 % black layer (also applies to the poster). */
+    .hero-video { position: absolute; inset: 0; width: 100%; height: 100%; max-width: none; object-fit: cover; filter: grayscale(1); }
+    .hero-shade { position: absolute; inset: 0; background: linear-gradient(to top, #09090b 5%, rgba(9, 9, 11, 0.7) 55%, rgba(9, 9, 11, 0.7)); }
+    .hero-control { position: absolute; left: 0; right: 0; bottom: 1rem; display: flex; justify-content: flex-end; pointer-events: none; }
+    .hero-pause { pointer-events: auto; padding: 0.3rem 0.8rem; font-family: inherit; font-size: 0.875rem; line-height: 1.5; cursor: pointer; }
+    .hero-pause[hidden] { display: none; }
     .hero-text { position: relative; padding-top: 6rem; padding-bottom: 4rem; }
     .hero-text h1 { max-width: 18ch; }
     .hero-text .lead { color: var(--soft); }

@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -56,7 +56,9 @@ export function findDeadLinks(distDir, base) {
     return dead;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// Run directly (also through a symlink); a plain comparison of the paths would be false there and the check would silently do nothing.
+const entryPoint = process.argv[1];
+if (entryPoint !== undefined && realpathSync(entryPoint) === realpathSync(fileURLToPath(import.meta.url))) {
     const distDir = fileURLToPath(new URL('../dist', import.meta.url));
     const base = process.argv[2] ?? '/CuraHub/';
     const dead = findDeadLinks(distDir, base);
