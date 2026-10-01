@@ -1,0 +1,24 @@
+---
+interface Props {
+    headings: { depth: number; slug: string; text: string }[];
+}
+
+const items = Astro.props.headings.filter((heading) => heading.depth === 2);
+---
+<nav class="toc" aria-label="Inhalt">
+    <p class="toc-title">Inhalt</p>
+    <ol>
+        {items.map((item) => (
+            <li><a href={`#${item.slug}`}>{item.text}</a></li>
+        ))}
+    </ol>
+</nav>
+
+<style>
+    .toc { position: sticky; top: 5rem; }
+    .toc-title { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem; }
+    ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.125rem; }
+    a { display: block; padding: 0.4rem 0.75rem; border-radius: 0.5rem; color: var(--muted); text-decoration: none; font-size: 0.95rem; }
+    a:hover { background: var(--surface); color: var(--strong); }
+    @media (max-width: 767px) { .toc { position: static; border-bottom: 1px solid var(--border); padding-bottom: 1rem; } }
+</style>

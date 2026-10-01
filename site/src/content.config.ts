@@ -6,4 +6,9 @@ const wiki = defineCollection({
     loader: glob({ pattern: '*.md', base: '../src/wiki' }),
 });
 
-export const collections = { wiki };
+// The runbook the repo shows on GitHub.
+const docs = defineCollection({
+    loader: glob({ pattern: 'deployment.md', base: '../docs' }),
+});
+
+export const collections = { wiki, docs };

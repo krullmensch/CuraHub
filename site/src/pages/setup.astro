@@ -1,0 +1,29 @@
+---
+import { getEntry, render } from 'astro:content';
+import ShotRow from '../components/ShotRow.astro';
+import Toc from '../components/Toc.astro';
+import Base from '../layouts/Base.astro';
+import { WIZARD_SHOTS } from '../lib/shots.mjs';
+
+const entry = await getEntry('docs', 'deployment');
+if (!entry) throw new Error('docs/deployment.md fehlt.');
+const { Content, headings } = await render(entry);
+---
+<Base title="Setup-Guide" description="CuraHub installieren: Voraussetzungen, Neuinstallation mit Docker Compose, Einrichtungsassistent, Backups und Updates.">
+    <div class="container guide">
+        <Toc headings={headings} />
+        <div>
+            <section aria-label="Der Einrichtungsassistent in Bildern">
+                <ShotRow shots={WIZARD_SHOTS} />
+            </section>
+            <article class="prose">
+                <Content />
+            </article>
+        </div>
+    </div>
+</Base>
+
+<style>
+    .guide { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 3rem; padding-top: 2.5rem; align-items: start; }
+    @media (max-width: 767px) { .guide { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; } }
+</style>
