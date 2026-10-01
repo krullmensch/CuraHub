@@ -2,9 +2,10 @@
 //   CURAHUB_SHOT_USER=… CURAHUB_SHOT_PASSWORD=… node scripts/capture-screenshots.mjs http://localhost:3002 [shot-name …]
 // Needs Google Chrome and Node ≥ 22 (built-in WebSocket). Never run by CI.
 // CHROME_PATH picks another Chrome. CURAHUB_SHOT_DEBUG=1 prints page console errors and failed requests to stderr.
-// A shot that throws leaves a screenshot of the page in the OS temp dir.
+// A shot that throws leaves a screenshot of the page in the OS temp dir (none when it shows an e-mail address).
+// The credentials stay in this process: Chrome gets an environment without them, and the debug output strips query strings.
 import { spawn } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,7 +20,25 @@ const SELF_TEST = process.argv[2] === '--self-test';
 const [baseUrl, ...only] = SELF_TEST ? [] : process.argv.slice(2);
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+/** `kind` tells the retry loops what happened: 'transport' (Chrome gone or silent), 'protocol' (CDP refused), 'exception' (the page threw), 'timeout'. */
+const failure = (kind, message) => Object.assign(new Error(message), { kind });
 const pngSize = (png) => ({ width: png.readUInt32BE(16), height: png.readUInt32BE(20) });
+
+/** The e-mail check refused the page. The message hides most of the address; the failure screenshot is skipped for it. */
+class LeakError extends Error {}
+const maskEmail = (email) => email.replace(/^(.).*(@.*)$/, '$1…$2');
+
+/** Failure screenshots of earlier runs: they show the logged-in app, so none is kept beyond the next run. */
+function purgeFailureShots() {
+    for (const name of readdirSync(tmpdir())) {
+        if (!/^curahub-shot-failed-.*\.png$/.test(name)) continue;
+        try {
+            unlinkSync(path.join(tmpdir(), name));
+        } catch {
+            // Already gone.
+        }
+    }
+}
 
 /** Runs inside the page: the first e-mail address in the visible text or in a text field, else null. */
 function findEmail() {
@@ -54,9 +73,14 @@ function describeKey(key) {
     throw new Error(`Unknown key "${key}" — add it to NAMED_KEYS.`);
 }
 
-/** Starts headless Chrome with a throw-away profile. `stop()` ends it and removes the profile; also runs on exit and Ctrl-C. */
+const SECRET_ENV = ['CURAHUB_SHOT_USER', 'CURAHUB_SHOT_PASSWORD', 'CURAHUB_SETUP_CODE'];
+const sleepSync = (ms) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+/** Starts headless Chrome with a throw-away profile. `stop()` ends it and removes the profile; also runs on exit, Ctrl-C and hang-up. */
 function launchChrome() {
     const userDataDir = mkdtempSync(path.join(tmpdir(), 'curahub-shots-'));
+    const env = { ...process.env };
+    for (const key of SECRET_ENV) delete env[key]; // Chrome and its helpers must not carry the login or setup credentials
     const chrome = spawn(
         CHROME,
         [
@@ -72,7 +96,7 @@ function launchChrome() {
             `--user-data-dir=${userDataDir}`,
             'about:blank',
         ],
-        { stdio: ['ignore', 'ignore', 'pipe'] },
+        { stdio: ['ignore', 'ignore', 'pipe'], env, detached: true }, // detached: Chrome gets its own process group, so cleanup() can end the helpers too
     );
     const state = { exited: false, stderr: '', error: null };
     const exited = new Promise((resolve) => {
@@ -89,17 +113,29 @@ function launchChrome() {
     chrome.stderr.on('data', (chunk) => {
         state.stderr = (state.stderr + chunk).slice(-2000);
     });
+    let cleanedUp = false;
     const cleanup = () => {
-        if (!state.exited) chrome.kill('SIGKILL');
-        chrome.stderr.destroy(); // Chrome's helper processes keep the pipe open for a few seconds after the browser itself is gone
+        if (cleanedUp) return;
+        cleanedUp = true;
         try {
-            rmSync(userDataDir, { recursive: true, force: true, maxRetries: 3 });
+            if (chrome.pid) process.kill(-chrome.pid, 'SIGKILL'); // the browser and every helper still writing into the profile
         } catch {
-            // The profile is in the OS temp dir; a leftover is harmless.
+            // No process left in the group.
         }
+        chrome.stderr.destroy(); // Chrome's helper processes keep the pipe open for a few seconds after the browser itself is gone
+        for (let attempt = 0; attempt < 10; attempt++) {
+            try {
+                rmSync(userDataDir, { recursive: true, force: true });
+            } catch {
+                // Retried below; a helper may have been writing into it a moment ago.
+            }
+            if (!existsSync(userDataDir)) return;
+            sleepSync(200);
+        }
+        console.error(`  Warning: could not remove Chrome's profile ${userDataDir}. It holds the login token (curahub-auth): delete it by hand.`);
     };
     process.on('exit', cleanup);
-    for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => process.exit(130));
+    for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => process.exit(130));
     const stop = async () => {
         if (!state.exited) {
             chrome.kill('SIGTERM');
@@ -156,20 +192,20 @@ async function connect({ userDataDir, state }) {
         const waiter = pending.get(message.id);
         if (!waiter) return;
         pending.delete(message.id);
-        if (message.error) waiter.reject(new Error(`${waiter.method}: ${message.error.message}`));
+        if (message.error) waiter.reject(failure('protocol', `${waiter.method}: ${message.error.message}`));
         else waiter.resolve(message.result);
     };
     socket.onclose = () => {
-        for (const waiter of pending.values()) waiter.reject(new Error(`Chrome closed the connection during ${waiter.method}.`));
+        for (const waiter of pending.values()) waiter.reject(failure('transport', `Chrome closed the connection during ${waiter.method}.`));
         pending.clear();
     };
     const send = (method, params = {}, timeoutMs = 120000) =>
         new Promise((resolve, reject) => {
-            if (socket.readyState !== WebSocket.OPEN) return reject(new Error(`Chrome connection is closed (${method}).`));
+            if (socket.readyState !== WebSocket.OPEN) return reject(failure('transport', `Chrome connection is closed (${method}).`));
             const id = nextId++;
             const timer = setTimeout(() => {
                 pending.delete(id);
-                reject(new Error(`${method} got no answer within ${timeoutMs / 1000} s.`));
+                reject(failure('transport', `${method} got no answer within ${timeoutMs / 1000} s.`));
             }, timeoutMs);
             pending.set(id, {
                 method,
@@ -182,16 +218,26 @@ async function connect({ userDataDir, state }) {
     return { send, on };
 }
 
-/** With CURAHUB_SHOT_DEBUG=1: what the page logs as errors and which requests fail. */
+/** `origin + pathname`: a query string or fragment can carry a token, the userinfo a password. */
+function plainUrl(url) {
+    try {
+        const parsed = new URL(url);
+        return /^(?:https?|wss?):$/.test(parsed.protocol) ? parsed.origin + parsed.pathname : `${parsed.protocol}…`;
+    } catch {
+        return '(unreadable URL)';
+    }
+}
+
+/** With CURAHUB_SHOT_DEBUG=1: what the page logs as errors and which requests fail. URLs are printed without query string. */
 async function traceProblems({ send, on }) {
-    const say = (line) => console.error(`  [page] ${line}`);
+    const say = (line) => console.error(`  [page] ${String(line).replace(/\b(?:https?|wss?):\/\/[^\s"'<>)\]]+/g, plainUrl)}`);
     const urls = new Map();
     on('Runtime.consoleAPICalled', ({ type, args }) => type === 'error' && say(`console.error ${args.map((arg) => arg.value ?? arg.description ?? arg.type).join(' ')}`));
     on('Runtime.exceptionThrown', ({ exceptionDetails }) => say(`exception ${exceptionDetails.exception?.description ?? exceptionDetails.text}`));
     on('Log.entryAdded', ({ entry }) => entry.level === 'error' && entry.source !== 'network' && say(`${entry.source}: ${entry.text}`));
-    on('Network.requestWillBeSent', ({ requestId, request }) => urls.set(requestId, request.url));
+    on('Network.requestWillBeSent', ({ requestId, request }) => urls.set(requestId, plainUrl(request.url)));
     on('Network.loadingFailed', ({ requestId, errorText, canceled }) => !canceled && say(`request failed (${errorText}) ${urls.get(requestId)}`));
-    on('Network.responseReceived', ({ response }) => response.status >= 400 && say(`HTTP ${response.status} ${response.url}`));
+    on('Network.responseReceived', ({ response }) => response.status >= 400 && say(`HTTP ${response.status} ${plainUrl(response.url)}`));
     await Promise.all([send('Log.enable'), send('Network.enable')]);
 }
 
@@ -207,14 +253,16 @@ function pageApi({ send, on }) {
 
     const evaluate = async (expression) => {
         const { result, exceptionDetails } = await send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true });
-        if (exceptionDetails) {
-            const error = new Error(exceptionDetails.exception?.description ?? exceptionDetails.text);
-            error.className = exceptionDetails.exception?.className;
-            throw error;
-        }
+        if (exceptionDetails) throw failure('exception', exceptionDetails.exception?.description ?? exceptionDetails.text);
         return result.value;
     };
-    /** Polls `expression` until it is truthy. Errors while the page is loading or navigating count as "not yet". */
+    /** Retry loops call this with what `evaluate` threw: only what a page throws away while it navigates is waited out. */
+    const unlessNavigating = (error, expression) => {
+        if (error.kind === 'protocol' && /Cannot find context|context was destroyed|Inspected target navigated/i.test(error.message)) return;
+        // Chrome gone or silent, or the expression itself threw (a typo, a null): retrying cannot help.
+        throw error.kind === 'exception' ? failure('exception', `${error.message.split('\n')[0]}\n  in: ${expression}`) : error;
+    };
+    /** Polls `expression` until it is truthy. Only a page that is navigating counts as "not yet". */
     const waitFor = async (expression, timeoutMs = 30000) => {
         const start = Date.now();
         let lastError = null;
@@ -222,30 +270,49 @@ function pageApi({ send, on }) {
             try {
                 if (await evaluate(`Boolean(${expression})`)) return;
             } catch (error) {
-                if (error.className === 'SyntaxError') throw error;
+                unlessNavigating(error, expression);
                 lastError = error;
             }
-            if (Date.now() - start >= timeoutMs) throw new Error(`Timed out waiting for: ${expression}${lastError ? `\n  last error: ${lastError.message.split('\n')[0]}` : ''}`);
+            if (Date.now() - start >= timeoutMs) throw failure('timeout', `Timed out waiting for: ${expression}${lastError ? `\n  last error: ${lastError.message.split('\n')[0]}` : ''}`);
             await sleep(200);
         }
     };
-    /** Waits until the element exists, has a size and has stopped moving (panels slide in), then returns its centre. */
+    /** Waits until the element exists, has a size, is the topmost thing at its centre and has stopped moving (panels slide in); returns its centre. */
     const centreOf = async (selector, timeoutMs = 10000) => {
-        const sample = `(() => { const el = ${selector}; if (!el) return null; el.scrollIntoViewIfNeeded?.(); const r = el.getBoundingClientRect(); return r.width > 0 && r.height > 0 ? { x: r.x + r.width / 2, y: r.y + r.height / 2 } : null; })()`;
+        const sample = `(() => {
+            const el = ${selector};
+            if (!el) return null;
+            el.scrollIntoViewIfNeeded?.();
+            const r = el.getBoundingClientRect();
+            if (!(r.width > 0 && r.height > 0)) return null;
+            const x = r.x + r.width / 2;
+            const y = r.y + r.height / 2;
+            const hit = document.elementFromPoint(x, y);
+            const clickable = el.closest('button, a, label, summary, [role="button"], [role="menuitem"], [role="tab"], [role="option"]');
+            const free = Boolean(hit) && (hit === el || el.contains(hit) || (clickable !== null && (clickable === hit || clickable.contains(hit))));
+            const classes = hit && typeof hit.className === 'string' && hit.className.trim() ? '.' + hit.className.trim().split(/\\s+/).join('.') : '';
+            return { x, y, cover: free ? null : (hit ? hit.tagName.toLowerCase() + classes : 'nothing (outside the viewport)').slice(0, 120) };
+        })()`;
         const start = Date.now();
         let previous = null;
         let lastError = null;
+        let cover = null;
         for (;;) {
             let point = null;
             try {
                 point = await evaluate(sample);
             } catch (error) {
-                if (error.className === 'SyntaxError') throw error;
+                unlessNavigating(error, selector);
                 lastError = error;
             }
+            cover = point?.cover ?? null;
+            if (cover) point = null; // a dialog, toast or overlay is in the way: wait for it to go
             if (point && previous && Math.abs(point.x - previous.x) < 0.5 && Math.abs(point.y - previous.y) < 0.5) return point;
             previous = point;
-            if (Date.now() - start >= timeoutMs) throw new Error(`Not found or not visible: ${selector}${lastError ? `\n  last error: ${lastError.message.split('\n')[0]}` : ''}`);
+            if (Date.now() - start >= timeoutMs) {
+                const why = cover ? `covered by <${cover}>, a click would miss` : `not found or not visible${lastError ? ` (${lastError.message.split('\n')[0]})` : ''}`;
+                throw failure('timeout', `Cannot click ${selector}: ${why}.`);
+            }
             await sleep(100);
         }
     };
@@ -282,9 +349,9 @@ function pageApi({ send, on }) {
             }
             await waitFor(`document.readyState === 'complete'`, 60000);
         },
-        /** Clicks the element a JS expression returns, e.g. `document.querySelector('[title="Versionen anzeigen"]')`. Waits up to 10 s for it. */
-        click: async (selector, extra = {}) => {
-            const point = await centreOf(selector);
+        /** Clicks the element a JS expression returns, e.g. `document.querySelector('[title="Versionen anzeigen"]')`. Waits up to `timeoutMs` (10 s) for it to be there, still and uncovered. */
+        click: async (selector, { timeoutMs, ...extra } = {}) => {
+            const point = await centreOf(selector, timeoutMs);
             await clickAt(point.x, point.y, extra);
         },
         clickAt,
@@ -338,9 +405,10 @@ async function login(page) {
     await page.click(`document.querySelector('button[type="submit"]')`);
     try {
         await page.waitFor(`location.pathname !== '/login'`, 15000);
-    } catch {
+    } catch (error) {
+        if (error.kind !== 'timeout') throw error;
         const said = await page.evaluate(`document.body?.innerText.replace(/\\s+/g, ' ').slice(0, 200)`);
-        throw new Error(`Login failed, still on /login. The page says: ${said}`);
+        throw new Error(`Login failed, still on /login. The page says: ${said.replaceAll(password, '…')}`);
     }
 }
 
@@ -361,6 +429,27 @@ async function selfTest(page) {
     const clipped = await page.screenshot({ x: 350, y: 120, width: 900, height: 760 });
     writeFileSync(path.join(tmpdir(), 'curahub-shots-selftest.png'), full);
     console.log(`full ${JSON.stringify(pngSize(full))}, clip 900x760 ${JSON.stringify(pngSize(clipped))}, file ${path.join(tmpdir(), 'curahub-shots-selftest.png')}`);
+    // A click must not land on an overlay, and a broken selector must fail at once, not after the timeout.
+    const refused = async (promise) => {
+        const started = Date.now();
+        return promise.then(() => 'did not throw', (error) => `${error.message.split('\n')[0]} (after ${Date.now() - started} ms)`);
+    };
+    await page.goto(encodeURI('data:text/html,<button>Hi</button><div class="overlay" style="position:fixed;inset:0"></div>'));
+    console.log('covered:', await refused(page.click(page.byText('Hi'), { timeoutMs: 1500 })));
+    console.log('selector TypeError:', await refused(page.click(`document.querySelector('#none').x.y`)));
+    console.log('waitFor TypeError:', await refused(page.waitFor(`document.querySelector('#none').x`)));
+}
+
+/** The page as it was when a shot failed, in the OS temp dir (owner-only). Not when it shows an e-mail address, nor when that cannot be checked. */
+async function saveFailureShot(page, name) {
+    try {
+        if (await page.evaluate(`(${findEmail.toString()})()`)) return console.error('  No screenshot of the failed page: it shows an e-mail address.');
+        const file = path.join(tmpdir(), `curahub-shot-failed-${name}.png`);
+        writeFileSync(file, await page.screenshot(), { mode: 0o600 });
+        console.error(`  The page when ${name} failed: ${file} (deleted by the next run)`);
+    } catch {
+        // The page is gone; there is nothing to show.
+    }
 }
 
 if (!SELF_TEST) {
@@ -371,6 +460,7 @@ if (!SELF_TEST) {
     }
 }
 
+purgeFailureShots();
 const chrome = launchChrome();
 try {
     const cdp = await connect(chrome);
@@ -395,20 +485,14 @@ try {
                 await entry.prepare(page);
                 await page.sleep(entry.settleMs ?? 1500);
                 const leak = await page.evaluate(`(${findEmail.toString()})()`);
-                if (leak) throw new Error(`an e-mail address is visible on screen (${leak}) — close the menu or pick another view.`);
+                if (leak) throw new LeakError(`an e-mail address is visible on screen (${maskEmail(leak)}) — close the menu or pick another view.`);
                 const clip = typeof entry.clip === 'function' ? await entry.clip(page) : entry.clip;
                 const png = await page.screenshot(clip);
                 writeFileSync(path.join(OUT, `${entry.name}.png`), png);
                 const { width, height } = pngSize(png);
                 console.log(`✓ ${entry.name} (${width}×${height})${width < 1600 ? ' — narrower than the 1600 px the site tests require' : ''}`);
             } catch (error) {
-                try {
-                    const file = path.join(tmpdir(), `curahub-shot-failed-${entry.name}.png`);
-                    writeFileSync(file, await page.screenshot());
-                    console.error(`  The page when ${entry.name} failed: ${file}`);
-                } catch {
-                    // The page is gone; there is nothing to show.
-                }
+                if (!(error instanceof LeakError)) await saveFailureShot(page, entry.name);
                 error.message = `${entry.name}: ${error.message}`;
                 throw error;
             }
