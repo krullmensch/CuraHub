@@ -1,6 +1,15 @@
 // What each screenshot shows. `prepare` brings the app into that state; see capture-screenshots.mjs for the `page` helpers.
 // DEMO is the slug of the demo exhibition on the test stack ("Licht und Landschaft", works credited in
-// src/assets/screenshots/CREDITS.md). The window is 1600 × 1000; canvas points below are in that frame.
+// src/assets/screenshots/CREDITS.md); the env var CURAHUB_DEMO_SLUG overrides the default `licht-und-landschaft`.
+// The window is 1600 × 1000; canvas points below are in that frame.
+//
+// Two kinds of shots, each against its own instance. Always pass the shot names: a run without names takes all eleven,
+// overwrites the six app PNGs on an instance that is already set up, and then fails at `setup-1-code` (/setup is 404 once set up).
+//  - App shots (planer-3d, wandeditor-2d, medien, rahmen, versionen, rundgang) run against the instance that holds the demo exhibition:
+//      CURAHUB_SHOT_USER=… CURAHUB_SHOT_PASSWORD=… node scripts/capture-screenshots.mjs http://localhost:3002 planer-3d wandeditor-2d medien rahmen versionen rundgang
+//  - Wizard shots (setup-1-code … setup-5-hsbi-admin) run against a fresh instance that is not set up yet, with CURAHUB_SETUP_CODE set
+//    (docker compose logs app | grep Setup-Code):
+//      CURAHUB_SETUP_CODE=… node scripts/capture-screenshots.mjs http://localhost:3003 setup-1-code setup-2-systemcheck setup-3-adresse setup-4-notfall-admin setup-5-hsbi-admin
 const DEMO = process.env.CURAHUB_DEMO_SLUG ?? 'licht-und-landschaft';
 const editor = `/exhibition/${DEMO}/edit`;
 const META = 4; // CDP modifier bit for ⌘
@@ -57,11 +66,13 @@ async function fill(page, id, text) {
 
 /** Opens /setup and walks to the given step: 1 code, 2 system check, 3 public address, 4 emergency admin, 5 HSBI admin. */
 async function wizardStep(page, step) {
-    const code = process.env.CURAHUB_SETUP_CODE;
-    if (!code) throw new Error('Set CURAHUB_SETUP_CODE (docker compose logs app | grep Setup-Code).');
     await page.goto('/setup');
     await page.waitFor(field('setup-code'), 30000);
-    if (step === 1) return;
+    if (step === 1) return; // shows the empty text field with its placeholder, and needs no code
+    const code = process.env.CURAHUB_SETUP_CODE;
+    if (!code) throw new Error('Set CURAHUB_SETUP_CODE (docker compose logs app | grep Setup-Code).');
+    // The wizard takes the code in a plain text field. Mask it before typing, so that a failure screenshot never shows it.
+    await page.evaluate(`${field('setup-code')}.type = 'password'`);
     await fill(page, 'setup-code', code);
     await page.click(page.byText('Weiter'));
     await page.waitFor(`!${field('setup-code')} && ${page.byText('Weiter')}`, 30000);
@@ -109,7 +120,7 @@ export const SHOTS = [
     {
         name: 'wandeditor-2d',
         login: true,
-        // Wand A, front face, in the 2D editor: all four works selected, floor distances and gaps shown.
+        // Wand A, front face, in the 2D editor: all four works selected; the shot shows the hanging line, the gaps between the works and the guide lines (no floor-distance leaders).
         prepare: async (page) => {
             await openEditor(page);
             await page.click(titled('Wand A im 2D-Wandeditor öffnen'));
