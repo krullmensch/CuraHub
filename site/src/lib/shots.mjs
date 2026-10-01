@@ -5,7 +5,7 @@ export const FEATURE_SHOTS = [
     { name: 'medien', alt: 'Die Medienbibliothek mit Bildern, einem Video, einem 3D-Modell und einem Buch.' },
     { name: 'rahmen', alt: 'Ein ausgewähltes Bild mit Holzrahmen und Passepartout, daneben die Einstellungen für Rahmen und Passepartout.' },
     { name: 'versionen', alt: 'Die Versionshistorie einer Ausstellung mit drei Versionen, eine davon veröffentlicht.' },
-    { name: 'rundgang', alt: 'Der Rundgang aus der Ich-Perspektive: Blick in den Raum mit Stellwänden, Maßstabsfigur und eingeblendeten Werkangaben.' },
+    { name: 'rundgang', alt: 'Der Rundgang aus der Ich-Perspektive: Blick in den Raum mit Stellwänden, gerahmten Werken und eingeblendeten Werkangaben.' },
 ];
 
 export const WIZARD_SHOTS = [
