@@ -11,7 +11,24 @@ Du kannst jederzeit zwischen verschiedenen Ansichten wechseln:
 Ziehe ein Asset aus der Bibliothek per Drag & Drop in den Raum. Das smarte **Raycasting** sorgt dafür, dass Objekte automatisch an Wänden oder auf dem Boden einrasten.
 Zusätzlich kannst du modulare Messewände frei im Raum aufstellen, um neue Raumstrukturen zu schaffen.
 
+Ein Werk nimmt eine Stellwand nur auf, wenn sie **gesperrt** ist (Schloss-Symbol). So verschiebst du beim Hängen nicht versehentlich die Wand.
+
 3D-Modelle und Gaussian Splats stehen auf dem Boden. Ein Splat wird beim Laden aufgerichtet und mit der Mitte seiner Unterseite auf den Ablagepunkt gestellt. Steht ein Scan trotzdem auf dem Kopf, drehst du ihn mit **R** und **X** um 180°. Während ein Splat lädt, zeigt ein blauer Rahmen seinen Platz an.
+
+**Bücher** (PDFs) liegen geschlossen auf einem 1,10 m hohen Sockel. Sie lassen sich verschieben und um die Hochachse drehen, aber nicht skalieren. Ein Doppelklick oder **Buch öffnen** im Properties-Panel schlägt das Buch zum Blättern auf.
+
+Über die Werkzeugleiste stellst du eine **Maßstabsfigur** (1,73 m) in den Raum, um Größen besser einzuschätzen. Im Properties-Panel legst du fest, ob Besucher sie im öffentlichen Rundgang sehen.
+
+## Mehrere Werke auswählen
+- **Klick** wählt ein Werk, **⇧ + Klick** nimmt weitere dazu oder wieder heraus.
+- **⇧ + Ziehen** zieht einen Auswahlrahmen auf.
+- **⌘/Strg + A** wählt alle Werke, **⌘/Strg + D** dupliziert die Auswahl.
+- Der Reiter **Im Raum** in der linken Seitenleiste listet alle platzierten Werke nach Wand. Dort wählst du mit **⌘/Strg + Klick** einzelne und mit **⇧ + Klick** einen Bereich.
+
+Bei mehreren Werken zeigt das Properties-Panel Werkzeuge für die ganze Gruppe: Höhen angleichen, an einer Achse ausrichten, gleichmäßig verteilen, Rahmen und Passepartout für alle setzen. Verschieben und Drehen wirken auf die Gruppe als Ganzes.
+
+## Maße im Raum
+Der Knopf **Maße** in der Werkzeugleiste blendet Hängehöhe, Abstände zum Boden und Abstände zwischen den Werken direkt an den Wänden ein. Dieselben Schalter gelten im 2D-Wandeditor.
 
 ## Grafik
 Unten in der Werkzeugleiste stellst du **Qualität** und **Renderer** ein. CuraHub zeichnet mit **WebGPU**, wenn dein Browser es unterstützt, sonst mit **WebGL**. Sieht etwas falsch aus oder ruckelt es, kannst du den Renderer dort von Hand wechseln. Die Seite lädt dabei neu.
@@ -29,9 +46,9 @@ Für exakte Einstellungen (z.B. "Zentrum des Bildes genau auf 1,45m Höhe") nutz
 ## Rahmen
 Jedes Bild kann **gerahmt** oder **ohne Rahmen** hängen — im Properties-Panel unter "Rahmen". Ungerahmt liegt das Werk wie ein aufgezogener Druck flach auf der Wand.
 
-Die Rahmen folgen dem Sortiment der HALBE-Magnetrahmen:
-- **Profil:** Alu 6, 7, 8, 12, 14 und 18 sowie Holz 10, 16, 20 und 22 — mit HALBEs Aufsichtsmaß und Profiltiefe (z.B. Alu 8: 9 × 27 mm, Holz 22: 21 × 41,5 mm). Alu 6 ist leicht abgerundet, Alu 12 hat einen Radius nach außen.
-- **Farbe:** je Profil nur die Farben, die HALBE dafür anbietet. Aluminium in Silber, Weiß, Schwarz, Mittelgrau matt, Edelstahl gebürstet, Chrom glänzend und Gold matt. Holz in Eiche natur, weiß, grau und schwarz, Ahorn natur und weiß, Erle dunkel und braun sowie Nussbaum natur — mit Furniermaserung, die an der 45°-Gehrung die Richtung wechselt.
+Die Rahmen folgen zwei echten Sortimenten: den Magnetrahmen von HALBE und den Massivholzrahmen von Max Aab.
+- **Profil:** HALBE Alu 6, 7, 8, 12, 14 und 18 sowie Holz 10, 16, 20 und 22, dazu Aab 116, 102, 107 und 111 — jeweils mit Aufsichtsmaß und Profiltiefe des Herstellers (z.B. Alu 8: 9 × 27 mm, Holz 22: 21 × 41,5 mm). Alu 6 ist leicht abgerundet, Alu 12 hat einen Radius nach außen, Aab 111 ist ein Kastenrahmen mit Abstandsleiste. Bei Aab-Profilen warnt das Panel, wenn es den Rahmen in dieser Bildgröße nicht gibt.
+- **Farbe:** je Profil nur die Farben, die der Hersteller dafür anbietet. Aluminium in Silber, Weiß, Schwarz, Mittelgrau matt, Edelstahl gebürstet, Chrom glänzend und Gold matt. Holz in Eiche natur, weiß, grau und schwarz, Ahorn natur und weiß, Erle dunkel und braun sowie Nussbaum natur — mit Furniermaserung, die an der 45°-Gehrung die Richtung wechselt.
 
 Wechselst du das Profil, bleibt die Farbe erhalten, wenn es sie dort gibt; sonst nimmt CuraHub die nächstliegende.
 

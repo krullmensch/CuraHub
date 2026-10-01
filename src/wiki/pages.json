@@ -5,5 +5,5 @@
   { "id": "3d-scene", "title": "3D-Editor (Planer)" },
   { "id": "2d-wall-editor", "title": "2D-Wandeditor" },
   { "id": "viewer", "title": "Viewer-Modus" },
-  { "id": "admin", "title": "Admin & Raumverwaltung" }
+  { "id": "admin", "title": "Admin & Verwaltung" }
 ]

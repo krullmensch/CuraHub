@@ -11,3 +11,10 @@ Besucher bewegen sich aus der Ego-Perspektive (First-Person) durch die Ausstellu
 ## Interaktion mit Kunstwerken
 In der Bildschirmmitte befindet sich ein Fadenkreuz. 
 Sobald ein Besucher ein Kunstwerk fokussiert und interagiert (Klick), öffnet sich ein elegantes **Info-Overlay**. Hier werden alle Metadaten wie Titel, Künstler, Beschreibung und die realen Maße des Kunstwerks präsentiert.
+
+
+## Bücher lesen
+Liegt ein Buch auf einem Sockel und ist es als **im öffentlichen Viewer lesbar** freigegeben, erscheint beim Näherkommen (etwa 2,5 m) der Hinweis **Klicken zum Lesen**. Ein Klick schlägt das Buch auf; geblättert wird mit der Maus oder den Pfeiltasten, **Esc** schließt es wieder.
+
+## Qualität und Renderer
+Auf dem Startbildschirm des Rundgangs lassen sich **Qualität** und **Renderer** wählen. CuraHub nutzt WebGPU, wenn der Browser es unterstützt, sonst WebGL.
