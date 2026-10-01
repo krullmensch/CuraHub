@@ -64,3 +64,7 @@ Du brauchst Node.js (v18+), Docker für die Datenbank und FFmpeg für die Video-
 
 ## Entwicklung (AI-Driven Development)
 Das Projekt nutzt einen KI-gestützten Workflow. Die KI diente als Junior-Entwickler für die Implementierung technischer Details und Boilerplate-Code, während ich die Architektur entworfen und die logische Struktur des Codes validiert habe. Dieser Ansatz ermöglichte eine schnelle Umsetzung komplexer 3D-Features in einem modernen Tech-Stack.
+
+## Lizenz
+
+CuraHub steht unter der [PolyForm Noncommercial License 1.0.0](LICENSE.md). Nutzen, Verändern und Weitergeben sind erlaubt, solange es nicht kommerziell geschieht. Mitgelieferte Inhalte Dritter (Schriften, 3D-Modelle, die Werke in den Screenshots) behalten ihre eigenen Lizenzen.
