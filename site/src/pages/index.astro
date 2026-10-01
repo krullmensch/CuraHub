@@ -1,9 +1,148 @@
 ---
+import FeatureBlock from '../components/FeatureBlock.astro';
+import Hero from '../components/Hero.astro';
 import Base from '../layouts/Base.astro';
+import { FEATURE_SHOTS } from '../lib/shots.mjs';
+import { url } from '../lib/url';
+
+const alt = (name: string) => FEATURE_SHOTS.find((entry) => entry.name === name)?.alt ?? '';
 ---
 <Base title="CuraHub">
-    <section class="container section">
-        <h1>CuraHub</h1>
-        <p class="lead">Ausstellungen im Browser planen.</p>
+    <Hero />
+
+    <section class="section">
+        <div class="container">
+            <h2>Was ist CuraHub?</h2>
+            <p class="lead">
+                CuraHub ist ein Werkzeug, mit dem Kurator:innen eine Ausstellung im Browser planen: im maßstabsgetreuen
+                3D-Modell des Raums, mit echten Werkgrößen, Rahmen und Stellwänden.
+            </p>
+            <p class="lead">
+                Es ist an der HSBI (Hochschule Bielefeld) für den Ausstellungsraum „Satellit“ entstanden. Entwürfe lassen
+                sich als Versionen sichern, verzweigen und als öffentlicher Rundgang teilen.
+            </p>
+        </div>
+    </section>
+
+    <section class="section" id="funktionen">
+        <div class="container">
+            <h2>Funktionen</h2>
+
+            <FeatureBlock title="3D-Planer" shotName="planer-3d" alt={alt('planer-3d')}>
+                <p>
+                    Werke per Drag & Drop an Wände und auf den Boden setzen, verschieben, drehen und skalieren. Mehrere
+                    Werke lassen sich gemeinsam auswählen, ausrichten und verteilen.
+                </p>
+                <p>Stellwände stehen frei im Raum und nehmen Werke auf allen vier Seiten auf.</p>
+            </FeatureBlock>
+
+            <FeatureBlock title="2D-Wandeditor" shotName="wandeditor-2d" alt={alt('wandeditor-2d')} flip>
+                <p>
+                    Jede Wand lässt sich frontal öffnen und wie in einem Layoutprogramm einrichten: Hängehöhe, Abstände
+                    zwischen den Werken, Abstand zum Boden, Hilfslinien und Einrasten.
+                </p>
+                <p>Die Maße erscheinen auch in der 3D-Ansicht.</p>
+            </FeatureBlock>
+
+            <FeatureBlock title="Medien" shotName="medien" alt={alt('medien')}>
+                <p>
+                    Bilder, Videos, 3D-Modelle und Gaussian Splats hochladen; ganze Ordner auf einmal. Videos werden für
+                    den Browser umgerechnet, Bilder verkleinert, Maße aus den Metadaten übernommen.
+                </p>
+                <p>PDFs liegen als Buch auf einem Sockel und lassen sich im Rundgang durchblättern.</p>
+            </FeatureBlock>
+
+            <FeatureBlock title="Rahmen und Passepartouts" shotName="rahmen" alt={alt('rahmen')} flip>
+                <p>
+                    14 Rahmenprofile nach den Sortimenten von HALBE und Max Aab, in den Oberflächen, die es wirklich gibt.
+                    Passepartouts mittig, im optischen Zentrum oder im Goldenen Schnitt.
+                </p>
+                <p>Das Außenmaß steht direkt daneben.</p>
+            </FeatureBlock>
+
+            <FeatureBlock title="Versionen und Veröffentlichen" shotName="versionen" alt={alt('versionen')}>
+                <p>
+                    Jeder Stand einer Ausstellung ist eine Version. Versionen lassen sich verzweigen, zusammenführen und
+                    wiederherstellen; eine davon wird veröffentlicht.
+                </p>
+            </FeatureBlock>
+
+            <FeatureBlock title="Rundgang" shotName="rundgang" alt={alt('rundgang')} flip>
+                <p>
+                    In der Ich-Perspektive durch den Raum gehen, mit Augenhöhe 1,62 m. Die veröffentlichte Version ist
+                    über einen Link ohne Anmeldung begehbar.
+                </p>
+            </FeatureBlock>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <h2>In drei Schritten</h2>
+            <ol class="steps">
+                <li>
+                    <h3>Installieren</h3>
+                    <p class="muted">Repository holen, <code>docker compose up -d --build</code>. Passwörter und Schlüssel erzeugt CuraHub selbst.</p>
+                </li>
+                <li>
+                    <h3>Einrichten</h3>
+                    <p class="muted">Der Assistent unter <code>/setup</code> prüft das System und legt die Admin-Konten an.</p>
+                </li>
+                <li>
+                    <h3>Kuratieren</h3>
+                    <p class="muted">Kurator:innen freischalten, Werke hochladen, im Raum platzieren, veröffentlichen.</p>
+                </li>
+            </ol>
+            <p><a class="button" href={url('/setup/')}>Zum Setup-Guide</a></p>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container two">
+            <div>
+                <h2>Voraussetzungen</h2>
+                <ul class="plain">
+                    <li>Linux-Server mit Docker Engine und Compose-Plugin</li>
+                    <li>Apache mit TLS-Zertifikat für die Domain</li>
+                    <li>Mindestens 10 GB freier Speicher für Uploads</li>
+                    <li>Ausgehender HTTPS-Zugriff auf www.hsbi.de für die Anmeldung</li>
+                </ul>
+            </div>
+            <div>
+                <h2>Stand und Grenzen</h2>
+                <ul class="plain">
+                    <li>
+                        <strong>Anmeldung über das HSBI-Konto.</strong> Ohne HSBI-Zugang kann sich nur der lokale
+                        Notfall-Admin anmelden.
+                    </li>
+                    <li>
+                        <strong>Ein fester Raum.</strong> Das Modell des „Satellit“ ist Teil der Installation; eigene
+                        Räume lassen sich noch nicht hochladen.
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <section class="section">
+        <div class="container">
+            <h2>Technik</h2>
+            <p class="lead">
+                React, Three.js mit WebGPU (WebGL als Rückfall), Express, Prisma, MariaDB, Docker.
+                Der Quelltext liegt auf <a href="https://github.com/krullmensch/CuraHub" rel="noopener">GitHub</a>,
+                die Bedienung erklärt das <a href={url('/wiki/')}>Wiki</a>.
+            </p>
+        </div>
     </section>
 </Base>
+
+<style>
+    .steps { list-style: none; counter-reset: step; margin: 2rem 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1.25rem; }
+    .steps li { counter-increment: step; border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; background: var(--surface); }
+    .steps li::before { content: counter(step); font-family: var(--display); font-size: 2rem; font-weight: 700; color: var(--accent); display: block; margin-bottom: 0.5rem; }
+    .steps p { margin: 0; }
+    .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 3rem; }
+    .plain { margin: 0; padding-left: 1.25rem; color: var(--muted); display: grid; gap: 0.6rem; }
+    .plain strong { color: var(--strong); }
+    code { background: rgba(63, 63, 70, 0.5); color: #93c5fd; padding: 0.15rem 0.4rem; border-radius: 0.25rem; font-size: 0.875em; }
+</style>
