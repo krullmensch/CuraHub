@@ -22,5 +22,6 @@ const available = Astro.props.shots
 
 <style>
     .shots { list-style: none; margin: 0 0 2rem; padding: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr)); gap: 0.75rem; }
-    .shots li { border: 1px solid var(--border); border-radius: 0.5rem; overflow: hidden; background: var(--surface); }
+    /* margin: 0 — inside .prose, `.prose li` would add a bottom margin to every card */
+    .shots li { margin: 0; border: 1px solid var(--border); border-radius: 0.5rem; overflow: hidden; background: var(--surface); }
 </style>
