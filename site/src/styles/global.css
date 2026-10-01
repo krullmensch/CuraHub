@@ -68,8 +68,8 @@ a:hover { color: #93c5fd; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
 img, video { max-width: 100%; height: auto; display: block; }
 
-.container { width: 100%; max-width: var(--width); margin: 0 auto; padding: 0 1.25rem; }
-.section { padding: 4.5rem 0; border-top: 1px solid var(--border); }
+.container { width: 100%; max-width: var(--width); margin: 0 auto; padding-inline: 1.25rem; }
+.section { padding-block: 4.5rem; border-top: 1px solid var(--border); }
 .lead { font-size: 1.2rem; color: var(--text); max-width: 46rem; }
 .muted { color: var(--muted); }
 
