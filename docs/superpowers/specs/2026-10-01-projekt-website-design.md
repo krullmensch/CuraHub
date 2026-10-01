@@ -135,7 +135,7 @@ Screenshot sources are PNGs committed in `site/src/assets/screenshots/`. Pages u
 - **Trigger paths** (both events): `site/**`, `src/wiki/**`, `docs/deployment.md`, `src/assets/fonts/**`, `public/BG_Video_CuraHub-*`, the workflow file itself.
 - **`pull_request`**: `npm ci` and `npm run build` in `site/` — build only, so broken markdown or a missing wiki file shows up in the PR.
 - **`push` to `main`**: the same build, then `actions/upload-pages-artifact` and `actions/deploy-pages`. Permissions `pages: write`, `id-token: write`; concurrency group `pages`.
-- Node version as in the app's `Dockerfile`.
+- Node 22 (Astro 7 needs ≥ 22.12; the app's `Dockerfile` stays on Node 20 — the two builds are independent).
 
 One manual step by the user, once: repo → Settings → Pages → Source "GitHub Actions". The site is public only after the branch reaches `main` and Pages is switched on.
 
