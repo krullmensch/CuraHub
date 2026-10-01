@@ -11,4 +11,19 @@ const docs = defineCollection({
     loader: glob({ pattern: 'deployment.md', base: '../docs' }),
 });
 
-export const collections = { wiki, docs };
+// Impressum etc. — written by the site owner; an empty folder means no such pages.
+const legalFiles = glob({ pattern: '*.md', base: './src/content/legal' });
+const legal = defineCollection({
+    loader: {
+        ...legalFiles,
+        async load(context) {
+            await legalFiles.load(context);
+            // glob() creates no collection when nothing matches, and getCollection() then logs
+            // a warning on every call. Set-and-delete leaves an existing, empty collection.
+            context.store.set({ id: '.empty', data: {} });
+            context.store.delete('.empty');
+        },
+    },
+});
+
+export const collections = { wiki, docs, legal };

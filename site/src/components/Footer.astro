@@ -1,10 +1,15 @@
 ---
+import { getCollection } from 'astro:content';
+import { url } from '../lib/url';
+
+const hasImpressum = (await getCollection('legal')).some((entry) => entry.id === 'impressum');
 ---
 <footer class="site-footer">
     <div class="container row">
         <p class="muted">CuraHub — entstanden an der HSBI (Hochschule Bielefeld).</p>
         <ul>
             <li><a href="https://github.com/krullmensch/CuraHub" rel="noopener">GitHub</a></li>
+            {hasImpressum && <li><a href={url('/impressum/')}>Impressum</a></li>}
         </ul>
     </div>
 </footer>
