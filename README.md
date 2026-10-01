@@ -2,6 +2,8 @@
 
 CuraHub ist eine Plattform zur Planung und Visualisierung von Ausstellungen in einem digitalen Raum. Ich habe das Projekt während meines Studiums entwickelt, um Kuratoren Werkzeuge für die virtuelle Raumgestaltung zur Verfügung zu stellen. Das System nutzt das Modell "Satellit" als Basisraum und erlaubt die Platzierung von Kunstwerken sowie die Erstellung modularer Wände.
 
+Projektseite mit Wiki und Setup-Guide: https://krullmensch.github.io/CuraHub/
+
 ## Kernfunktionen
 
 ### 3D-Editor und Visualisierung
