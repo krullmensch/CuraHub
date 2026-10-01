@@ -37,8 +37,10 @@
     --border: rgba(63, 63, 70, 0.6);
     --text: #d4d4d8;
     --strong: #f4f4f5;
+    --soft: #e4e4e7;
     --muted: #a1a1aa;
     --accent: #60a5fa;
+    --accent-soft: #93c5fd;
     --button: #2563eb;
     --display: 'Funnel Display', sans-serif;
     --body: 'Albert Sans', sans-serif;
@@ -64,7 +66,7 @@ h2 { font-size: clamp(1.6rem, 3vw, 2.25rem); font-weight: 600; }
 h3 { font-size: 1.25rem; font-weight: 600; }
 p { margin: 0 0 1rem; }
 a { color: var(--accent); text-underline-offset: 2px; }
-a:hover { color: #93c5fd; }
+a:hover { color: var(--accent-soft); }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 2px; }
 img, video { max-width: 100%; height: auto; display: block; }
 
@@ -93,15 +95,16 @@ img, video { max-width: 100%; height: auto; display: block; }
 /* Rendered markdown (wiki, setup guide, legal) — same look as .wiki-content in the app. */
 .prose { max-width: 46rem; }
 .prose h1 { font-size: 2rem; margin-bottom: 1rem; }
-.prose h2 { font-size: 1.35rem; color: #e4e4e7; margin-top: 2.25rem; }
+.prose h2 { font-size: 1.35rem; color: var(--soft); margin-top: 2.25rem; }
 .prose h3 { font-size: 1.1rem; color: var(--text); margin-top: 1.5rem; }
 .prose p, .prose ul, .prose ol { color: var(--muted); }
 .prose ul, .prose ol { padding-left: 1.5rem; margin: 0 0 1rem; }
 .prose li { margin-bottom: 0.35rem; }
-.prose strong { color: #e4e4e7; }
-.prose code {
+.prose strong { color: var(--soft); }
+/* Inline code, everywhere (landing page, wiki, setup guide). Fenced blocks keep their own look. */
+:not(pre) > code {
     background: rgba(63, 63, 70, 0.5);
-    color: #93c5fd;
+    color: var(--accent-soft);
     padding: 0.15rem 0.4rem;
     border-radius: 0.25rem;
     font-size: 0.875em;
@@ -116,7 +119,8 @@ img, video { max-width: 100%; height: auto; display: block; }
     overflow-x: auto;
     margin: 0 0 1rem;
 }
-.prose pre code { background: none; padding: 0; overflow-wrap: normal; }
+/* Colour and size every <code> had before the pill moved to :not(pre) > code. */
+.prose pre code { color: var(--accent-soft); font-size: 0.875em; }
 .prose table { width: 100%; border-collapse: collapse; font-size: 0.9rem; color: var(--muted); margin-bottom: 1rem; }
 .prose th, .prose td { border-bottom: 1px solid var(--border); padding: 0.4rem 0.75rem 0.4rem 0; text-align: left; vertical-align: top; }
-.prose th { color: #e4e4e7; font-weight: 600; }
+.prose th { color: var(--soft); font-weight: 600; }

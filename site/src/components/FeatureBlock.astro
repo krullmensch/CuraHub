@@ -26,13 +26,16 @@ const image = shot(shotName);
 
 <style>
     .feature { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 3rem; align-items: center; padding: 2.5rem 0; }
+    /* Flipped: text on the right, so the wide track moves to the left with the image. */
+    .feature.flip { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
     .feature.flip .text { order: 2; }
+    /* Without an image there is one column, flipped or not (after .flip: same specificity, later wins). */
     .feature.plain { grid-template-columns: minmax(0, 1fr); }
     .text { color: var(--muted); max-width: 34rem; }
     .text h3 { font-size: 1.5rem; }
     .frame { border: 1px solid var(--border); border-radius: 0.75rem; overflow: hidden; background: var(--surface); }
     @media (max-width: 899px) {
-        .feature { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
+        .feature, .feature.flip { grid-template-columns: minmax(0, 1fr); gap: 1.25rem; }
         .feature.flip .text { order: 0; }
     }
 </style>

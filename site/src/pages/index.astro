@@ -5,7 +5,15 @@ import Base from '../layouts/Base.astro';
 import { FEATURE_SHOTS } from '../lib/shots.mjs';
 import { url } from '../lib/url';
 
-const alt = (name: string) => FEATURE_SHOTS.find((entry) => entry.name === name)?.alt ?? '';
+// A mistyped name must fail the build: an empty alt would silently mark the image as decorative.
+const alt = (name: string) => {
+    const entry = FEATURE_SHOTS.find((shot) => shot.name === name);
+    if (!entry) {
+        const known = FEATURE_SHOTS.map((shot) => shot.name).join(', ');
+        throw new Error(`Landing page: unknown screenshot name "${name}" (known: ${known}).`);
+    }
+    return entry.alt;
+};
 ---
 <Base title="CuraHub">
     <Hero />
@@ -144,5 +152,4 @@ const alt = (name: string) => FEATURE_SHOTS.find((entry) => entry.name === name)
     .two { display: grid; grid-template-columns: repeat(auto-fit, minmax(18rem, 1fr)); gap: 3rem; }
     .plain { margin: 0; padding-left: 1.25rem; color: var(--muted); display: grid; gap: 0.6rem; }
     .plain strong { color: var(--strong); }
-    code { background: rgba(63, 63, 70, 0.5); color: #93c5fd; padding: 0.15rem 0.4rem; border-radius: 0.25rem; font-size: 0.875em; }
 </style>
