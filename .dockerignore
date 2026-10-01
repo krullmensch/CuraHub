@@ -23,3 +23,5 @@ server/uploads
 server/.env
 **/.DS_Store
 # server <-- Das muss raus, damit Docker den Ordner sieht!
+site
+.github

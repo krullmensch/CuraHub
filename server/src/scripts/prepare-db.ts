@@ -8,6 +8,7 @@
  *
  * Run: node dist/scripts/prepare-db.js   (Dockerfile CMD does this before `npm start`)
  */
+import '../lib/loadSecretEnv';
 import { execFileSync } from 'child_process';
 import { PrismaClient } from '@prisma/client';
 

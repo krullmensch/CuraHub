@@ -21,6 +21,7 @@
     "@prisma/client": "^5.22.0",
     "@types/multer": "^2.0.0",
     "@types/uuid": "^10.0.0",
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "draco3dgltf": "^1.5.7",
@@ -54,8 +55,5 @@
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
-  },
-  "prisma": {
-    "seed": "ts-node prisma/seed.ts"
   }
 }

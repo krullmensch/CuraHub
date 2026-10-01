@@ -1,12 +1,32 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticate, requireAdmin } from '../lib/middleware';
+import { runSystemChecks, requestInfo, type CheckDeps } from '../lib/systemChecks';
+import { getSetupState } from '../lib/setupState';
 
 export const adminRouter = Router();
 const prisma = new PrismaClient();
 
 // Apply requireAdmin to all routes in this file
 adminRouter.use(authenticate, requireAdmin);
+
+// ─── GET /admin/system ────────────────────────────────────────────────────────
+// Read-only health of the instance (same checks as the setup wizard).
+
+let systemDeps: CheckDeps | null = null;
+export function setAdminSystemDeps(deps: CheckDeps): void {
+  systemDeps = deps;
+}
+
+adminRouter.get('/system', async (req, res) => {
+  if (!systemDeps) return res.status(503).json({ error: 'Systemcheck nicht verfügbar' });
+  const checks = await runSystemChecks(systemDeps, requestInfo(req));
+  res.json({
+    checks,
+    publicUrl: getSetupState()?.publicUrl ?? null,
+    version: process.env.DEPLOYED_COMMIT || process.env.npm_package_version || 'unbekannt',
+  });
+});
 
 // ─── GET /admin/users ─────────────────────────────────────────────────────────
 

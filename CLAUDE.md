@@ -23,10 +23,14 @@ This file gives Claude Code full context about the project — its architecture,
 - `cd server && npm test` — Jest (ts-jest)
 - `cd server && npx prisma migrate dev` — apply migrations
 - `cd server && npx prisma studio` — database browser
-- `cd server && npx prisma db seed` — seed via `prisma/seed.ts`
 - `cd server && npm run build && node dist/scripts/backfill-splats.js --apply` — convert existing splat assets to `.spz` and render their thumbnails
 
 Both frontend and backend must run simultaneously for development. The backend requires a MySQL database configured via `DATABASE_URL` in `server/.env`.
+
+### Project website (`site/` directory)
+- `cd site && npm run dev` — Astro dev server (static site only, not the app)
+- `cd site && npm run build` — static build into `site/dist` + dead-link check
+- `cd site && npm test` — `node --test` for the site's pure helpers
 
 ---
 
@@ -219,6 +223,24 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 ### Backend API
 
 Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/scale-figures`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.
+
+### Setup & Deployment
+
+- Fresh install = `docker compose up -d` + web wizard at `/setup` (runbook: `docs/deployment.md`, Apache snippet: `deploy/apache/curahub.conf`). The `init` service writes `db_root_password`, `db_password`, `jwt_secret` into volume `secrets` (`/run/curahub-secrets`); `lib/loadSecretEnv` fills `DATABASE_URL`/`JWT_SECRET` from them when unset (env always wins) — import it first in every entry point and script. `JWT_SECRET` comes from `lib/jwtSecret` only (production refuses to start without one).
+- `SystemSetting` (`setup_completed_at`, `public_url`); `lib/setupState` caches it. Until completion `lib/setupGate` answers 503 `setup_required` on every API namespace; the one-time code is printed to the log, setup tokens are signed with an in-memory secret (never `JWT_SECRET`). `/setup` routes 404 afterwards; `scripts/reset-setup.js` re-opens.
+- Local emergency accounts: `User.email` without `@`, bcrypt hash, `POST /auth/local-login` („Notfall-Login" on the login page); `scripts/reset-local-admin.js <name>`.
+- CORS: `CORS_ORIGINS` else `public_url`; `trust proxy` = loopback + private ranges; `cf-connecting-ip` only with `BEHIND_CLOUDFLARE=true` (`lib/rateLimit`). System checks (`lib/systemChecks`) show in the wizard and on `/users`.
+
+### Project website (`site/`)
+
+Public German site on GitHub Pages (`https://krullmensch.github.io/CuraHub/`): landing page, wiki, setup guide. Astro 7, own `package.json` (Node ≥ 22.12 for the site; the app's Docker image stays on Node 20), plain CSS, no client framework; the app's build, lint (`globalIgnores`) and Docker image (`.dockerignore`) ignore `site/`.
+
+- One source for texts: the wiki pages are `src/wiki/*.md` in the order of `src/wiki/pages.json` (also read by `WikiView`; `src/wiki/pages.test.ts` keeps both in step), the setup guide is `docs/deployment.md`. Never copy them into `site/`. `site/src/pages/setup.astro` splits the rendered runbook HTML to insert the wizard screenshots above the installation steps, so `docs/deployment.md` must keep a `## Neuinstallation` heading followed by a numbered list, or the site build fails.
+- Internal links only through `url()` (`site/src/lib/url.ts`); `base` lives in `site/astro.config.mjs`. `npm run build` = `astro build` + `site/scripts/check-links.mjs`, so a dead internal link fails the build.
+- `remarkRepoLinks` turns inline code that is a path to an existing repo file into a GitHub link.
+- Screenshots: PNGs in `site/src/assets/screenshots/`, names + alt texts in `site/src/lib/shots.mjs`; `site/src/lib/shots.test.mjs` fails when a listed PNG is missing. Captured by hand with `node site/scripts/capture-screenshots.mjs <base-url> [shot …]` (headless Chrome over CDP, never run by CI; credentials only from `CURAHUB_SHOT_USER`/`CURAHUB_SHOT_PASSWORD`, the wizard's code from `CURAHUB_SETUP_CODE`), the state of each shot is in `site/scripts/shots.config.mjs`. The demo exhibition "Licht und Landschaft" (slug `licht-und-landschaft`) lives on the test stack; its works are credited in `site/src/assets/screenshots/CREDITS.md`. Headless Chrome has no Pointer Lock, so the viewer shot uses a stand-in in `shots.config.mjs`.
+- Legal pages: any `site/src/content/legal/<name>.md` (see `site/src/content.config.ts`, `site/src/pages/[legal].astro`) becomes `/<name>/`; `impressum.md` also adds the footer link. The folder is empty until the site owner writes one.
+- `.github/workflows/site.yml` builds on pull requests and deploys only from `main` (push to `main` or a manual run on `main`); it runs only when `site/`, `src/wiki/`, `docs/deployment.md`, the fonts, the hero video or `deploy/` change.
 
 ### Database Schema (key models)
 

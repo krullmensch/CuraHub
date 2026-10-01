@@ -245,3 +245,10 @@ model ScaleFigure {
   createdAt   DateTime          @default(now())
 }
 
+
+/// Instance-wide settings written by the setup wizard (keys: setup_completed_at, public_url).
+model SystemSetting {
+  key       String   @id @db.VarChar(64)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+}

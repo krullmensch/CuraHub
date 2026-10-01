@@ -4,6 +4,8 @@ import { useAuthStore } from '../store/authStore';
 import { Trash2, Layers, ArrowLeft } from 'lucide-react';
 import { UserExhibitionsModal } from '../components/UserExhibitionsModal';
 import { gooeyToast } from 'goey-toast';
+import { SystemCheckList } from '../components/setup/SystemCheckList';
+import type { SetupCheck } from '../lib/setup/setupApi';
 
 type AppRole = 'user' | 'curator' | 'prof' | 'admin';
 
@@ -38,6 +40,16 @@ export const UsersPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [modalUser, setModalUser] = useState<{ id: number; email: string } | null>(null);
+  const [system, setSystem] = useState<{ checks: SetupCheck[]; publicUrl: string | null; version: string } | null>(null);
+
+  // Read-only system checks; the block stays hidden if they can't be loaded.
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/admin/system', { headers: { Authorization: `Bearer ${token}` } })
+      .then(async (res) => { if (res.ok && !cancelled) setSystem(await res.json()); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -111,6 +123,18 @@ export const UsersPage = () => {
           <p className="text-zinc-500 text-sm mb-10">{users.length} registrierte Benutzer</p>
         )}
 
+        {system && (
+          <section className="border border-zinc-800 rounded-xl p-5 mb-8">
+            <div className="flex items-baseline justify-between gap-4 mb-4">
+              <h2 className="font-display text-lg font-light">System</h2>
+              <span className="text-xs text-zinc-500 text-right">
+                {system.publicUrl ?? 'keine öffentliche Adresse gesetzt'} · Version {system.version}
+              </span>
+            </div>
+            <SystemCheckList checks={system.checks} />
+          </section>
+        )}
+
         {loading && (
           <div className="text-zinc-500 text-sm">Wird geladen…</div>
         )}
@@ -136,7 +160,12 @@ export const UsersPage = () => {
                   const isSelf = u.id === currentUser?.id;
                   return (
                     <tr key={u.id} className="border-b border-zinc-800/50 hover:bg-zinc-900/30 transition-colors">
-                      <td className="px-5 py-4 text-zinc-200">{u.email.split('@')[0]}</td>
+                      <td className="px-5 py-4 text-zinc-200">
+                        {u.email.split('@')[0]}
+                        {!u.email.includes('@') && (
+                          <span className="ml-2 text-[10px] uppercase tracking-wide px-1.5 py-0.5 rounded bg-zinc-800 text-zinc-400">lokal</span>
+                        )}
+                      </td>
                       <td className="px-5 py-4">
                         {isSelf ? (
                           <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${ROLE_BADGE[u.role]}`}>

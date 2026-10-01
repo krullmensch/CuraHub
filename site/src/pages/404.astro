@@ -1,0 +1,15 @@
+---
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/url';
+---
+<Base title="Seite nicht gefunden">
+    <div class="container page">
+        <h1>Seite nicht gefunden</h1>
+        <p class="lead">Unter dieser Adresse liegt keine Seite, vielleicht ist der Link veraltet.</p>
+        <p><a class="button" href={url('/')}>Zur Startseite</a></p>
+    </div>
+</Base>
+
+<style>
+    .page { padding-top: 2.5rem; }
+</style>

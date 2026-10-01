@@ -1,0 +1,51 @@
+---
+import { getEntry, render } from 'astro:content';
+import Base from '../layouts/Base.astro';
+import { url } from '../lib/url';
+import { wikiPages } from '../lib/wikiPages';
+
+interface Props {
+    id: string;
+}
+
+const { id } = Astro.props;
+const meta = wikiPages.find((page) => page.id === id);
+const entry = await getEntry('wiki', id);
+if (!meta || !entry) {
+    throw new Error(`Wiki-Seite "${id}" steht in src/wiki/pages.json, aber src/wiki/${id}.md fehlt (oder umgekehrt).`);
+}
+const { Content } = await render(entry);
+---
+<Base title={`${meta.title} · Wiki`} description={`CuraHub-Benutzerhandbuch: ${meta.title}`}>
+    <div class="container wiki">
+        <nav class="sidebar" aria-label="Benutzerhandbuch">
+            <p class="sidebar-title">Benutzerhandbuch</p>
+            <ul>
+                {wikiPages.map((page) => (
+                    <li>
+                        <a href={url(`/wiki/${page.id}/`)} aria-current={page.id === id ? 'page' : undefined}>
+                            {page.title}
+                        </a>
+                    </li>
+                ))}
+            </ul>
+        </nav>
+        <article class="prose">
+            <Content />
+        </article>
+    </div>
+</Base>
+
+<style>
+    .wiki { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 3rem; padding-top: 2.5rem; align-items: start; }
+    .sidebar { position: sticky; top: 5rem; }
+    .sidebar-title { font-size: 0.75rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 0.75rem; }
+    .sidebar ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.125rem; }
+    .sidebar a { display: block; padding: 0.5rem 0.75rem; border-radius: 0.5rem; color: var(--muted); text-decoration: none; font-size: 0.95rem; }
+    .sidebar a:hover { background: var(--surface); color: var(--strong); }
+    .sidebar a[aria-current='page'] { background: rgba(37, 99, 235, 0.2); color: var(--accent); font-weight: 500; }
+    @media (max-width: 767px) {
+        .wiki { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; }
+        .sidebar { position: static; border-bottom: 1px solid var(--border); padding-bottom: 1rem; }
+    }
+</style>

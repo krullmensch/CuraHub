@@ -1,0 +1,47 @@
+---
+import { getEntry, render } from 'astro:content';
+import ShotRow from '../components/ShotRow.astro';
+import Toc from '../components/Toc.astro';
+import Base from '../layouts/Base.astro';
+import { shot } from '../lib/screenshots';
+import { WIZARD_SHOTS } from '../lib/shots.mjs';
+
+const entry = await getEntry('docs', 'deployment');
+if (!entry) throw new Error('docs/deployment.md fehlt.');
+// The TOC needs the headings; the HTML is the same string <Content /> would output, split below.
+const { headings } = await render(entry);
+const html = entry.rendered?.html;
+if (html === undefined) throw new Error('docs/deployment.md wurde nicht zu HTML gerendert.');
+
+// The wizard screenshots belong between the "Neuinstallation" heading and its numbered steps.
+const heading = html.indexOf('id="neuinstallation"');
+if (heading === -1) throw new Error('docs/deployment.md: Die Überschrift „Neuinstallation“ (id="neuinstallation") fehlt.');
+const steps = html.slice(heading).search(/<ol[\s>]/);
+const nextSection = html.slice(heading).search(/<h2[\s>]/);
+if (steps === -1 || (nextSection !== -1 && nextSection < steps)) {
+    throw new Error('docs/deployment.md: Im Abschnitt „Neuinstallation“ fehlt die nummerierte Schrittliste.');
+}
+const before = html.slice(0, heading + steps);
+const after = html.slice(heading + steps);
+
+const hasWizardShots = WIZARD_SHOTS.some((wizardShot) => shot(wizardShot.name) !== undefined);
+---
+<Base title="Setup-Guide" description="CuraHub installieren: Voraussetzungen, Neuinstallation mit Docker Compose, Einrichtungsassistent, Backups und Updates.">
+    <div class="container guide">
+        <Toc headings={headings} />
+        <article class="prose">
+            <Fragment set:html={before} />
+            {hasWizardShots && (
+                <section aria-label="Der Einrichtungsassistent in Bildern">
+                    <ShotRow shots={WIZARD_SHOTS} />
+                </section>
+            )}
+            <Fragment set:html={after} />
+        </article>
+    </div>
+</Base>
+
+<style>
+    .guide { display: grid; grid-template-columns: 15rem minmax(0, 1fr); gap: 3rem; padding-top: 2.5rem; align-items: start; }
+    @media (max-width: 767px) { .guide { grid-template-columns: minmax(0, 1fr); gap: 1.5rem; } }
+</style>

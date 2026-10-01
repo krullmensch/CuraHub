@@ -2,6 +2,8 @@
 
 CuraHub ist eine Plattform zur Planung und Visualisierung von Ausstellungen in einem digitalen Raum. Ich habe das Projekt während meines Studiums entwickelt, um Kuratoren Werkzeuge für die virtuelle Raumgestaltung zur Verfügung zu stellen. Das System nutzt das Modell "Satellit" als Basisraum und erlaubt die Platzierung von Kunstwerken sowie die Erstellung modularer Wände.
 
+Projektseite mit Wiki und Setup-Guide: https://krullmensch.github.io/CuraHub/
+
 ## Kernfunktionen
 
 ### 3D-Editor und Visualisierung
@@ -62,3 +64,7 @@ Du brauchst Node.js (v18+), Docker für die Datenbank und FFmpeg für die Video-
 
 ## Entwicklung (AI-Driven Development)
 Das Projekt nutzt einen KI-gestützten Workflow. Die KI diente als Junior-Entwickler für die Implementierung technischer Details und Boilerplate-Code, während ich die Architektur entworfen und die logische Struktur des Codes validiert habe. Dieser Ansatz ermöglichte eine schnelle Umsetzung komplexer 3D-Features in einem modernen Tech-Stack.
+
+## Lizenz
+
+CuraHub steht unter der [PolyForm Noncommercial License 1.0.0](LICENSE.md). Nutzen, Verändern und Weitergeben sind erlaubt, solange es nicht kommerziell geschieht. Mitgelieferte Inhalte Dritter (Schriften, 3D-Modelle, die Werke in den Screenshots) behalten ihre eigenen Lizenzen.

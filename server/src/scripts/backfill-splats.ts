@@ -12,6 +12,7 @@
  * half way just picks up the rest next time. The source file is only deleted after the asset row
  * points at the converted one.
  */
+import '../lib/loadSecretEnv';
 import path from 'path';
 import fs from 'fs';
 import { PrismaClient } from '@prisma/client';

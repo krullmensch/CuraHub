@@ -1,0 +1,11 @@
+---
+import WikiArticle from '../../components/WikiArticle.astro';
+import { wikiPages } from '../../lib/wikiPages';
+
+export function getStaticPaths() {
+    return wikiPages.map((page) => ({ params: { id: page.id } }));
+}
+
+const { id } = Astro.params;
+---
+<WikiArticle id={id} />

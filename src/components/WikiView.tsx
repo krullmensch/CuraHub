@@ -3,14 +3,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BookOpen } from 'lucide-react';
 
-// Import markdown files as raw strings
-import accessControlDoc from '../wiki/access-control.md?raw';
-import projectManagementDoc from '../wiki/project-management.md?raw';
-import assetDoc from '../wiki/asset-management.md?raw';
-import sceneDoc from '../wiki/3d-scene.md?raw';
-import wallEditorDoc from '../wiki/2d-wall-editor.md?raw';
-import viewerDoc from '../wiki/viewer.md?raw';
-import adminDoc from '../wiki/admin.md?raw';
+import wikiPages from '../wiki/pages.json';
+
+// Order and titles come from src/wiki/pages.json (shared with the project website in site/).
+const docs = import.meta.glob<string>('../wiki/*.md', { query: '?raw', import: 'default', eager: true });
 
 interface WikiPage {
   id: string;
@@ -18,15 +14,11 @@ interface WikiPage {
   content: string;
 }
 
-const pages: WikiPage[] = [
-  { id: 'access-control', title: 'Benutzer & Rechte', content: accessControlDoc },
-  { id: 'project-management', title: 'Ausstellungen & Versionen', content: projectManagementDoc },
-  { id: 'asset-management', title: 'Asset-Management', content: assetDoc },
-  { id: '3d-scene', title: '3D-Editor (Planer)', content: sceneDoc },
-  { id: '2d-wall-editor', title: '2D-Wandeditor', content: wallEditorDoc },
-  { id: 'viewer', title: 'Viewer-Modus', content: viewerDoc },
-  { id: 'admin', title: 'Admin & Raumverwaltung', content: adminDoc },
-];
+const pages: WikiPage[] = wikiPages.map(({ id, title }) => ({
+  id,
+  title,
+  content: docs[`../wiki/${id}.md`] ?? '',
+}));
 
 export const WikiView = () => {
   const [activePageId, setActivePageId] = useState(pages[0].id);
