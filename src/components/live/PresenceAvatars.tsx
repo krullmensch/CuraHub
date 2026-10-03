@@ -1,29 +1,51 @@
+import Avatar from 'boring-avatars';
 import { Eye, Footprints, Frame } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore } from '../../store/editorStore';
 import { useLiveStore } from '../../store/liveStore';
-import { initialOf, peopleCount, personTitle, versionPresence, type PresencePerson } from '../../lib/live/presence';
+import { avatarPalette, peopleCount, personTitle, versionPresence, type PresencePerson } from '../../lib/live/presence';
+import { claimedMessage } from '../../lib/live/claims';
+import type { ClaimHolder } from '../../lib/live/protocol';
 
 const MAX_AVATARS = 4;
 
-export const PresenceAvatar = ({ person, size = 'md' }: { person: PresencePerson; size?: 'sm' | 'md' }) => {
-  const box = size === 'sm' ? 'h-4 w-4 text-[9px]' : 'h-6 w-6 text-[11px]';
+const AVATAR_PX = { sm: 16, md: 24 } as const;
+
+/** boring-avatars face (seeded by name) in the person's colour, with a ring in that colour. */
+export const PresenceAvatar = ({ person, size = 'md', title }: { person: PresencePerson; size?: 'sm' | 'md'; title?: string }) => {
+  const px = AVATAR_PX[size];
   const ModeIcon = person.mode === 'firstPerson' ? Footprints : person.mode === 'wallEditor' ? Frame : null;
   return (
     <span
-      className={`relative inline-flex ${box} items-center justify-center rounded-full font-semibold text-black ring-2 ring-zinc-900 select-none`}
-      style={{ backgroundColor: person.color }}
-      title={personTitle(person)}
+      className="relative inline-flex shrink-0 rounded-full bg-zinc-900 select-none"
+      style={{ boxShadow: `0 0 0 ${size === 'sm' ? 1 : 1.5}px ${person.color}, 0 0 0 ${size === 'sm' ? 2 : 3}px #18181b` }}
+      title={title ?? personTitle(person)}
     >
-      {initialOf(person.name)}
+      <Avatar name={person.name} variant="beam" colors={avatarPalette(person.color)} size={px} title={false} />
       {ModeIcon && size === 'md' && (
-        <span className="absolute -bottom-1 -right-1 flex h-3 w-3 items-center justify-center rounded-full bg-zinc-900">
-          <ModeIcon className="h-2 w-2 text-white" />
+        <span className="absolute -bottom-1 -right-1 z-10 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-zinc-900 ring-1 ring-zinc-700">
+          <ModeIcon className="h-2.5 w-2.5 text-white" strokeWidth={2.5} />
         </span>
       )}
     </span>
   );
 };
+
+/** The signed-in person's own avatar (header, next to the name) once the live channel knows them. */
+export const SelfAvatar = () => {
+  const user = useLiveStore((s) => s.self?.user ?? null);
+  if (!user) return null;
+  return <PresenceAvatar person={{ userId: user.id, name: user.name, color: user.color, mode: 'orbit', tabs: 1 }} />;
+};
+
+/** Small avatar of whoever holds an object, with "Wird gerade von … bearbeitet". */
+export const HolderBadge = ({ holder }: { holder: ClaimHolder }) => (
+  <PresenceAvatar
+    size="sm"
+    person={{ userId: holder.userId, name: holder.name, color: holder.color, mode: 'orbit', tabs: 1 }}
+    title={claimedMessage([holder])}
+  />
+);
 
 /** Avatar stack of a version's people, for the version graph's nodes. */
 export const VersionPresence = ({ versionId }: { versionId: number }) => {

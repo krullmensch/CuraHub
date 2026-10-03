@@ -45,11 +45,6 @@ export function versionPresence(members: PresenceMember[], selfUserId: number | 
   return { here, elsewhere };
 }
 
-export function initialOf(name: string): string {
-  const letter = name.trim().match(/\p{L}|\p{N}/u)?.[0];
-  return (letter ?? '?').toUpperCase();
-}
-
 export const MODE_LABEL: Record<EditorMode, string> = {
   orbit: 'im Editor',
   firstPerson: 'in der Ego-Perspektive',
@@ -70,4 +65,27 @@ export function peopleCount(n: number): string {
 export function editorModeOf(plannerViewMode: string, wallEditorOpen: boolean): EditorMode {
   if (wallEditorOpen) return 'wallEditor';
   return plannerViewMode === 'firstPerson' ? 'firstPerson' : 'orbit';
+}
+
+/** Mixes two `#rrggbb` colours; t = 0 → a, 1 → b. */
+export function mixHex(a: string, b: string, t: number): string {
+  const pa = parseHex(a);
+  const pb = parseHex(b);
+  if (!pa || !pb) return a;
+  return `#${pa.map((v, i) => Math.round(v + (pb[i] - v) * t).toString(16).padStart(2, '0')).join('')}`;
+}
+
+function parseHex(hex: string): number[] | null {
+  const m = /^#([0-9a-f]{6})$/i.exec(hex);
+  if (!m) return null;
+  return [0, 2, 4].map((i) => parseInt(m[1].slice(i, i + 2), 16));
+}
+
+/**
+ * Palette for a person's boring-avatars face: only tints and shades of their own colour, so
+ * the avatar always reads as "their colour" (like their outline in 3D) and never turns dark on
+ * the dark header.
+ */
+export function avatarPalette(color: string): string[] {
+  return [color, mixHex(color, '#ffffff', 0.3), mixHex(color, '#ffffff', 0.6), mixHex(color, '#000000', 0.2), mixHex(color, '#000000', 0.4)];
 }
