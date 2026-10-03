@@ -97,7 +97,7 @@ export function rasterizeSplats(splats: SpzSplats, size = RENDER_SIZE): Buffer {
     // forward = normalize(center - eye) = -dir; right = normalize(cross(forward, worldUp)); up = cross(right, forward)
     const forward = [-dirX, -dirY, -dirZ];
     const rightLength = Math.hypot(forward[2], -forward[0]) || 1;
-    const right = [forward[2] / rightLength, 0, -forward[0] / rightLength];
+    const right = [-forward[2] / rightLength, 0, forward[0] / rightLength];
     const up = [
         right[1] * forward[2] - right[2] * forward[1],
         right[2] * forward[0] - right[0] * forward[2],

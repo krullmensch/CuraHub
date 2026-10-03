@@ -7,6 +7,7 @@
  *   node dist/scripts/backfill-splats.js --dry-run   (default — no writes)
  *   node dist/scripts/backfill-splats.js --apply
  *   node dist/scripts/backfill-splats.js --apply --limit 5
+ *   node dist/scripts/backfill-splats.js --apply --rethumbnail   (render every thumbnail again)
  *
  * Idempotent: an asset that is already `.spz` with a thumbnail is skipped, and a run that stops
  * half way just picks up the rest next time. The source file is only deleted after the asset row
@@ -28,6 +29,7 @@ const uploadDir = path.join(__dirname, '../../uploads');
 function parseArgs(argv: string[]) {
     const apply = argv.includes('--apply');
     const dryRun = !apply || argv.includes('--dry-run');
+    const rethumbnail = argv.includes('--rethumbnail');
     const limitArg = argv.find((a) => a.startsWith('--limit'));
     let limit: number | undefined;
     if (limitArg) {
@@ -36,7 +38,7 @@ function parseArgs(argv: string[]) {
         const parsed = parseInt(raw ?? '', 10);
         if (Number.isFinite(parsed) && parsed > 0) limit = parsed;
     }
-    return { dryRun, limit };
+    return { dryRun, limit, rethumbnail };
 }
 
 /** Resolve an asset's public `/uploads/...` path to an absolute filesystem path. */
@@ -51,8 +53,11 @@ function resolveUploadPath(publicPath: string): string | null {
 const megabytes = (bytes: number) => `${(bytes / 1024 / 1024).toFixed(1)} MB`;
 
 async function main() {
-    const { dryRun, limit } = parseArgs(process.argv.slice(2));
-    console.log(`[Backfill] Mode: ${dryRun ? 'DRY RUN (no writes)' : 'APPLY'}${limit ? `, limit=${limit}` : ''}`);
+    const { dryRun, limit, rethumbnail } = parseArgs(process.argv.slice(2));
+    console.log(
+        `[Backfill] Mode: ${dryRun ? 'DRY RUN (no writes)' : 'APPLY'}${limit ? `, limit=${limit}` : ''}`
+        + `${rethumbnail ? ', rethumbnail' : ''}`,
+    );
 
     const assets = await prisma.asset.findMany({
         where: { type: 'splat' },
@@ -78,7 +83,7 @@ async function main() {
 
         const format = path.extname(absPath).toLowerCase().slice(1) as SplatFormat;
         const needsConversion = format !== 'spz' && CONVERTIBLE_SPLAT_FORMATS.includes(format);
-        const needsThumbnail = !asset.thumbnailPath;
+        const needsThumbnail = rethumbnail || !asset.thumbnailPath;
         if (!needsConversion && !needsThumbnail) {
             skipped++;
             continue;

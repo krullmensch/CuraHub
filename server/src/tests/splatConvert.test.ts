@@ -267,4 +267,38 @@ describe('rasterizeSplats', () => {
         for (let i = 3; i < pixels.length; i += 4) if (pixels[i] > 0) covered++;
         expect(covered).toBeGreaterThan(0);
     });
+
+    it('shows the capture upright and unmirrored, like the editor', async () => {
+        // File convention (OpenCV, +Y down): after SPLAT_UP_FLIP, file -Y is up and +X stays right.
+        const splat = (position: [number, number, number], dc: [number, number, number]): SourceSplat =>
+            ({ position, logScale: [-2.5, -2.5, -2.5], rotation: [1, 0, 0, 0], dc, opacity: 6 });
+        const splats = await readSplatPly(writeSplatPly('orientation.ply', [
+            splat([0, -2, 0], [2, -2, -2]), // red: top
+            splat([0, 0, 0], [-2, 2, -2]), // green: bottom
+            splat([2, -1, 0], [-2, -2, 2]), // blue: right
+        ]));
+        const size = 128;
+
+        const pixels = rasterizeSplats(splats, size);
+
+        const centroid = (channel: number) => {
+            let x = 0;
+            let y = 0;
+            let n = 0;
+            for (let i = 0; i < size * size; i++) {
+                const p = pixels.subarray(i * 4, i * 4 + 4);
+                if (p[3] < 128 || p[channel] < 200) continue;
+                x += i % size;
+                y += Math.floor(i / size);
+                n++;
+            }
+            expect(n).toBeGreaterThan(0);
+            return { x: x / n, y: y / n };
+        };
+        const red = centroid(0);
+        const green = centroid(1);
+        const blue = centroid(2);
+        expect(red.y).toBeLessThan(green.y);
+        expect(blue.x).toBeGreaterThan(red.x);
+    });
 });
