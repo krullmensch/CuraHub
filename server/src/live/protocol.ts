@@ -10,6 +10,13 @@ export type EditorMode = (typeof EDITOR_MODES)[number];
 
 const id = z.number().int().positive();
 
+/** `instance:12`, `wall:3`, `figure:7` — only database ids (temp ids are never claimed). */
+export const CLAIM_KINDS = ['instance', 'wall', 'figure'] as const;
+export type ClaimKind = (typeof CLAIM_KINDS)[number];
+export const CLAIM_KEY_RE = /^(instance|wall|figure):([1-9]\d{0,9})$/;
+const claimKey = z.string().regex(CLAIM_KEY_RE);
+export const MAX_CLAIM_KEYS = 2000;
+
 export const clientMessageSchema = z.discriminatedUnion('t', [
     z.object({
         t: z.literal('hello'),
@@ -27,6 +34,12 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
         slug: z.string().min(1).max(200),
     }),
     z.object({ t: z.literal('leave') }),
+    z.object({
+        // The full set this tab wants to hold, in all-or-nothing groups (a wall with its artworks).
+        t: z.literal('claim'),
+        seq: z.number().int().nonnegative(),
+        groups: z.array(z.array(claimKey).min(1).max(MAX_CLAIM_KEYS)).max(MAX_CLAIM_KEYS),
+    }),
 ]);
 
 export type ClientMessage = z.infer<typeof clientMessageSchema>;
@@ -46,10 +59,25 @@ export interface PresenceMember {
     mode: EditorMode;
 }
 
+export interface ClaimHolder {
+    session: string;
+    userId: number;
+    name: string;
+    color: string;
+}
+
+export interface ClaimEntry extends ClaimHolder {
+    key: string;
+}
+
 export type ServerMessage =
     | { t: 'welcome'; session: string; user: LiveUser | null }
     | { t: 'presence'; exhibitionId: number; members: PresenceMember[]; publicVisitors: number }
     | { t: 'visitors'; count: number }
+    /** Answer to `claim`: every key this tab holds now, and what it asked for but someone else holds. */
+    | { t: 'claimed'; seq: number; granted: string[]; denied: { key: string; holder: ClaimHolder }[] }
+    /** All claims in a version, to its editors whenever they change. */
+    | { t: 'claims'; versionId: number; entries: ClaimEntry[] }
     | { t: 'error'; code: string; message: string };
 
 /** WebSocket close codes (4000–4999 are free for applications). */
@@ -84,3 +112,8 @@ export const colorForUser = (userId: number): string => USER_COLORS[Math.abs(use
 
 /** Display name: the local part of the e-mail, as in the editor header. */
 export const nameForEmail = (email: string): string => email.split('@')[0] || email;
+
+export function parseClaimKey(key: string): { kind: ClaimKind; id: number } | null {
+    const m = CLAIM_KEY_RE.exec(key);
+    return m ? { kind: m[1] as ClaimKind, id: Number(m[2]) } : null;
+}

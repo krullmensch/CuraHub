@@ -9,6 +9,7 @@ import { exhibitionAccessFilter } from '../lib/middleware';
 import { allowedOrigins } from '../lib/corsOrigins';
 import { getSetupState } from '../lib/setupState';
 import { LiveHub, type HubDeps, type TokenClaims } from './hub';
+import { parseClaimKey, type ClaimKind } from './protocol';
 import { isLivePath, liveOriginAllowed } from './origin';
 
 const PING_INTERVAL_MS = 15_000;
@@ -48,6 +49,24 @@ export function prismaHubDeps(prisma: PrismaClient): HubDeps {
                 select: { id: true },
             });
             return exhibition?.id ?? null;
+        },
+        async keysInVersion(versionId, keys) {
+            const ids: Record<ClaimKind, number[]> = { instance: [], wall: [], figure: [] };
+            for (const key of keys) {
+                const parsed = parseClaimKey(key);
+                if (parsed) ids[parsed.kind].push(parsed.id);
+            }
+            const select = { id: true } as const;
+            const [instances, walls, figures] = await Promise.all([
+                ids.instance.length ? prisma.artworkInstance.findMany({ where: { versionId, id: { in: ids.instance } }, select }) : [],
+                ids.wall.length ? prisma.modularWall.findMany({ where: { versionId, id: { in: ids.wall } }, select }) : [],
+                ids.figure.length ? prisma.scaleFigure.findMany({ where: { versionId, id: { in: ids.figure } }, select }) : [],
+            ]);
+            return new Set([
+                ...instances.map((r) => `instance:${r.id}`),
+                ...walls.map((r) => `wall:${r.id}`),
+                ...figures.map((r) => `figure:${r.id}`),
+            ]);
         },
     };
 }

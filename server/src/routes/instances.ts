@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { ensureNotClaimed } from '../live/claimGuard';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
@@ -186,6 +187,7 @@ instancesRouter.patch('/:id', authenticate, async (req: Request, res) => {
         });
 
         if (!existing) return res.status(404).json({ error: 'Instance not found or access denied' });
+        if (!ensureNotClaimed(req, res, 'instance', instanceId)) return;
 
         // Build update payload
         const updateData: Record<string, number | string | null> = {};
@@ -255,6 +257,7 @@ instancesRouter.delete('/:id', authenticate, async (req: Request, res) => {
         });
 
         if (!existing) return res.status(404).json({ error: 'Instance not found or access denied' });
+        if (!ensureNotClaimed(req, res, 'instance', instanceId)) return;
 
         await prisma.artworkInstance.delete({ where: { id: instanceId } });
         res.json({ success: true, id: instanceId });

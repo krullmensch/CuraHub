@@ -127,6 +127,52 @@ describe('LiveClient', () => {
   });
 });
 
+describe('LiveClient claims', () => {
+  let sockets: FakeSocket[];
+  let client: LiveClient;
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    sockets = [];
+    client = new LiveClient({
+      createSocket: () => { const s = new FakeSocket(); sockets.push(s); return s; },
+      getToken: () => 'jwt',
+      newSessionId: () => 'session-1',
+      onMessage: () => {},
+      onStatus: () => {},
+      random: () => 0.5,
+    });
+  });
+  afterEach(() => vi.useRealTimers());
+
+  it('sends claims behind the location and again after a reconnect', () => {
+    client.setLocation(WHERE);
+    sockets[0].open();
+    expect(client.setClaims([['instance:1']])).toBe(1);
+    expect(sockets[0].sent.at(-1)).toEqual({ t: 'claim', seq: 1, groups: [['instance:1']] });
+    sockets[0].drop();
+    vi.advanceTimersByTime(1000);
+    sockets[1].open();
+    expect(sockets[1].sent).toEqual([
+      { t: 'hello', session: 'session-1', token: 'jwt' },
+      WHERE,
+      { t: 'claim', seq: 2, groups: [['instance:1']] },
+    ]);
+    expect(client.latestClaimSeq).toBe(2);
+  });
+
+  it('claims nothing in the public viewer and forgets claims on leave', () => {
+    client.setLocation({ t: 'visit', slug: 'x' });
+    sockets[0].open();
+    client.setClaims([['instance:1']]);
+    expect(sockets[0].sent.some((m) => (m as { t: string }).t === 'claim')).toBe(false);
+    client.setLocation(null);
+    client.setLocation(WHERE);
+    sockets[1].open();
+    expect(sockets[1].sent).toHaveLength(2);
+  });
+});
+
 describe('parseServerMessage', () => {
   it('reads presence lists', () => {
     const msg = parseServerMessage(JSON.stringify({
@@ -134,6 +180,13 @@ describe('parseServerMessage', () => {
       members: [{ session: 's', userId: 2, name: 'anna', color: '#fff', versionId: null, mode: 'wallEditor' }],
     }));
     expect(msg?.t).toBe('presence');
+  });
+
+  it('reads claim answers and lists', () => {
+    const holder = { session: 's', userId: 1, name: 'anna', color: '#f00' };
+    expect(parseServerMessage(JSON.stringify({ t: 'claimed', seq: 3, granted: ['instance:1'], denied: [{ key: 'wall:2', holder }] }))?.t).toBe('claimed');
+    expect(parseServerMessage(JSON.stringify({ t: 'claims', versionId: 4, entries: [{ key: 'figure:1', ...holder }] }))?.t).toBe('claims');
+    expect(parseServerMessage(JSON.stringify({ t: 'claims', versionId: 4, entries: [{ key: 'figure:1' }] }))).toBeNull();
   });
 
   it('rejects malformed members and non-strings', () => {

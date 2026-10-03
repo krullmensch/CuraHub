@@ -1,6 +1,6 @@
 # Live collaboration over WebSockets — Design Spec
 **Date:** 2026-10-03
-**Status:** Approved (in chat), step 1 in implementation
+**Status:** Approved (in chat); step 1 (PR #10) and step 2 built
 
 ---
 
@@ -80,12 +80,13 @@ Close codes: `4401` bad/missing token where one is needed, `4403` no access, `44
 Named **claims** in code because `ModularWall.isLocked` ("Wand fixieren") already exists.
 
 - Keys: `instance:<id>`, `wall:<id>`, `figure:<id>`. Temp ids (negative, not yet POSTed) are never claimed — nobody else knows them yet; the claim is taken when the id is remapped.
-- `claim { keys }` → `claimed { granted, denied: { key, by } }`; `release { keys }`. The server broadcasts `claims { exhibitionId, versionId, entries: { key, session, userId, name, color }[] }` to the version.
+- One message, `claim { seq, groups: string[][] }`: the **full set** the tab wants, in all-or-nothing groups (keys left out are released, so there is no separate `release` and a reconnect simply re-sends the set). Answer `claimed { seq, granted, denied: { key, holder }[] }` (`granted` = everything the tab holds afterwards); the server broadcasts `claims { versionId, entries: { key, session, userId, name, color }[] }` to the version's editors on every change and to each editor entering the version. A refused group keeps the keys the tab already held in it (a claimed wall stays claimed when someone else's artwork is hung on it later). New keys are checked against the version (`keysInVersion`), so nobody can lock objects of exhibitions they cannot see. Messages of one socket are handled in order, so a `claim` right behind a `where` sees the new location.
 - **Select = claim.** All selection actions (`setInstanceSelection`, `pickInstance`, marquee, ⌘A, sidebar list, wall editor selection, `selectWall`, `selectFigure`) filter out keys held by others before they change the selection, and show a toast "Wird gerade von Anna bearbeitet". The request is optimistic: the selection is applied at once, and keys the server denies (race) are removed again.
 - **Walls carry their artworks.** Claiming a wall also claims the instances hanging on it (`wallId`); a wall cannot be claimed while another session holds one of its instances.
-- **Release:** deselect, version switch, leaving, disconnect after the 10 s grace, and **5 min without input** in the tab (pointer/key activity resets it; a hidden tab counts as inactive). No manual takeover.
+- **Release:** deselect, version switch, leaving, disconnect after the 10 s grace, and **5 min without input** in the tab (pointer/key/wheel activity resets it; the client clears its selection). No manual takeover. Deselected keys linger 800 ms (and while auto-sync is still saving, `ClaimSync`) so the last PATCH reaches the server before someone else can claim the object.
 - **Server enforcement:** `PATCH`/`DELETE` on `/instances/:id`, `/walls/:id`, `/scale-figures/:id` answer **423** `{ error: 'Wird gerade von … bearbeitet' }` when another session holds the key. Requests without `X-Live-Session` (old tabs, scripts) are treated as "no session" and also refused on claimed objects. Auto-sync treats 423 like a conflict: it drops its local change for that object and takes the server state (step 3 delivers it).
-- **Undo/redo** skip objects claimed by others (the snapshot keeps the other person's state, see §4).
+- **Undo/redo** skip objects claimed by others: the restored snapshot keeps those artworks as they are now (`keepHeldInstances`).
+- **UI:** a click on a held object changes nothing and shows a warning toast (same hint at most every 2.5 s); the sidebar's "Im Raum" list dims held artworks and shows the holder's avatar. Avatars (header, version graph, holder badges) are `boring-avatars` "beam" faces seeded by name, in tints of the person's colour with a ring in that colour; the own avatar sits next to the name in the header.
 
 ---
 
