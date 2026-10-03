@@ -17,6 +17,8 @@ import { useBookViewerStore } from '../store/bookViewerStore';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { useArtworkLoadProgress } from '../lib/artworkLoadProgress';
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
+import { setLiveLocation } from '../lib/live/liveConnection';
+import { VisitorCount } from '../components/live/PresenceAvatars';
 import { Grid } from 'ldrs/react';
 import 'ldrs/react/Grid.css';
 
@@ -164,6 +166,14 @@ export const ViewerPage = () => {
         fetchExhibition();
     }, [slug]);
 
+    // Live: count this tab among the exhibition's visitors while it is open.
+    const visitSlug = data?.exhibition.slug ?? null;
+    useEffect(() => {
+        if (!visitSlug) return;
+        setLiveLocation({ t: 'visit', slug: visitSlug });
+        return () => setLiveLocation(null);
+    }, [visitSlug]);
+
     // Handle the transition from loading to showing the scene
     useEffect(() => {
         if (!apiLoading && sceneReady && data) {
@@ -272,7 +282,8 @@ export const ViewerPage = () => {
 
             {/* Top-right nav button */}
             {/* Above the entry overlay (z-[1000]) — it comes back on Escape and swallowed the click. */}
-            <div className="fixed top-6 right-6 z-[1010]">
+            <div className="fixed top-6 right-6 z-[1010] flex items-center gap-3">
+                <VisitorCount />
                 <button
                     onClick={() => window.open('/exhibitions', '_blank')}
                     className="text-white/70 hover:text-white text-sm font-medium uppercase tracking-[0.15em] bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 backdrop-blur-sm px-4 py-2 rounded-lg transition-all duration-200"

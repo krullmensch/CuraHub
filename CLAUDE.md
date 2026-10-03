@@ -220,6 +220,16 @@ Modelled on two real ranges: HALBE magnet frames (halbe-rahmen.de) and Max Aab s
 - Books in any selection (single or group) get gizmo rotate Y only / translate without Y; commits force them upright on the floor (`y = 0`), yaw read from the quaternion (`'YXZ'`, so yaw beyond 90° survives). Book double-clicks don't pass through to walls behind.
 - Viewer: `bookViewerStore` + `lib/book/viewerActions.ts` (store before `exitPointerLock`; close button re-locks, ESC leaves first person in the editor). Every control asks `useControlsLocked()` (`isDialogOpen || book`). `BookViewerOverlay` (lazy, pdfjs-dist 5.7 — no `isEvalSupported` option, no eval; ESC stops propagation so the editor's escape handler doesn't also fire) is `react-pageflip`/`page-flip` 2.0.7 in the look of the zine flipbook (`BookFlipbook.tsx`/`.css`: light stage, matte curl, paper grain, spine shadow, centred covers, single page below 300 px page width); pages still come from pdf.js and are rendered into canvases only within 6 pages of the current one (`lib/book/flipPages.ts`: page size, preload window, render scale). Editor: double-click / „Buch öffnen"; first person: crosshair within 2.5 m + click (footer row „Klicken zum Lesen" in the `ArtworkInfoOverlay` info panel, shown when `bookInReachId` is the hovered artwork; the click doesn't toggle the panel).
 
+### Live Collaboration (WebSockets)
+
+Design and steps: `docs/superpowers/specs/2026-10-03-live-collaboration-design.md` (built so far: step 1, channel + presence; claims, live changes, avatars and viewer blobs follow).
+
+- One `ws` server on the API's HTTP server, path `/api/live` (`/live` behind Vite's proxy, which has `ws: true`). State is in memory (one Node process). `server/src/live/hub.ts` is socket-free (injected `send` + access resolvers, Jest with fake timers); `live/server.ts` binds it to `ws` (setup gate 503, origin check in `live/origin.ts`, ping every 15 s).
+- Handshake: first message `hello { session, token? }` within 5 s — JWT in the message, never in the URL. `session` = one UUID per tab, bound to the first user that used it; a closed tab stays listed for 10 s (grace) so reconnects don't flicker.
+- Editor: `startEditorPresence()` (EditorLayout) sends `where { exhibitionId, versionId, mode }` (`orbit` | `firstPerson` | `wallEditor`); access = `exhibitionAccessFilter`. The server answers with one `presence` list per exhibition, plus `publicVisitors`. Public viewer: `visit { slug }` (published exhibitions only) → `visitors { count }`.
+- Client: `src/lib/live/liveClient.ts` (socket-free, reconnect backoff 1 → 15 s, Vitest with a fake socket), `liveConnection.ts` wires it to `authStore`/`liveStore`; `src/components/live/PresenceAvatars.tsx` = header bar, version-graph avatars, viewer counter. Pure helpers in `src/lib/live/presence.ts`.
+- Apache needs `upgrade=websocket` on `ProxyPass` (2.4.47+), see `deploy/apache/curahub.conf`.
+
 ### Backend API
 
 Routes mounted per resource at `/auth`, `/upload`, `/assets`, `/instances`, `/projects`, `/walls`, `/scale-figures`, `/restrictions`, `/public`. Each route file defines its own `authenticate` middleware (JWT verification). Access control uses nested Prisma queries to verify ownership.

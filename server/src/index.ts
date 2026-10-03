@@ -30,6 +30,8 @@ import { defaultCheckDeps, requestInfo, runSystemChecks } from './lib/systemChec
 import { completeSetupInDb, hashPassword } from './lib/setupStore';
 import { createSetupRouter } from './routes/setup';
 import { createHealthRouter } from './routes/health';
+import { LiveHub } from './live/hub';
+import { attachLiveServer, prismaHubDeps } from './live/server';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -224,12 +226,14 @@ async function start() {
     // SETUP: the gate needs the state before the first request.
     const setup = await loadSetupState(prisma);
     if (!setup.complete) console.log(formatSetupBanner(ensureSetupSecrets().code));
-    app.listen(PORT, () => {
+    const server = app.listen(PORT, () => {
         console.log(`Server running on http://localhost:${PORT}`);
         // VID-03: continue video jobs interrupted by a restart.
         resumeVideoJobs().catch((err) => console.error('[VideoJobs] Resume failed:', err));
         resumeBookJobs().catch((err) => console.error('[BookJobs] Resume failed:', err));
     });
+    // Presence (and later claims and live changes) over WebSockets, see src/live/.
+    attachLiveServer(server, new LiveHub(prismaHubDeps(prisma)));
 }
 
 if (process.env.NODE_ENV !== 'test') {

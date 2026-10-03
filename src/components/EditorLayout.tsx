@@ -12,6 +12,8 @@ import { VersionPanel } from './VersionPanel';
 
 import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
+import { LivePresenceBar } from './live/PresenceAvatars';
+import { startEditorPresence } from '../lib/live/liveConnection';
 
 const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
 const ProjectSettingsDialog = lazy(() =>
@@ -61,6 +63,9 @@ export const EditorLayout = () => {
     window.addEventListener('focus', onFocus);
     return () => window.removeEventListener('focus', onFocus);
   }, [refreshAuth]);
+
+  // Live presence: report exhibition, version and mode while the editor is mounted.
+  useEffect(() => startEditorPresence(), []);
 
   // Check if a published version exists when popover opens
   useEffect(() => {
@@ -185,6 +190,8 @@ export const EditorLayout = () => {
         </div>
         
         <div className="flex items-center gap-4">
+            <LivePresenceBar />
+
             {/* Project Settings Button — only for Prof/Admin */}
             {isProf && activeExhibitionId && (
               <button
