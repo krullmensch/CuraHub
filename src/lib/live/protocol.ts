@@ -45,6 +45,25 @@ const serverMessageSchema = z.discriminatedUnion('t', [
     denied: z.array(z.object({ key: z.string(), holder: claimHolderSchema })),
   }),
   z.object({ t: z.literal('claims'), versionId: z.number(), entries: z.array(claimEntrySchema) }),
+  z.object({ t: z.literal('version'), versionId: z.number(), seq: z.number() }),
+  z.object({
+    t: z.literal('changed'),
+    versionId: z.number(),
+    seq: z.number(),
+    by: z.string().nullable(),
+    kind: z.enum(['instance', 'wall', 'figure', 'artwork', 'wallLayout']),
+    op: z.enum(['upsert', 'delete']),
+    // Rows as the REST routes return them; checked per kind where they are applied.
+    data: z.record(z.string(), z.unknown()),
+  }),
+  z.object({
+    t: z.literal('versions'),
+    exhibitionId: z.number(),
+    event: z.enum(['created', 'deleted', 'published', 'featured']),
+    versionId: z.number(),
+    fallbackVersionId: z.number().nullable(),
+    by: z.string().nullable(),
+  }),
   z.object({ t: z.literal('error'), code: z.string(), message: z.string() }),
 ]);
 
@@ -53,6 +72,8 @@ export type PresenceMember = z.infer<typeof presenceMemberSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
 export type ClaimHolder = z.infer<typeof claimHolderSchema>;
 export type ClaimEntry = z.infer<typeof claimEntrySchema>;
+export type ChangedMessage = Extract<ServerMessage, { t: 'changed' }>;
+export type VersionsMessage = Extract<ServerMessage, { t: 'versions' }>;
 
 /** Close codes the server uses (see server/src/live/protocol.ts). */
 export const CLOSE = {

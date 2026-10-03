@@ -5,6 +5,7 @@ import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
 import { dropWallGuides, parseWallGuides } from '../lib/wallGuides';
+import { publishChange } from '../live/broadcast';
 
 export const wallsRouter = Router();
 const prisma = new PrismaClient();
@@ -109,6 +110,7 @@ wallsRouter.post('/', authenticate, idempotency, async (req: Request, res) => {
         });
 
         res.status(201).json(wall);
+        publishChange(req, wall.versionId, { kind: 'wall', op: 'upsert', data: wall });
     } catch (e) {
         console.error('Failed to create wall:', e);
         if (e instanceof z.ZodError) {
@@ -143,6 +145,7 @@ wallsRouter.patch('/:id', authenticate, async (req: Request, res) => {
         });
 
         res.json(wall);
+        publishChange(req, wall.versionId, { kind: 'wall', op: 'upsert', data: wall });
     } catch (e) {
         console.error('Failed to update wall:', e);
         if (e instanceof z.ZodError) {
@@ -195,6 +198,8 @@ wallsRouter.delete('/:id', authenticate, async (req: Request, res) => {
         }
 
         res.json({ success: true, message: 'Wall deleted, artworks detached' });
+        // Receivers detach the wall's artworks and drop its guides themselves, as deleteWall does.
+        publishChange(req, existing.versionId, { kind: 'wall', op: 'delete', data: { id: wallId } });
     } catch (e) {
         console.error('Failed to delete wall:', e);
         res.status(500).json({ error: 'Failed to delete wall' });
