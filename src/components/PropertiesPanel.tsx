@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { focusSelection } from '@/lib/focusSelection';
 import { BookPropertiesActions } from './book/BookPropertiesActions';
+import { SplatHeightControl } from './SplatHeightControl';
+import { splatRealScale } from '@/lib/splats';
 import { useEditorStore, videoRefMap, modelBBoxMap, isFloorAssetType } from '../store/editorStore';
 import type { TransformMode, MediumType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
@@ -116,9 +118,15 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
     const modelNaturalSize = (isFloorAssetType(assetMeta?.type) && selectedId != null)
         ? (modelBBoxMap.get(selectedId) ?? null)
         : null;
+    // Splats: the map holds the file's units; the real height (Artwork.height) scales them.
+    const selectedArtworkHeight = useEditorStore((state) =>
+        state.localInstances.find((i) => i.id === selectedId)?.artwork.height ?? null);
+    const splatScale = assetMeta?.type === 'splat' && modelNaturalSize
+        ? splatRealScale(modelNaturalSize.y, selectedArtworkHeight)
+        : 1;
 
     const baseCm = modelNaturalSize
-        ? { x: modelNaturalSize.x, y: modelNaturalSize.y, z: modelNaturalSize.z }
+        ? { x: modelNaturalSize.x * splatScale, y: modelNaturalSize.y * splatScale, z: modelNaturalSize.z * splatScale }
         : isFloorAssetType(assetMeta?.type) ? { x: 1, y: 1, z: 1 }
         : assetMeta ? {
             x: (assetMeta.physicalWidth != null && assetMeta.physicalHeight != null) ? assetMeta.physicalWidth : (assetMeta.widthPx / assetMeta.dpi) * 2.54,
@@ -694,6 +702,7 @@ const ArtworkPropertiesContent = ({
                     </div>
                 </>
             )}
+            {assetType === 'splat' && selectedInstanceId !== null && <SplatHeightControl instanceId={selectedInstanceId} />}
             {isBook && selectedInstanceId !== null && <BookPropertiesActions instanceId={selectedInstanceId} />}
             {!isBook && <OpenArtworkWallButton instanceId={selectedInstanceId} />}
             <Separator className="bg-zinc-800" />
