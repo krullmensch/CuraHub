@@ -3,6 +3,7 @@ import { GitBranch } from 'lucide-react';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import type { Version } from './version-graph/buildVersionGraph';
+import { useLiveStore } from '../store/liveStore';
 
 const VersionPanelContent = lazy(() =>
   import('./VersionPanelContent').then((m) => ({ default: m.VersionPanelContent }))
@@ -26,6 +27,7 @@ export const VersionPanel = ({
   const token = useAuthStore((state) => state.token);
   const activeExhibitionId = useEditorStore((state) => state.activeExhibitionId);
   const activeVersionId = useEditorStore((state) => state.activeVersionId);
+  const versionsRevision = useLiveStore((state) => state.versionsRevision);
 
   // --- Fetch (lightweight, no xyflow needed just for the label) ---
   const fetchVersions = useCallback(async () => {
@@ -48,7 +50,8 @@ export const VersionPanel = ({
     // eslint-disable-next-line react-hooks/set-state-in-effect
     if (activeExhibitionId) fetchVersions();
     else setVersions([]);
-  }, [activeExhibitionId, fetchVersions]);
+    // versionsRevision: another tab created, deleted, published or featured a version.
+  }, [activeExhibitionId, fetchVersions, versionsRevision]);
 
   // Mark as opened on the click that opens the panel — avoids a setState-in-effect
   // just to derive this from `isOpen` (react-hooks/set-state-in-effect).

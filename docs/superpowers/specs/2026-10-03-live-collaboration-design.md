@@ -1,6 +1,6 @@
 # Live collaboration over WebSockets — Design Spec
 **Date:** 2026-10-03
-**Status:** Approved (in chat); step 1 (PR #10) and step 2 built
+**Status:** Approved (in chat); steps 1–3 built (PRs #10, #11, step 3 stacked on #11)
 
 ---
 
@@ -92,15 +92,24 @@ Named **claims** in code because `ModularWall.isLocked` ("Wand fixieren") alread
 
 ## 4. Live changes (step 3)
 
-- After every successful write the server sends `changed { versionId, kind: 'instance' | 'wall' | 'figure' | 'wallLayout', op: 'upsert' | 'delete', data }` to the version room, **except the session named in `X-Live-Session`**. `data` is the same row shape the REST routes return. Version-level events (`version.created/deleted/published/merged`) go to the exhibition room so every open version graph refreshes.
+- After every successful write the server sends `changed { versionId, seq, by, kind: 'instance' | 'wall' | 'figure' | 'artwork' | 'wallLayout', op: 'upsert' | 'delete', data }` to every tab in the version, the writer included (it needs the number); `by` is the `X-Live-Session` of the request and the writing tab skips its own change. Instances go out with `artwork.asset` like `GET /instances` (one extra query, only while someone is in the version), artwork metadata (`PUT /artworks/:id`) to every version that shows it, `wallLayout` is the full hanging height + guides. The broadcast runs after the response.
+- Version events go to the exhibition's editors as `versions { exhibitionId, event: 'created' | 'deleted' | 'published' | 'featured', versionId, fallbackVersionId, by }` (merges create a version, so they are `created`). The version graph refetches; tabs in a deleted version move to its parent with a toast.
 - Client: `applyRemoteChange` in editorStore, pure logic in `src/lib/live/remoteChanges.ts`:
   - writes the row into `localInstances` **and** into auto-sync's `prevInstances` snapshot, so the change is not sent back;
   - writes it into **every** snapshot of `pastInstances`/`futureInstances` (upsert = replace or insert, delete = remove). Undo can then never revert, resurrect or delete someone else's work — the history only ever differs in your own edits. Same for walls and figures.
   - leaves objects alone that the local tab currently claims (cannot happen for upserts thanks to claims; a remote delete of a claimed object can — the delete wins, the selection is dropped with a toast).
-- **Reconnect / missed events:** every `changed` carries a per-version sequence number. A gap or a reconnect makes the client fetch the version again and merge it through the same function (no history reset).
-- Version deleted while you are in it → toast and back to the version list. Version published / merged → the graph refreshes.
+- **Reconnect / missed events:** every `changed` carries a per-version number; entering or resuming a version brings `version { versionId, seq }` (`ChangeSequence`). A gap or a reconnect that missed something makes the client fetch instances, walls, figures and wall layout again and merge them (`mergeRemoteState`, no history reset). The merge waits while auto-sync has something in flight (temp ids, pending debounce), so a just-created object is not doubled.
+- **Entering a version:** the editor's own load may answer older or newer than a change that arrives while it loads. Changes in the first 10 s after entering are applied and followed by one full merge 2 s later.
+- **Unsaved local changes win:** a remote row replaces the local one only if the tab has no unsaved change to it (synced fields differ from the snapshot); otherwise auto-sync sends the local change next. With claims this only happens for objects someone edits without holding them (no live session).
+- **Default walls:** a version without walls starts every tab with the same temp default walls. A remote wall with the label of an unsaved default replaces it (guides, attached artworks and selection move along), so the defaults are not created twice.
+- Wall layout: remote layouts are taken unless the tab has its own change waiting (that one is sent next and wins, as before).
+
 
 ---
+
+Verified end to end in two headless Chrome sessions against MySQL: presence both ways, claim → holder badge and refusal toast, delete → removed in the other tab and claim freed, undo → re-created in the other tab, position change through the properties panel → `changed` upsert.
+
+Known gap (not part of these steps): `GET /projects` lists only own projects (admins: all), so an invited collaborator cannot open the project through the project selector, although every other route lets them in.
 
 ## 5. Others in the editor scene (step 4)
 

@@ -12,6 +12,7 @@ import {
     wallLayoutPatchSchema,
     type WallGuides,
 } from '../lib/wallGuides';
+import { publishChange, publishVersionEvent } from '../live/broadcast';
 
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
@@ -218,7 +219,9 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/wall-layout
             },
             select: { hanging_height: true, wall_guides: true },
         });
-        res.json({ hangingHeight: updated.hanging_height, guides: parseWallGuides(updated.wall_guides) });
+        const layout = { hangingHeight: updated.hanging_height, guides: parseWallGuides(updated.wall_guides) };
+        res.json(layout);
+        publishChange(req, versionId, { kind: 'wallLayout', op: 'upsert', data: layout });
     } catch (e) {
         console.error(e);
         if (e instanceof z.ZodError) {
@@ -519,6 +522,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
         });
 
         res.status(201).json(newVersion);
+        publishVersionEvent(req, exhibitionId, 'created', newVersion.id);
     } catch (e) {
         console.error(e);
         if (e instanceof z.ZodError) {
@@ -566,6 +570,8 @@ versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenti
         });
 
         res.json({ success: true, message: 'Version deleted successfully' });
+        // Tabs in the deleted version move to its parent.
+        publishVersionEvent(req, exhibitionId, 'deleted', versionId, version.parent_version_id);
     } catch (e) {
         console.error('Failed to delete version:', e);
         res.status(500).json({ error: 'Failed to delete version' });
@@ -612,6 +618,7 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', a
         ]);
 
         res.json({ success: true, message: 'Version published' });
+        publishVersionEvent(req, exhibitionId, 'published', versionId);
     } catch (e) {
         console.error('Failed to publish version:', e);
         res.status(500).json({ error: 'Failed to publish version' });
@@ -643,6 +650,7 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/feature', a
         ]);
 
         res.json({ success: true, message: 'Version featured' });
+        publishVersionEvent(req, version.exhibition_id, 'featured', versionId);
     } catch (e) {
         console.error('Failed to feature version:', e);
         res.status(500).json({ error: 'Failed to feature version' });
@@ -766,6 +774,7 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions/:versionId/merge', auth
         });
 
         res.status(201).json(newVersion);
+        publishVersionEvent(req, exhibitionId, 'created', newVersion.id);
     } catch (e) {
         console.error('Failed to merge version:', e);
         res.status(500).json({ error: 'Failed to merge version' });
