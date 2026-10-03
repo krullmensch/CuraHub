@@ -22,14 +22,31 @@ function generateBaseSlug(name: string): string {
     return slug;
 }
 
-// Resolve :id param as numeric ID or slug
+// :id param as numeric ID or slug
+function projectKey(param: string) {
+    const numId = parseInt(param, 10);
+    return !isNaN(numId) && String(numId) === param ? { id: numId } : { slug: param };
+}
+
+// Resolve :id param as numeric ID or slug, owned by the user (changes, deletion)
 // Pass isAdmin=true to skip ownership filter (admins can access all projects)
 function resolveProjectWhere(param: string, userId: number, isAdmin = false) {
-    const numId = parseInt(param, 10);
-    if (!isNaN(numId) && String(numId) === param) {
-        return isAdmin ? { id: numId } : { id: numId, ownerId: userId };
-    }
-    return isAdmin ? { slug: param } : { slug: param, ownerId: userId };
+    return isAdmin ? projectKey(param) : { ...projectKey(param), ownerId: userId };
+}
+
+/**
+ * Projects a user may open: own ones and those with an exhibition they were invited to
+ * (ExhibitionCollaborator), like exhibitionAccessFilter / userCanAccessProject. Admins: all.
+ */
+function projectVisibleTo(userId: number, isAdmin: boolean) {
+    if (isAdmin) return {};
+    return { OR: [{ ownerId: userId }, { exhibitions: { some: { collaborators: { some: { userId } } } } }] };
+}
+
+/** The exhibitions of a project a user may open (a collaborator only sees the ones they were invited to). */
+function exhibitionsVisibleTo(userId: number, isAdmin: boolean) {
+    if (isAdmin) return undefined;
+    return { OR: [{ project: { ownerId: userId } }, { collaborators: { some: { userId } } }] };
 }
 
 // --- Schemas ---
@@ -45,16 +62,17 @@ const updateProjectSchema = z.object({
 
 // --- Routes ---
 
-// GET /projects — list all projects for the authenticated user (admin sees all)
+// GET /projects — the user's own projects and those they collaborate on (admin sees all)
 projectsRouter.get('/', authenticate, async (req: Request, res) => {
     try {
         const userId = req.user!.userId;
         const isAdmin = req.user!.role === 'admin';
         const projects = await prisma.project.findMany({
-            where: isAdmin ? {} : { ownerId: userId },
+            where: projectVisibleTo(userId, isAdmin),
             orderBy: { updatedAt: 'desc' },
             include: {
                 exhibitions: {
+                    where: exhibitionsVisibleTo(userId, isAdmin),
                     select: { id: true, title: true, slug: true }
                 },
                 _count: { select: { assets: true } }
@@ -67,16 +85,16 @@ projectsRouter.get('/', authenticate, async (req: Request, res) => {
     }
 });
 
-// GET /projects/:id — get a single project by ID or slug (admin sees all)
+// GET /projects/:id — get a single project by ID or slug, own or collaborated on (admin sees all)
 projectsRouter.get('/:id', authenticate, async (req: Request, res) => {
     try {
         const userId = req.user!.userId;
         const isAdmin = req.user!.role === 'admin';
-        const where = resolveProjectWhere(req.params.id, userId, isAdmin);
         const project = await prisma.project.findFirst({
-            where,
+            where: { ...projectKey(req.params.id), ...projectVisibleTo(userId, isAdmin) },
             include: {
                 exhibitions: {
+                    where: exhibitionsVisibleTo(userId, isAdmin),
                     include: {
                         versions: {
                             orderBy: { created_at: 'desc' },
