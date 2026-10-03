@@ -6,6 +6,7 @@ import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
 import { useEditorStore, instanceRefMap, type ModularWallData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { ModularWallMesh } from './ModularWallMesh';
+import { registerWallObject } from '../lib/live/sceneObjects';
 
 // Fixed wall dimensions (meters)
 export const WALL_WIDTH = 4.2;
@@ -257,6 +258,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
         } else {
             wallRefs.current.delete(id);
         }
+        registerWallObject(id, el);
     }, []);
 
     // Load walls: use DB data if it exists, otherwise use hardcoded defaults
@@ -294,6 +296,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
                         ...def,
                         id: -(i + 1), // Temporary negative IDs (not yet in DB)
                         versionId: activeVersionId,
+                        isDefault: true, // created once per version, even when two tabs save them at once
                     } as ModularWallData));
                     setLocalWalls(defaults);
                     defaults.forEach(w => lastValidTransforms.current.set(w.id, { x: w.position_x, z: w.position_z, ry: w.rotation_y }));

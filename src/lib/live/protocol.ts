@@ -13,7 +13,19 @@ export type ClientMessage =
   | { t: 'where'; exhibitionId: number; versionId: number | null; mode: EditorMode }
   | { t: 'visit'; slug: string }
   | { t: 'leave' }
-  | { t: 'claim'; seq: number; groups: string[][] };
+  | { t: 'claim'; seq: number; groups: string[][] }
+  | { t: 'pose'; p: Vec3; yaw: number; pitch: number }
+  | { t: 'drag'; transforms: LiveTransform[] };
+
+export type Vec3 = [number, number, number];
+
+/** An object's unsaved transform while its holder moves it (local position, quaternion, scale). */
+export interface LiveTransform {
+  k: string;
+  p: Vec3;
+  q: [number, number, number, number];
+  s: Vec3;
+}
 
 const liveUserSchema = z.object({ id: z.number(), name: z.string(), color: z.string() });
 
@@ -63,6 +75,23 @@ const serverMessageSchema = z.discriminatedUnion('t', [
     versionId: z.number(),
     fallbackVersionId: z.number().nullable(),
     by: z.string().nullable(),
+  }),
+  z.object({
+    t: z.literal('pose'),
+    session: z.string(),
+    p: z.tuple([z.number(), z.number(), z.number()]),
+    yaw: z.number(),
+    pitch: z.number(),
+  }),
+  z.object({
+    t: z.literal('drag'),
+    session: z.string(),
+    transforms: z.array(z.object({
+      k: z.string(),
+      p: z.tuple([z.number(), z.number(), z.number()]),
+      q: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+      s: z.tuple([z.number(), z.number(), z.number()]),
+    })),
   }),
   z.object({ t: z.literal('error'), code: z.string(), message: z.string() }),
 ]);
