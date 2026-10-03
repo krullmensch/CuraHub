@@ -9,6 +9,7 @@ import {
     type ClientMessage,
     type EditorMode,
     type LiveChange,
+    type LiveTransform,
     type LiveUser,
     type PresenceMember,
     type ServerMessage,
@@ -62,7 +63,15 @@ interface Session {
     locationSeq: number;
     /** Claim keys this tab holds; always objects of its current version. */
     claimKeys: Set<string>;
+    /** Last camera pose, for tabs entering the version later. */
+    pose: { p: [number, number, number]; yaw: number; pitch: number } | null;
+    /** Time of the last relayed pose / drag (rate limit). */
+    lastPoseAt: number;
+    lastDragAt: number;
 }
+
+/** Poses and drags faster than this are dropped (clients send ≤ 15 per second). */
+const MIN_RELAY_INTERVAL_MS = 40;
 
 export interface ConnectionHandle {
     onMessage(raw: string): Promise<void>;
@@ -138,6 +147,10 @@ export class LiveHub {
                     return this.moveTo(current, null);
                 case 'claim':
                     return this.claim(current, msg);
+                case 'pose':
+                    return this.pose(current, msg.p, msg.yaw, msg.pitch);
+                case 'drag':
+                    return this.drag(current, msg.transforms);
             }
         };
 
@@ -272,7 +285,10 @@ export class LiveHub {
             session.conn = conn;
             session.claims = claims;
         } else {
-            session = { id: sessionId, user, claims, conn, location: null, graceTimer: null, locationSeq: 0, claimKeys: new Set() };
+            session = {
+                id: sessionId, user, claims, conn, location: null, graceTimer: null, locationSeq: 0,
+                claimKeys: new Set(), pose: null, lastPoseAt: 0, lastDragAt: 0,
+            };
             this.sessions.set(sessionId, session);
         }
         conn.send({ t: 'welcome', session: sessionId, user });
@@ -320,6 +336,7 @@ export class LiveHub {
         session.location = next;
         const nextVersion = versionOf(session);
         if (prevVersion !== nextVersion) {
+            session.pose = null; // a camera pose belongs to the scene it was taken in
             // Claims belong to the version: whoever leaves it lets go.
             if (session.claimKeys.size > 0) {
                 this.releaseAll(session);
@@ -429,6 +446,37 @@ export class LiveHub {
     private sendVersionState(conn: LiveConnection, versionId: number) {
         conn.send({ t: 'version', versionId, seq: this.versionSeq.get(versionId) ?? 0 });
         conn.send({ t: 'claims', versionId, entries: this.claimsOf(versionId) });
+        // Where the others' cameras are, so their avatars show up at once.
+        for (const s of this.sessions.values()) {
+            if (s.pose && s.conn !== conn && versionOf(s) === versionId) {
+                conn.send({ t: 'pose', session: s.id, ...s.pose });
+            }
+        }
+    }
+
+    private pose(session: Session, p: [number, number, number], yaw: number, pitch: number) {
+        const versionId = versionOf(session);
+        const now = Date.now();
+        if (versionId === null || !session.user || now - session.lastPoseAt < MIN_RELAY_INTERVAL_MS) return;
+        session.lastPoseAt = now;
+        session.pose = { p, yaw, pitch };
+        this.sendToVersion(versionId, { t: 'pose', session: session.id, p, yaw, pitch }, session.id);
+    }
+
+    private drag(session: Session, transforms: LiveTransform[]) {
+        const versionId = versionOf(session);
+        const now = Date.now();
+        if (versionId === null || now - session.lastDragAt < MIN_RELAY_INTERVAL_MS) return;
+        session.lastDragAt = now;
+        // Only objects this tab holds can be shown moving.
+        const own = transforms.filter((t) => this.claimOwners.get(t.k) === session.id);
+        this.sendToVersion(versionId, { t: 'drag', session: session.id, transforms: own }, session.id);
+    }
+
+    private sendToVersion(versionId: number, msg: ServerMessage, exceptSession: string | null) {
+        for (const s of this.sessions.values()) {
+            if (s.conn && s.id !== exceptSession && versionOf(s) === versionId) s.conn.send(msg);
+        }
     }
 
     private releaseAll(session: Session) {

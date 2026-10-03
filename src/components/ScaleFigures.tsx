@@ -6,6 +6,7 @@ import { useEditorStore, type ScaleFigureData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
 import { SCALE_FIGURE_MESH, SCALE_FIGURE_URL, scaleFigureBridge, spawnPoseFromCamera, spawnPoseFromHit, type FigurePose } from '@/lib/scaleFigure';
+import { registerFigureObject } from '../lib/live/sceneObjects';
 
 // Shared by every figure: matte black, faceted. Selected: dark blue.
 const FIGURE_MATERIAL = new THREE.MeshStandardMaterial({ color: '#111111', roughness: 0.9, metalness: 0, flatShading: true });
@@ -70,7 +71,10 @@ interface FigureProps {
 const Figure = memo(function Figure({ figure, geometry, selected, onSelect, groupRef }: FigureProps) {
     return (
         <group
-            ref={groupRef}
+            ref={(el) => {
+                registerFigureObject(figure.id, el);
+                groupRef?.(el);
+            }}
             position={[figure.position_x, 0, figure.position_z]}
             rotation={[0, figure.rotation_y, 0]}
             userData={{ scaleFigure: true }}
