@@ -3,7 +3,7 @@
 ## Voraussetzungen
 
 - Linux-Server mit Docker Engine und dem Compose-Plugin (`docker compose version`).
-- Apache mit TLS-Zertifikat für die CuraHub-Domain und den Modulen `proxy`, `proxy_http`, `headers`.
+- Apache ab 2.4.47 mit TLS-Zertifikat für die CuraHub-Domain und den Modulen `proxy`, `proxy_http`, `headers` (die Live-Anwesenheit läuft als WebSocket über `/api/live`; `deploy/apache/curahub.conf` leitet sie mit `upgrade=websocket` weiter).
 - Ausgehender HTTPS-Zugriff auf [www.hsbi.de](https://www.hsbi.de) (HSBI-Login).
 - Mindestens 10 GB freier Speicher für Uploads.
 
@@ -59,4 +59,5 @@ Migrationen laufen beim Start automatisch. Vorher einen Dump ziehen.
 Eine vorhandene `.env` mit `DATABASE_URL`, `JWT_SECRET`, `APP_EXTERNAL_PORT` und `APP_BIND_ADDRESS` funktioniert weiter; Werte aus der `.env` haben Vorrang vor den erzeugten Secrets. Die Migration `system_settings` markiert eine Datenbank mit Nutzer:innen als eingerichtet, der Assistent erscheint dort nicht.
 
 - Hinter Cloudflare zusätzlich `BEHIND_CLOUDFLARE=true` setzen.
+- Eigene Apache-Konfiguration: `ProxyPass` braucht `upgrade=websocket` (siehe `deploy/apache/curahub.conf`). Ohne bleibt die Live-Anwesenheit „Offline“; Editor und Viewer funktionieren trotzdem.
 - Der Datenbank-Port wird nicht mehr auf dem Host veröffentlicht; Dumps laufen über `docker compose exec db …`.

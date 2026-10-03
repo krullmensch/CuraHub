@@ -79,6 +79,8 @@ export default defineConfig({
         '/api': {
             target: 'http://localhost:3000',
             changeOrigin: true,
+            // The live channel (/api/live) is a WebSocket.
+            ws: true,
             rewrite: (path) => path.replace(/^\/api/, '')
         },
         '/auth': {
