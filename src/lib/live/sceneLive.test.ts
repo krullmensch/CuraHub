@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { DragTracker, transformOf } from './sceneSync';
 import { poseMoved } from './cameraPose';
-import { avatarLabelHeight, avatarPlacement } from './avatarPlacement';
+import { BLOB_HEIGHT, blobTarget } from './blobChain';
 import { outlineGroups, pathBounds } from './remoteOutlines';
 import {
   previewCount, receiveDrag, release, releaseAll, releaseSessions, RELEASE_GRACE_MS, stepPreviews, syncWithClaims,
@@ -76,11 +76,8 @@ describe('remote previews', () => {
 describe('avatars', () => {
   afterEach(() => clearAvatarPoses());
 
-  it('places the figure on the floor below the eye and the camera marker at the camera', () => {
-    const pose = { p: [1, 1.62, -2] as [number, number, number], yaw: 0.4, pitch: -0.3 };
-    expect(avatarPlacement(pose, true)).toEqual({ position: [1, 0, -2], yaw: 0.4, pitch: 0 });
-    expect(avatarPlacement(pose, false)).toEqual({ position: [1, 1.62, -2], yaw: 0.4, pitch: -0.3 });
-    expect(avatarLabelHeight(true)).toBeGreaterThan(1.73);
+  it('puts a walking person\'s blob at chest height below their eye', () => {
+    expect(blobTarget([1, 1.62, -2])).toEqual([1, BLOB_HEIGHT, -2]);
   });
 
   it('sends a pose only after a real move or turn', () => {
