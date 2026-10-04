@@ -19,6 +19,7 @@ describe('wiki manifest', () => {
         expect(pages.map((p) => p.id)).toEqual([
             'access-control',
             'project-management',
+            'collaboration',
             'asset-management',
             '3d-scene',
             '2d-wall-editor',

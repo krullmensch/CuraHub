@@ -1,6 +1,6 @@
 # Live collaboration over WebSockets — Design Spec
 **Date:** 2026-10-03
-**Status:** Approved (in chat); steps 1–4 built (PRs #10, #11, #12, #14; collaborator access fix #13)
+**Status:** Implemented — steps 1–5 (PRs #10, #11, #12, #14, #15; collaborator access fix #13)
 
 ---
 
@@ -122,12 +122,12 @@ Verified end to end (two headless Chrome sessions, MySQL): default walls once, p
 
 ## 6. Public viewer blobs (step 5)
 
-- Visitors send their position (`pose`, ≤ 10 Hz) inside `visit`; the server relays to the other visitors of that exhibition only. Anonymous: a random visitor id per connection, no names.
-- Each blob: a soft, glossy, slightly translucent drop at about chest height. A few spheres (head + 3–4 trailing segments) follow each other with spring damping, so the body stretches and lags behind when it moves and wobbles back when it stops; merged into one smooth surface with a metaball/SDF shader (TSL on WebGPU, GLSL on WebGL) or, simpler first cut, overlapping spheres with a shared material.
-- Positions are interpolated on the receiving side (≈100 ms buffer) so 10 Hz updates move smoothly. Blobs fade out after 10 s without updates.
-- Counter "N Personen in der Ausstellung" stays.
+- Visitors send their camera pose like editors (`startVisitorPresence`, ≤ 10 Hz when moved, every 5 s otherwise). The server relays it only to the other visitors of the same exhibition, under a random **visitor id** (12 hex chars) — never the session id (the tab's identity for claims) and never a name. A visitor arriving gets the others' last poses; `gone { session }` tells the others when someone leaves (or their tab's grace period ends).
+- Each blob is a spring chain (`lib/live/blobChain.ts`): a head following the visitor at chest height (1.05 m) and four segments, each on a soft, underdamped spring behind the one in front (links ≤ 35 cm). Walking stretches the body out behind; stopping lets the tail catch up, overshoot and wobble back.
+- The segments are metaballs melted into one surface by three's `MarchingCubes` (resolution 32, field cube 2.2 m centred on the body, `MeshStandardMaterial`: glossy, slightly translucent, colour from the visitor id). Plain material, so WebGPU and WebGL alike; no raycasts, no collider; at most 16 blobs. `VisitorBlobs` is lazy-loaded with the viewer.
+- The visitor counter stays; there are no names in the viewer.
 
----
+Verified in headless Chrome with a simulated second visitor walking past: blob at rest, stretched while walking, wobbling back, gone after leaving; counter 2 → 1.
 
 ## Testing
 

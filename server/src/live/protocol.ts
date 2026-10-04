@@ -112,8 +112,10 @@ export type ServerMessage =
     | { t: 'changed'; versionId: number; seq: number; by: string | null } & LiveChange
     /** Versions of an exhibition changed (graph, publish state); to its editors. */
     | { t: 'versions'; exhibitionId: number; event: VersionEvent; versionId: number; fallbackVersionId: number | null; by: string | null }
-    /** Another tab's camera / standing point. */
+    /** Another tab's camera (editor) or another visitor's standing point (viewer, anonymous id). */
     | { t: 'pose'; session: string; p: [number, number, number]; yaw: number; pitch: number }
+    /** A visitor (public viewer) left; `session` is their anonymous visitor id. */
+    | { t: 'gone'; session: string }
     /** Another tab's objects while it moves them (not saved yet). */
     | { t: 'drag'; session: string; transforms: LiveTransform[] }
     | { t: 'error'; code: string; message: string };
