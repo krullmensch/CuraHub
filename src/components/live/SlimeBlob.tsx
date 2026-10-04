@@ -6,9 +6,10 @@ import { avatarPose } from '@/lib/live/avatarPoses';
 import { BLOB_LABEL_LIFT, BlobChain, ballStrength, blobTarget } from '@/lib/live/blobChain';
 
 /**
- * One person as a soft, glossy blob of slime at chest height that trails behind when it moves
- * and wobbles back when it stops — in the public viewer (VisitorBlobs) and for people walking in
- * first person in the editor (LiveSceneLayer). The body is a spring chain (lib/live/blobChain.ts)
+ * One person as a soft, glossy blob of slime that trails behind when it moves and wobbles back
+ * when it stops — in the public viewer (VisitorBlobs) and for the others in the editor
+ * (LiveSceneLayer). Walking, it sits at chest height; `floating` (orbit view) puts it right where
+ * the person looks from. The body is a spring chain (lib/live/blobChain.ts)
  * whose segments are metaballs, melted into one surface by three's MarchingCubes (plain
  * material, so WebGPU and WebGL alike). Follows the pose of `id` in lib/live/avatarPoses.
  */
@@ -17,6 +18,7 @@ const RESOLUTION = 32;
 /** Half the edge of a blob's field cube in metres: room for the head and a stretched tail. */
 const HALF_SIZE = 1.1;
 const ISOLATION = 80;
+const _head = new THREE.Vector3();
 const SUBTRACT = 12;
 
 export interface SlimeBlobLabel {
@@ -25,9 +27,18 @@ export interface SlimeBlobLabel {
     scale: [number, number];
 }
 
-export const SlimeBlob = ({ id, color, label }: { id: string; color: string; label?: SlimeBlobLabel }) => {
+/** Closer to this tab's own camera (m), a floating blob is hidden instead of filling the view. */
+const HIDE_NEAR_CAMERA = 0.5;
+
+export const SlimeBlob = ({ id, color, label, floating = false }: {
+    id: string;
+    color: string;
+    label?: SlimeBlobLabel;
+    floating?: boolean;
+}) => {
     const invalidate = useThree((s) => s.invalidate);
     const sprite = useRef<THREE.Sprite>(null);
+    const body = useRef<THREE.Group>(null);
     const { mesh, chain } = useMemo(() => {
         const material = new THREE.MeshStandardMaterial({
             color,
@@ -46,18 +57,18 @@ export const SlimeBlob = ({ id, color, label }: { id: string; color: string; lab
         // Blobs never take clicks or the first-person crosshair.
         cubes.raycast = () => {};
         const start = avatarPose(id)?.p ?? [0, 0, 0];
-        return { mesh: cubes, chain: new BlobChain(blobTarget(start)) };
-    }, [id, color]);
+        return { mesh: cubes, chain: new BlobChain(floating ? start : blobTarget(start)) };
+    }, [id, color, floating]);
 
     useEffect(() => () => {
         mesh.geometry.dispose();
         (mesh.material as THREE.Material).dispose();
     }, [mesh]);
 
-    useFrame((_, delta) => {
+    useFrame(({ camera }, delta) => {
         const pose = avatarPose(id);
         if (!pose) return;
-        chain.step(blobTarget(pose.p), delta);
+        chain.step(floating ? pose.p : blobTarget(pose.p), delta);
         const centre = chain.centre;
         mesh.position.set(centre[0], centre[1], centre[2]);
         mesh.reset();
@@ -71,13 +82,21 @@ export const SlimeBlob = ({ id, color, label }: { id: string; color: string; lab
         mesh.update();
         const head = chain.segments[0].position;
         sprite.current?.position.set(head[0], head[1] + BLOB_LABEL_LIFT, head[2]);
+        if (floating) {
+            // Two orbit views often look from the same spot (e.g. the start view).
+            const near = camera.position.distanceTo(_head.set(head[0], head[1], head[2])) < HIDE_NEAR_CAMERA;
+            if (body.current) body.current.visible = !near;
+            if (sprite.current) sprite.current.visible = !near;
+        }
         // Keep rendering while the slime still settles.
         if (chain.length > 0.002 || Math.hypot(...chain.segments[0].velocity) > 0.002) invalidate();
     });
 
     return (
         <>
-            <primitive object={mesh} />
+            <group ref={body}>
+                <primitive object={mesh} />
+            </group>
             {label && (
                 <sprite ref={sprite} scale={[label.scale[0], label.scale[1], 1]} raycast={() => {}} renderOrder={12}>
                     <spriteMaterial map={label.texture} sizeAttenuation={false} depthWrite={false} depthTest={false} transparent toneMapped={false} />
