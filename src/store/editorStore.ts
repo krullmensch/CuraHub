@@ -170,6 +170,11 @@ export interface ModularWallData {
   thickness: number;
   color: string;
   isLocked: boolean;
+  /**
+   * Client only: one of the default walls an empty version starts with (not saved yet). The
+   * server creates each default once per version, so two tabs don't both add them.
+   */
+  isDefault?: boolean;
 }
 
 /** A 1.73 m scale figure standing on the floor (components/ScaleFigures.tsx). */
@@ -1288,6 +1293,7 @@ const syncToBackend = async () => {
               rotation_x: wall.rotation_x, rotation_y: wall.rotation_y, rotation_z: wall.rotation_z,
               width: wall.width, height: wall.height, thickness: wall.thickness,
               color: wall.color, isLocked: wall.isLocked,
+              ...(wall.isDefault ? { isDefault: true } : {}),
             }),
           });
 
@@ -1302,8 +1308,12 @@ const syncToBackend = async () => {
           // Before the store update, so data keyed by the temp id moves along (ruler guides).
           emitWallEvent({ type: 'replaced', from: wall.id, to: created.id });
           const current = useEditorStore.getState();
+          // Another tab's default wall that arrived live meanwhile is the same wall: keep one.
+          const known = current.localWalls.some(w => w.id === created.id);
           useEditorStore.setState({
-            localWalls: current.localWalls.map(w => w.id === wall.id ? { ...created } : w),
+            localWalls: known
+              ? current.localWalls.filter(w => w.id !== wall.id)
+              : current.localWalls.map(w => w.id === wall.id ? { ...created } : w),
             // Remap wallId on any instances pointing to the temp wall
             localInstances: current.localInstances.map(i =>
               i.wallId === wall.id ? { ...i, wallId: created.id } : i

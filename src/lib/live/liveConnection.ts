@@ -14,6 +14,11 @@ import { LiveClient, type LiveLocation, type SocketLike } from './liveClient';
 import { editorModeOf } from './presence';
 import type { ChangedMessage, ClaimHolder, ServerMessage, VersionsMessage } from './protocol';
 import { newLiveSession } from './session';
+import { clearAvatarPoses, keepAvatarSessions, setAvatarPose } from './avatarPoses';
+import { clearCameraPose } from './cameraPose';
+import { receiveDrag, release as releasePreview, releaseAll as releaseAllPreviews, releaseSessions, syncWithClaims } from './remotePreviews';
+import { objectForKey } from './sceneObjects';
+import { startSceneSync } from './sceneSync';
 
 /** The tab's live connection, wired to authStore (token), editorStore (selection) and liveStore. */
 
@@ -41,6 +46,12 @@ function hintHeld(holders: ClaimHolder[]) {
 function clearClaims() {
   useLiveStore.setState({ claims: [] });
   setHeldClaims(new Map());
+}
+
+/** Everything other tabs showed in this tab's scene (version switch, leaving). */
+function clearRemoteScene() {
+  clearAvatarPoses();
+  releaseAllPreviews();
 }
 
 /** Takes keys the server gave to someone else out of this tab's selection. */
@@ -98,6 +109,8 @@ function applyChanged(msg: ChangedMessage) {
     }
     default: {
       if (!isRow(data)) return;
+      // A live drag of this object ends here; its saved pose comes with the store update.
+      releasePreview(`${msg.kind}:${data.id}`);
       if (msg.op === 'delete') {
         const wasSelected = applyRemoteChange({ kind: msg.kind, op: 'delete', id: data.id });
         if (wasSelected) {
@@ -167,13 +180,25 @@ function handleMessage(msg: ServerMessage) {
     case 'welcome':
       useLiveStore.setState({ self: { session: msg.session, user: msg.user } });
       return;
-    case 'presence':
+    case 'presence': {
       useLiveStore.setState({
         // An empty list is the server's "you left this exhibition".
         exhibitionId: msg.members.length > 0 ? msg.exhibitionId : null,
         members: msg.members,
         publicVisitors: msg.publicVisitors,
       });
+      // Avatars and live drags only of tabs that are still in this version.
+      const versionId = useEditorStore.getState().activeVersionId;
+      const here = new Set(msg.members.filter((m) => m.versionId === versionId).map((m) => m.session));
+      keepAvatarSessions((session) => here.has(session));
+      releaseSessions((session) => here.has(session));
+      return;
+    }
+    case 'pose':
+      setAvatarPose(msg.session, { p: msg.p, yaw: msg.yaw, pitch: msg.pitch });
+      return;
+    case 'drag':
+      receiveDrag(msg.session, msg.transforms);
       return;
     case 'visitors':
       useLiveStore.setState({ visitorCount: msg.count });
@@ -205,6 +230,8 @@ function handleMessage(msg: ServerMessage) {
       if (msg.versionId !== useEditorStore.getState().activeVersionId) return;
       useLiveStore.setState({ claims: msg.entries });
       setHeldClaims(heldByOthers(msg.entries, useLiveStore.getState().self?.session ?? null));
+      const holders = new Map(msg.entries.map((e) => [e.key, e.session]));
+      syncWithClaims((key) => holders.get(key));
       return;
     }
     case 'claimed': {
@@ -239,6 +266,7 @@ function getClient(): LiveClient {
       if (status === 'idle') {
         useLiveStore.setState({ status, exhibitionId: null, members: [], publicVisitors: 0, visitorCount: 0 });
         clearClaims();
+        clearRemoteScene();
       } else {
         useLiveStore.setState({ status });
       }
@@ -271,6 +299,7 @@ function startEditorClaims(): () => void {
       if (sync.sent.length > 0) getClient().setClaims([]);
       sync.reset();
       clearClaims();
+      clearRemoteScene();
     }
     if (state.selectedInstanceIds !== prev.selectedInstanceIds || state.wallEditorSelection !== prev.wallEditorSelection
       || state.selectedWallId !== prev.selectedWallId || state.selectedFigureId !== prev.selectedFigureId
@@ -339,7 +368,18 @@ export function startEditorPresence(): () => void {
     }
   });
   const stopClaims = startEditorClaims();
+  const stopScene = startSceneSync({
+    send: (msg) => getClient().sendTransient(msg),
+    ownKeys: () => {
+      const self = useLiveStore.getState().self?.session;
+      return useLiveStore.getState().claims.filter((c) => c.session === self).map((c) => c.key);
+    },
+    lookup: objectForKey,
+  });
   return () => {
+    stopScene();
+    clearCameraPose();
+    clearRemoteScene();
     stopClaims();
     unsubscribe();
     unsubscribeAuth();

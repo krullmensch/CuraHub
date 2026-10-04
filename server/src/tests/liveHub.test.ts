@@ -444,3 +444,58 @@ describe('LiveHub changes', () => {
         expect(v.conn.sent.some((m) => m.t === 'versions')).toBe(false);
     });
 });
+
+describe('LiveHub poses and drags', () => {
+    let hub: LiveHub;
+    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); jest.useFakeTimers({ now: 1_000_000, doNotFake: ['queueMicrotask', 'nextTick', 'setImmediate'] }); });
+    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
+
+    async function editor(session: string, user: number, versionId: number | null = 100) {
+        const tab = await connect(hub, session, `user-${user}`);
+        await tab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId, mode: 'orbit' }));
+        return tab;
+    }
+    const pose = { t: 'pose', p: [1, 1.6, -2], yaw: 0.5, pitch: -0.1 };
+
+    it('relays poses to the other tabs of the version and drops floods', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        const elsewhere = await editor(SESSION_V, 3, 101);
+        await a.handle.onMessage(json(pose));
+        await a.handle.onMessage(json({ ...pose, yaw: 1 })); // < 40 ms later: dropped
+        expect(b.conn.sent.filter((m) => m.t === 'pose')).toEqual([{ t: 'pose', session: SESSION_A, p: [1, 1.6, -2], yaw: 0.5, pitch: -0.1 }]);
+        expect(a.conn.sent.some((m) => m.t === 'pose')).toBe(false);
+        expect(elsewhere.conn.sent.some((m) => m.t === 'pose')).toBe(false);
+        jest.advanceTimersByTime(50);
+        await a.handle.onMessage(json({ ...pose, yaw: 1 }));
+        expect(b.conn.last('pose')?.yaw).toBe(1);
+    });
+
+    it('tells a tab entering the version where the others are', async () => {
+        const a = await editor(SESSION_A, 1);
+        await a.handle.onMessage(json(pose));
+        const b = await editor(SESSION_B, 2);
+        expect(b.conn.last('pose')).toMatchObject({ session: SESSION_A, yaw: 0.5 });
+        // A pose belongs to its version: after a switch it is forgotten.
+        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
+        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
+        const c = await editor('44444444-4444-4444-8444-444444444444', 1);
+        expect(c.conn.sent.some((m) => m.t === 'pose' && m.session === SESSION_A)).toBe(false);
+    });
+
+    it('relays only drags of objects the tab holds', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await a.handle.onMessage(json({ t: 'claim', seq: 1, groups: [['instance:1']] }));
+        const t = (k: string) => ({ k, p: [0, 1, 2], q: [0, 0, 0, 1], s: [1, 1, 1] });
+        await a.handle.onMessage(json({ t: 'drag', transforms: [t('instance:1'), t('instance:2')] }));
+        expect(b.conn.last('drag')).toEqual({ t: 'drag', session: SESSION_A, transforms: [t('instance:1')] });
+        expect(a.conn.sent.some((m) => m.t === 'drag')).toBe(false);
+    });
+
+    it('rejects poses out of range and visitors\' poses in the editor', async () => {
+        const a = await editor(SESSION_A, 1);
+        await a.handle.onMessage(json({ ...pose, p: [1e9, 0, 0] }));
+        expect(a.conn.last('error')?.code).toBe('bad_message');
+    });
+});

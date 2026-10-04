@@ -135,6 +135,15 @@ export class LiveClient {
     }, base * jitter);
   }
 
+  /**
+   * Fire-and-forget messages (camera pose, live drags): sent only while connected, never
+   * queued or repeated after a reconnect.
+   */
+  sendTransient(msg: Extract<ClientMessage, { t: 'pose' } | { t: 'drag' }>): void {
+    if (msg.t === 'drag' && this.location?.t !== 'where') return;
+    if (this.location) this.send(msg);
+  }
+
   private disconnect() {
     if (this.retryTimer) {
       clearTimeout(this.retryTimer);
