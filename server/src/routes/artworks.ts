@@ -130,7 +130,8 @@ export const artworkUpdateSchema = z.object({
     year: z.string().optional(),
     description: z.string().optional(),
     width: z.number().positive().optional(),
-    height: z.number().positive().optional(),
+    /** Physical height in cm; for splats null = the capture's own units (see client lib/splats). */
+    height: z.number().positive().max(100_000).nullable().optional(),
     /** Book thickness in cm; null = automatic from the page count. */
     depth: z.number().min(0.3).max(8).nullable().optional(),
     /** Book can be opened in the public viewer. */
