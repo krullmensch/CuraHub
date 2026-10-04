@@ -8,9 +8,11 @@ import {
     type ClaimHolder,
     type ClientMessage,
     type EditorMode,
+    type LiveChange,
     type LiveUser,
     type PresenceMember,
     type ServerMessage,
+    type VersionEvent,
 } from './protocol';
 
 /**
@@ -74,6 +76,8 @@ export class LiveHub {
     private readonly sessions = new Map<string, Session>();
     /** Claim key → session id. Keys are database ids, unique across versions. */
     private readonly claimOwners = new Map<string, string>();
+    /** Number of the last change per version, so a tab can tell it missed one. */
+    private readonly versionSeq = new Map<number, number>();
     private readonly helloTimeoutMs: number;
     private readonly graceMs: number;
     private disposed = false;
@@ -194,6 +198,33 @@ export class LiveHub {
         return entries;
     }
 
+    /** True while any tab is in this version — routes skip building change payloads otherwise. */
+    hasVersionListeners(versionId: number): boolean {
+        for (const s of this.sessions.values()) {
+            if (s.conn && versionOf(s) === versionId) return true;
+        }
+        return false;
+    }
+
+    /** Tells every tab in a version (including the one that made it) about a saved change. */
+    publishChange(versionId: number, by: string | null, change: LiveChange): void {
+        const seq = (this.versionSeq.get(versionId) ?? 0) + 1;
+        this.versionSeq.set(versionId, seq);
+        const msg = { t: 'changed', versionId, seq, by, ...change } as ServerMessage;
+        for (const s of this.sessions.values()) {
+            if (s.conn && versionOf(s) === versionId) s.conn.send(msg);
+        }
+    }
+
+    /** Tells the editors of an exhibition that its versions changed. */
+    publishVersionEvent(exhibitionId: number, by: string | null, event: VersionEvent, versionId: number, fallbackVersionId: number | null = null): void {
+        if (event === 'deleted') this.versionSeq.delete(versionId);
+        const msg: ServerMessage = { t: 'versions', exhibitionId, event, versionId, fallbackVersionId, by };
+        for (const s of this.sessions.values()) {
+            if (s.conn && s.location?.kind === 'editor' && s.location.exhibitionId === exhibitionId) s.conn.send(msg);
+        }
+    }
+
     get sessionCount(): number {
         return this.sessions.size;
     }
@@ -294,9 +325,7 @@ export class LiveHub {
                 this.releaseAll(session);
                 if (prevVersion !== null) this.broadcastClaims(prevVersion);
             }
-            if (nextVersion !== null && session.conn) {
-                session.conn.send({ t: 'claims', versionId: nextVersion, entries: this.claimsOf(nextVersion) });
-            }
+            if (nextVersion !== null && session.conn) this.sendVersionState(session.conn, nextVersion);
         }
         const touched = new Set<number>();
         if (prev) touched.add(prev.exhibitionId);
@@ -396,6 +425,12 @@ export class LiveHub {
         if (changed) this.broadcastClaims(versionId);
     }
 
+    /** What a tab entering (or resuming in) a version needs first: change counter and claims. */
+    private sendVersionState(conn: LiveConnection, versionId: number) {
+        conn.send({ t: 'version', versionId, seq: this.versionSeq.get(versionId) ?? 0 });
+        conn.send({ t: 'claims', versionId, entries: this.claimsOf(versionId) });
+    }
+
     private releaseAll(session: Session) {
         for (const key of session.claimKeys) {
             if (this.claimOwners.get(key) === session.id) this.claimOwners.delete(key);
@@ -414,7 +449,7 @@ export class LiveHub {
         const loc = session.location;
         if (!loc || !session.conn) return;
         const version = versionOf(session);
-        if (version !== null) session.conn.send({ t: 'claims', versionId: version, entries: this.claimsOf(version) });
+        if (version !== null) this.sendVersionState(session.conn, version);
         const publicVisitors = this.publicVisitorsOf(loc.exhibitionId);
         session.conn.send(loc.kind === 'editor'
             ? { t: 'presence', exhibitionId: loc.exhibitionId, members: this.presenceOf(loc.exhibitionId), publicVisitors }

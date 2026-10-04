@@ -392,3 +392,55 @@ describe('LiveHub claims', () => {
         expect(second.conn.last('claimed')?.denied[0].holder.session).toBe(SESSION_A);
     });
 });
+
+describe('LiveHub changes', () => {
+    let hub: LiveHub;
+    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); });
+    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
+
+    async function editor(session: string, user: number, versionId: number | null = 100) {
+        const tab = await connect(hub, session, `user-${user}`);
+        await tab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId, mode: 'orbit' }));
+        return tab;
+    }
+
+    it('numbers changes per version and sends them to every tab in it', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2, 101);
+        expect(a.conn.last('version')).toEqual({ t: 'version', versionId: 100, seq: 0 });
+        expect(hub.hasVersionListeners(100)).toBe(true);
+        expect(hub.hasVersionListeners(102)).toBe(false);
+
+        hub.publishChange(100, SESSION_A, { kind: 'instance', op: 'upsert', data: { id: 1, position_x: 2 } });
+        hub.publishChange(100, null, { kind: 'wall', op: 'delete', data: { id: 5 } });
+        hub.publishChange(101, null, { kind: 'figure', op: 'delete', data: { id: 9 } });
+        const changes = a.conn.sent.filter((m) => m.t === 'changed');
+        expect(changes).toEqual([
+            { t: 'changed', versionId: 100, seq: 1, by: SESSION_A, kind: 'instance', op: 'upsert', data: { id: 1, position_x: 2 } },
+            { t: 'changed', versionId: 100, seq: 2, by: null, kind: 'wall', op: 'delete', data: { id: 5 } },
+        ]);
+        expect(b.conn.last('changed')).toMatchObject({ versionId: 101, seq: 1 });
+    });
+
+    it('tells a tab entering or resuming a version the current number', async () => {
+        hub.publishChange(100, null, { kind: 'wallLayout', op: 'upsert', data: { hangingHeight: 1.5, guides: {} } });
+        const a = await editor(SESSION_A, 1);
+        expect(a.conn.last('version')?.seq).toBe(1);
+        a.handle.onClose();
+        hub.publishChange(100, null, { kind: 'instance', op: 'delete', data: { id: 3 } });
+        const again = await connect(hub, SESSION_A, 'user-1');
+        expect(again.conn.last('version')).toEqual({ t: 'version', versionId: 100, seq: 2 });
+    });
+
+    it('sends version events to the exhibition\'s editors only', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2, null);
+        const v = await connect(hub, SESSION_V);
+        await v.handle.onMessage(json({ t: 'visit', slug: 'open' }));
+        hub.publishVersionEvent(10, SESSION_B, 'deleted', 100, 99);
+        const event = { t: 'versions', exhibitionId: 10, event: 'deleted', versionId: 100, fallbackVersionId: 99, by: SESSION_B };
+        expect(a.conn.last('versions')).toEqual(event);
+        expect(b.conn.last('versions')).toEqual(event);
+        expect(v.conn.sent.some((m) => m.t === 'versions')).toBe(false);
+    });
+});

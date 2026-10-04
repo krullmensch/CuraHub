@@ -1,7 +1,8 @@
 import express from 'express';
 import request from 'supertest';
 import { LiveHub, type HubDeps } from '../live/hub';
-import { ensureNotClaimed, setLiveHub } from '../live/claimGuard';
+import { ensureNotClaimed } from '../live/claimGuard';
+import { setLiveHub } from '../live/registry';
 
 const deps: HubDeps = {
     verifyToken: () => ({ userId: 1, role: 'curator' }),

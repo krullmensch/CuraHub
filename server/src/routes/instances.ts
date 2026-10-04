@@ -6,6 +6,7 @@ import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
 import { DEFAULT_FRAME_STYLE, frameStyleSchema, passepartoutPlacementSchema, passepartoutWidthSchema } from '../lib/frameStyles';
 import { artworkTitleFromFilename } from '../lib/artworkTitle';
+import { hasLiveListeners, publishChange } from '../live/broadcast';
 
 export const instancesRouter = Router();
 const prisma = new PrismaClient();
@@ -106,6 +107,7 @@ instancesRouter.post('/', authenticate, idempotency, async (req: Request, res) =
         });
 
         res.json(instance);
+        announceInstance(req, data.versionId, instance.id);
 
     } catch (e) {
         console.error(e);
@@ -117,6 +119,19 @@ instancesRouter.post('/', authenticate, idempotency, async (req: Request, res) =
         res.status(500).json({ error: 'Failed to place instance', details: (e as Error).message });
     }
 });
+
+/**
+ * Tells the version's tabs about a saved instance, with its artwork like GET /instances returns
+ * it. Runs after the response; a failure only costs the live update.
+ */
+function announceInstance(req: Request, versionId: number, id: number): void {
+    if (!hasLiveListeners(versionId)) return;
+    prisma.artworkInstance.findUnique({ where: { id }, include: { artwork: { include: { asset: true } } } })
+        .then((full) => {
+            if (full) publishChange(req, versionId, { kind: 'instance', op: 'upsert', data: full });
+        })
+        .catch((err) => console.error('[Live] Instance broadcast failed:', err));
+}
 
 // GET /instances?versionId=123 — get all instances for a specific version
 instancesRouter.get('/', authenticate, async (req: Request, res) => {
@@ -231,6 +246,7 @@ instancesRouter.patch('/:id', authenticate, async (req: Request, res) => {
         });
 
         res.json(updated);
+        announceInstance(req, existing.versionId, instanceId);
     } catch (e) {
         console.error(e);
         if (e instanceof z.ZodError) {
@@ -261,6 +277,7 @@ instancesRouter.delete('/:id', authenticate, async (req: Request, res) => {
 
         await prisma.artworkInstance.delete({ where: { id: instanceId } });
         res.json({ success: true, id: instanceId });
+        publishChange(req, existing.versionId, { kind: 'instance', op: 'delete', data: { id: instanceId } });
     } catch (e) {
         console.error(e);
         res.status(500).json({ error: 'Failed to delete instance' });

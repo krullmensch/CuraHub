@@ -3,6 +3,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useEditorStore } from '@/store/editorStore';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
 import { onWallEvent } from '@/lib/wallEvents';
+import { liveSessionHeaders } from '@/lib/live/session';
 import { DEFAULT_HANGING_HEIGHT, parseWallLayout, serializeGuides, type WallLayout } from './guides';
 
 /** Hanging height and guides are saved this long after the last change. */
@@ -16,10 +17,23 @@ const layoutUrl = (exhibitionId: number, versionId: number) =>
 const authHeaders = (): Record<string, string> => ({
     'Content-Type': 'application/json',
     Authorization: `Bearer ${useAuthStore.getState().token ?? ''}`,
+    // The live channel tells the other tabs; this one does not need its own change back.
+    ...liveSessionHeaders(),
 });
 
 /** Version whose layout the view store holds; changes are only saved for it. */
 let loadedVersionId: number | null = null;
+
+/** Set while a sync runs: takes a layout another tab saved. */
+let remoteApply: ((versionId: number, raw: unknown) => void) | null = null;
+
+/**
+ * Hanging height and guides another tab saved (live channel). Taken over unless this tab has a
+ * change of its own waiting to be saved — that one is sent next and wins, like before.
+ */
+export function applyRemoteWallLayout(versionId: number, raw: unknown): void {
+    remoteApply?.(versionId, raw);
+}
 
 /** True once the stored layout of `versionId` is in the view store (not while loading, not after a failed load). */
 export function isWallLayoutLoaded(versionId: number | null): boolean {
@@ -145,6 +159,11 @@ export function startWallLayoutSync(): () => void {
         else view.dropWallGuides(event.id);
     });
 
+    remoteApply = (versionId, raw) => {
+        if (stopped || pending || versionId !== loadedVersionId) return;
+        apply(parseWallLayout(raw));
+    };
+
     // Best-effort save when the tab is being hidden/closed/navigated away from.
     const onPageHide = () => flush(true);
     window.addEventListener('pagehide', onPageHide);
@@ -156,6 +175,7 @@ export function startWallLayoutSync(): () => void {
         flush();
         stopped = true;
         loadedVersionId = null;
+        remoteApply = null;
         unsubscribeView();
         unsubscribeEditor();
         unsubscribeWallEditorOpen();

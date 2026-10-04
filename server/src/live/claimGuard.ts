@@ -1,5 +1,5 @@
 import type { Request, Response } from 'express';
-import type { LiveHub } from './hub';
+import { getLiveHub } from './registry';
 import type { ClaimKind } from './protocol';
 
 /**
@@ -8,13 +8,6 @@ import type { ClaimKind } from './protocol';
  * may only touch unclaimed objects.
  */
 
-let hub: LiveHub | null = null;
-
-/** Set once at startup (index.ts); without a hub nothing is claimed. */
-export function setLiveHub(next: LiveHub | null): void {
-    hub = next;
-}
-
 export const LIVE_SESSION_HEADER = 'x-live-session';
 
 /**
@@ -22,9 +15,9 @@ export const LIVE_SESSION_HEADER = 'x-live-session';
  * Call it after the access check, so nobody learns about objects they cannot see.
  */
 export function ensureNotClaimed(req: Request, res: Response, kind: ClaimKind, id: number): boolean {
-    const holder = hub?.holderOf(`${kind}:${id}`);
+    const holder = getLiveHub()?.holderOf(`${kind}:${id}`);
     if (!holder) return true;
-    const session = req.get(LIVE_SESSION_HEADER);
+    const session = liveSessionOf(req);
     if (session && session === holder.session) return true;
     res.status(423).json({
         error: `Wird gerade von ${holder.name} bearbeitet`,
@@ -32,4 +25,9 @@ export function ensureNotClaimed(req: Request, res: Response, kind: ClaimKind, i
         holder: { name: holder.name, color: holder.color },
     });
     return false;
+}
+
+/** The tab a REST request comes from, if it said so. */
+export function liveSessionOf(req: Request): string | null {
+    return req.get(LIVE_SESSION_HEADER) || null;
 }

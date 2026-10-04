@@ -78,7 +78,21 @@ export type ServerMessage =
     | { t: 'claimed'; seq: number; granted: string[]; denied: { key: string; holder: ClaimHolder }[] }
     /** All claims in a version, to its editors whenever they change. */
     | { t: 'claims'; versionId: number; entries: ClaimEntry[] }
+    /** Entering (or resuming) a version: the number of its last change, to notice missed ones. */
+    | { t: 'version'; versionId: number; seq: number }
+    /** Something in a version changed; `by` is the tab that did it (null: no live session). */
+    | { t: 'changed'; versionId: number; seq: number; by: string | null } & LiveChange
+    /** Versions of an exhibition changed (graph, publish state); to its editors. */
+    | { t: 'versions'; exhibitionId: number; event: VersionEvent; versionId: number; fallbackVersionId: number | null; by: string | null }
     | { t: 'error'; code: string; message: string };
+
+export type LiveChange =
+    | { kind: 'instance' | 'wall' | 'figure'; op: 'upsert'; data: { id: number } & Record<string, unknown> }
+    | { kind: 'instance' | 'wall' | 'figure'; op: 'delete'; data: { id: number } }
+    | { kind: 'artwork'; op: 'upsert'; data: { id: number } & Record<string, unknown> }
+    | { kind: 'wallLayout'; op: 'upsert'; data: { hangingHeight: number; guides: unknown } };
+
+export type VersionEvent = 'created' | 'deleted' | 'published' | 'featured';
 
 /** WebSocket close codes (4000–4999 are free for applications). */
 export const CLOSE = {

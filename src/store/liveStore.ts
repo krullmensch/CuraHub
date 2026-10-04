@@ -19,6 +19,8 @@ interface LiveState {
   visitorCount: number;
   /** Claims in this tab's version (all tabs, this one included). */
   claims: ClaimEntry[];
+  /** Bumped whenever another tab created, deleted, published or featured a version (VersionPanel refetches). */
+  versionsRevision: number;
 }
 
 export const useLiveStore = create<LiveState>()(() => ({
@@ -29,4 +31,5 @@ export const useLiveStore = create<LiveState>()(() => ({
   publicVisitors: 0,
   visitorCount: 0,
   claims: [],
+  versionsRevision: 0,
 }));

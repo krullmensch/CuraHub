@@ -32,7 +32,7 @@ import { createSetupRouter } from './routes/setup';
 import { createHealthRouter } from './routes/health';
 import { LiveHub } from './live/hub';
 import { attachLiveServer, prismaHubDeps } from './live/server';
-import { setLiveHub } from './live/claimGuard';
+import { setLiveHub } from './live/registry';
 
 const app = express();
 const prisma = new PrismaClient();

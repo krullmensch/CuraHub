@@ -12,6 +12,10 @@ import { emitWallEvent } from '../lib/wallEvents';
 import { heldBy, reportHeld } from '../lib/live/claimGate';
 import { claimKey, keepHeldInstances, restoreRefused, splitClaimedInstances, wallBlocker } from '../lib/live/claims';
 import { liveSessionHeaders } from '../lib/live/session';
+import {
+  defaultWallReplacedBy, deleteInHistory, deleteRemote, figureSyncedEqual, instanceSyncedEqual,
+  upsertInHistory, upsertRemote, wallSyncedEqual, withoutDeleted,
+} from '../lib/live/remoteChanges';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -1018,7 +1022,10 @@ let syncTimer: ReturnType<typeof setTimeout> | null = null;
 
 const scheduleSync = () => {
   if (syncTimer) clearTimeout(syncTimer);
-  syncTimer = setTimeout(syncToBackend, 150);
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    void syncToBackend();
+  }, 150);
 };
 
 // ── Automatic recovery for failed batches (invariant #6 above) ──────────────────────────────
@@ -1543,3 +1550,139 @@ useEditorStore.subscribe((state, prevState) => {
     createIdempotencyKeys.clear();
   }
 });
+
+// ─── Live changes: what other tabs saved (lib/live/remoteChanges.ts) ─────────────
+//
+// Written into the local lists, into the "believed persisted" snapshots above (so auto-sync
+// does not send them back) and into the undo history (so undo only ever touches own work).
+// Never marks the exhibition dirty and never dispatches user actions.
+
+export type RemoteChange =
+  | { kind: 'instance'; op: 'upsert'; data: ArtworkInstanceData }
+  | { kind: 'wall'; op: 'upsert'; data: ModularWallData }
+  | { kind: 'figure'; op: 'upsert'; data: ScaleFigureData }
+  | { kind: 'instance' | 'wall' | 'figure'; op: 'delete'; id: number };
+
+/** Applies one remote change. Returns true when it removed something this tab had selected. */
+export function applyRemoteChange(change: RemoteChange): boolean {
+  const s = useEditorStore.getState();
+  if (change.op === 'delete') return applyRemoteDelete(change.kind, change.id);
+
+  if (change.kind === 'instance') {
+    const row = change.data;
+    if (!row.artwork?.asset) return false; // like the loader: no asset, nothing to show
+    const lists = upsertRemote({ local: s.localInstances, persisted: prevInstances }, row, instanceSyncedEqual);
+    prevInstances = lists.persisted;
+    useEditorStore.setState({
+      localInstances: lists.local,
+      pastInstances: upsertInHistory(s.pastInstances, row),
+      futureInstances: upsertInHistory(s.futureInstances, row),
+    });
+    return false;
+  }
+
+  if (change.kind === 'wall') {
+    const row = change.data;
+    const replaced = defaultWallReplacedBy(s.localWalls, prevWalls, row);
+    if (replaced && !syncingWallTempIds.has(replaced.id)) {
+      // Both tabs started from the default walls; the one saved first wins.
+      emitWallEvent({ type: 'replaced', from: replaced.id, to: row.id });
+      prevWalls = [...prevWalls.filter(w => w.id !== row.id), row];
+      const remap = (i: ArtworkInstanceData) => (i.wallId === replaced.id ? { ...i, wallId: row.id } : i);
+      useEditorStore.setState({
+        localWalls: s.localWalls.map(w => (w.id === replaced.id ? row : w)),
+        localInstances: s.localInstances.map(remap),
+        pastInstances: s.pastInstances.map(snap => snap.map(remap)),
+        futureInstances: s.futureInstances.map(snap => snap.map(remap)),
+        selectedWallId: s.selectedWallId === replaced.id ? row.id : s.selectedWallId,
+        wallEditor: s.wallEditor?.kind === 'wall' && s.wallEditor.wallId === replaced.id ? { ...s.wallEditor, wallId: row.id } : s.wallEditor,
+      });
+      return false;
+    }
+    const lists = upsertRemote({ local: s.localWalls, persisted: prevWalls }, row, wallSyncedEqual);
+    prevWalls = lists.persisted;
+    useEditorStore.setState({ localWalls: lists.local });
+    return false;
+  }
+
+  const row = change.data;
+  const keyOf = new Map(s.localScaleFigures.map(f => [f.id, f.clientKey]));
+  const lists = upsertRemote({ local: s.localScaleFigures, persisted: prevScaleFigures }, row, figureSyncedEqual);
+  prevScaleFigures = lists.persisted;
+  useEditorStore.setState({
+    // Keep the React key, so a figure being looked at does not remount.
+    localScaleFigures: lists.local.map(f => (f.id === row.id && keyOf.get(f.id) && !f.clientKey ? { ...f, clientKey: keyOf.get(f.id) } : f)),
+  });
+  return false;
+}
+
+function applyRemoteDelete(kind: 'instance' | 'wall' | 'figure', id: number): boolean {
+  const s = useEditorStore.getState();
+  if (kind === 'instance') {
+    const lists = deleteRemote({ local: s.localInstances, persisted: prevInstances }, id);
+    prevInstances = lists.persisted;
+    const wasSelected = s.selectedInstanceIds.includes(id) || s.wallEditorSelection.includes(id);
+    useEditorStore.setState({
+      localInstances: lists.local,
+      pastInstances: deleteInHistory(s.pastInstances, id),
+      futureInstances: deleteInHistory(s.futureInstances, id),
+      ...withoutDeleted(s, id),
+    });
+    return wasSelected;
+  }
+  if (kind === 'wall') {
+    const lists = deleteRemote({ local: s.localWalls, persisted: prevWalls }, id);
+    prevWalls = lists.persisted;
+    // The server detached the wall's artworks; so does this tab (like deleteWall).
+    const detach = (i: ArtworkInstanceData) => (i.wallId === id ? { ...i, wallId: null } : i);
+    prevInstances = prevInstances.map(detach);
+    const wasSelected = s.selectedWallId === id;
+    useEditorStore.setState({
+      localWalls: lists.local,
+      localInstances: s.localInstances.map(detach),
+      pastInstances: s.pastInstances.map(snap => snap.map(detach)),
+      futureInstances: s.futureInstances.map(snap => snap.map(detach)),
+      selectedWallId: wasSelected ? null : s.selectedWallId,
+      ...(s.wallEditor?.kind === 'wall' && s.wallEditor.wallId === id ? { wallEditor: null, wallEditorSelection: [] } : {}),
+    });
+    emitWallEvent({ type: 'deleted', id });
+    return wasSelected;
+  }
+  const lists = deleteRemote({ local: s.localScaleFigures, persisted: prevScaleFigures }, id);
+  prevScaleFigures = lists.persisted;
+  const wasSelected = s.selectedFigureId === id;
+  useEditorStore.setState({ localScaleFigures: lists.local, ...(wasSelected ? { selectedFigureId: null } : {}) });
+  return wasSelected;
+}
+
+/** True while auto-sync has something unsaved in flight — a full merge has to wait. */
+export function isAutoSyncBusy(): boolean {
+  const s = useEditorStore.getState();
+  return isSyncing || syncTimer !== null
+    || syncingInstanceTempIds.size > 0 || syncingWallTempIds.size > 0 || syncingFigureTempIds.size > 0
+    || s.localInstances.some(i => i.id < 0) || s.localScaleFigures.some(f => f.id < 0);
+}
+
+/**
+ * The server's full state of the active version (after a reconnect or a missed change), merged
+ * like single remote changes. Returns false without doing anything while auto-sync is busy —
+ * the caller tries again shortly.
+ */
+export function mergeRemoteState(state: { instances: ArtworkInstanceData[]; walls: ModularWallData[]; figures: ScaleFigureData[] }): boolean {
+  if (isAutoSyncBusy()) return false;
+  const changed = <T extends { id: number }>(persisted: T[], row: T) => {
+    const known = persisted.find(i => i.id === row.id);
+    return !known || JSON.stringify(known) !== JSON.stringify(row);
+  };
+  const gone = <T extends { id: number }>(persisted: T[], rows: T[]) => {
+    const ids = new Set(rows.map(r => r.id));
+    return persisted.filter(i => i.id > 0 && !ids.has(i.id)).map(i => i.id);
+  };
+  for (const id of gone(prevInstances, state.instances)) applyRemoteDelete('instance', id);
+  for (const id of gone(prevWalls, state.walls)) applyRemoteDelete('wall', id);
+  for (const id of gone(prevScaleFigures, state.figures)) applyRemoteDelete('figure', id);
+  for (const data of state.walls) if (changed(prevWalls, data)) applyRemoteChange({ kind: 'wall', op: 'upsert', data });
+  for (const data of state.instances) if (changed(prevInstances, data)) applyRemoteChange({ kind: 'instance', op: 'upsert', data });
+  for (const data of state.figures) if (changed(prevScaleFigures, data)) applyRemoteChange({ kind: 'figure', op: 'upsert', data });
+  return true;
+}
