@@ -197,6 +197,9 @@ function handleMessage(msg: ServerMessage) {
     case 'pose':
       setAvatarPose(msg.session, { p: msg.p, yaw: msg.yaw, pitch: msg.pitch });
       return;
+    case 'gone':
+      keepAvatarSessions((session) => session !== msg.session);
+      return;
     case 'drag':
       receiveDrag(msg.session, msg.transforms);
       return;
@@ -384,5 +387,22 @@ export function startEditorPresence(): () => void {
     unsubscribe();
     unsubscribeAuth();
     setLiveLocation(null);
+  };
+}
+
+/**
+ * Public viewer: this visitor's position for the others' blobs (step 5). Started by ViewerPage
+ * while it visits an exhibition; returns the stop function.
+ */
+export function startVisitorPresence(): () => void {
+  const stop = startSceneSync({
+    send: (msg) => getClient().sendTransient(msg),
+    ownKeys: () => [],
+    lookup: () => undefined,
+  });
+  return () => {
+    stop();
+    clearCameraPose();
+    clearAvatarPoses();
   };
 }

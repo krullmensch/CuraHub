@@ -93,6 +93,7 @@ const serverMessageSchema = z.discriminatedUnion('t', [
       s: z.tuple([z.number(), z.number(), z.number()]),
     })),
   }),
+  z.object({ t: z.literal('gone'), session: z.string() }),
   z.object({ t: z.literal('error'), code: z.string(), message: z.string() }),
 ]);
 

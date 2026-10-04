@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import {
     CLOSE,
     MAX_CLAIM_KEYS,
@@ -68,6 +69,11 @@ interface Session {
     /** Time of the last relayed pose / drag (rate limit). */
     lastPoseAt: number;
     lastDragAt: number;
+    /**
+     * What other visitors of the public viewer know this tab by: random, never the session id
+     * (which is this tab's identity for claims) and never a name.
+     */
+    visitorId: string;
 }
 
 /** Poses and drags faster than this are dropped (clients send ≤ 15 per second). */
@@ -288,6 +294,7 @@ export class LiveHub {
             session = {
                 id: sessionId, user, claims, conn, location: null, graceTimer: null, locationSeq: 0,
                 claimKeys: new Set(), pose: null, lastPoseAt: 0, lastDragAt: 0,
+                visitorId: randomBytes(6).toString('hex'),
             };
             this.sessions.set(sessionId, session);
         }
@@ -335,6 +342,13 @@ export class LiveHub {
         const prevVersion = versionOf(session);
         session.location = next;
         const nextVersion = versionOf(session);
+        const prevPublic = prev?.kind === 'public' ? prev.exhibitionId : null;
+        const nextPublic = next?.kind === 'public' ? next.exhibitionId : null;
+        if (prevPublic !== nextPublic) {
+            session.pose = null;
+            if (prevPublic !== null) this.sendToVisitors(prevPublic, { t: 'gone', session: session.visitorId }, session.id);
+            if (nextPublic !== null && session.conn) this.sendVisitorPoses(session.conn, nextPublic, session.id);
+        }
         if (prevVersion !== nextVersion) {
             session.pose = null; // a camera pose belongs to the scene it was taken in
             // Claims belong to the version: whoever leaves it lets go.
@@ -365,6 +379,9 @@ export class LiveHub {
             this.releaseAll(session);
             this.sessions.delete(session.id);
             if (version !== null) this.broadcastClaims(version);
+            if (session.location?.kind === 'public') {
+                this.sendToVisitors(session.location.exhibitionId, { t: 'gone', session: session.visitorId }, session.id);
+            }
             if (session.location) {
                 const exhibitionId = session.location.exhibitionId;
                 session.location = null;
@@ -455,12 +472,36 @@ export class LiveHub {
     }
 
     private pose(session: Session, p: [number, number, number], yaw: number, pitch: number) {
-        const versionId = versionOf(session);
         const now = Date.now();
-        if (versionId === null || !session.user || now - session.lastPoseAt < MIN_RELAY_INTERVAL_MS) return;
+        if (now - session.lastPoseAt < MIN_RELAY_INTERVAL_MS) return;
+        const loc = session.location;
+        const versionId = versionOf(session);
+        if (loc?.kind === 'public') {
+            // Visitors see each other anonymously (blobs), only within the same exhibition.
+            session.lastPoseAt = now;
+            session.pose = { p, yaw, pitch };
+            this.sendToVisitors(loc.exhibitionId, { t: 'pose', session: session.visitorId, p, yaw, pitch }, session.id);
+            return;
+        }
+        if (versionId === null || !session.user) return;
         session.lastPoseAt = now;
         session.pose = { p, yaw, pitch };
         this.sendToVersion(versionId, { t: 'pose', session: session.id, p, yaw, pitch }, session.id);
+    }
+
+    private sendToVisitors(exhibitionId: number, msg: ServerMessage, exceptSession: string | null) {
+        for (const s of this.sessions.values()) {
+            if (s.conn && s.id !== exceptSession && s.location?.kind === 'public' && s.location.exhibitionId === exhibitionId) s.conn.send(msg);
+        }
+    }
+
+    /** Where the other visitors are, for a visitor arriving (or resuming). */
+    private sendVisitorPoses(conn: LiveConnection, exhibitionId: number, selfId: string) {
+        for (const s of this.sessions.values()) {
+            if (s.id !== selfId && s.pose && s.location?.kind === 'public' && s.location.exhibitionId === exhibitionId) {
+                conn.send({ t: 'pose', session: s.visitorId, ...s.pose });
+            }
+        }
     }
 
     private drag(session: Session, transforms: LiveTransform[]) {
@@ -498,6 +539,7 @@ export class LiveHub {
         if (!loc || !session.conn) return;
         const version = versionOf(session);
         if (version !== null) this.sendVersionState(session.conn, version);
+        if (loc.kind === 'public') this.sendVisitorPoses(session.conn, loc.exhibitionId, session.id);
         const publicVisitors = this.publicVisitorsOf(loc.exhibitionId);
         session.conn.send(loc.kind === 'editor'
             ? { t: 'presence', exhibitionId: loc.exhibitionId, members: this.presenceOf(loc.exhibitionId), publicVisitors }

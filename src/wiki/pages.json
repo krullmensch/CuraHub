@@ -1,6 +1,7 @@
 [
   { "id": "access-control", "title": "Benutzer & Rechte" },
   { "id": "project-management", "title": "Ausstellungen & Versionen" },
+  { "id": "collaboration", "title": "Zusammenarbeit" },
   { "id": "asset-management", "title": "Asset-Management" },
   { "id": "3d-scene", "title": "3D-Editor (Planer)" },
   { "id": "2d-wall-editor", "title": "2D-Wandeditor" },

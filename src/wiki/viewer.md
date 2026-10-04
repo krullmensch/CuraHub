@@ -16,5 +16,9 @@ Sobald ein Besucher ein Kunstwerk fokussiert und interagiert (Klick), öffnet si
 ## Bücher lesen
 Liegt ein Buch auf einem Sockel und ist es als **im öffentlichen Viewer lesbar** freigegeben, erscheint beim Näherkommen (etwa 2,5 m) der Hinweis **Klicken zum Lesen**. Ein Klick schlägt das Buch auf; geblättert wird mit der Maus oder den Pfeiltasten, **Esc** schließt es wieder.
 
+## Andere Besucher*innen
+
+Oben rechts steht, wie viele Personen gerade in der Ausstellung sind. Die anderen siehst du als bunte Schleim-Blobs im Raum, die dir beim Gehen nachziehen (siehe **Zusammenarbeit**).
+
 ## Qualität und Renderer
 Auf dem Startbildschirm des Rundgangs lassen sich **Qualität** und **Renderer** wählen. CuraHub nutzt WebGPU, wenn der Browser es unterstützt, sonst WebGL.

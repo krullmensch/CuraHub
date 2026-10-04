@@ -499,3 +499,50 @@ describe('LiveHub poses and drags', () => {
         expect(a.conn.last('error')?.code).toBe('bad_message');
     });
 });
+
+describe('LiveHub visitors (public viewer)', () => {
+    let hub: LiveHub;
+    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); });
+    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
+
+    async function visitor(session: string) {
+        const tab = await connect(hub, session);
+        await tab.handle.onMessage(json({ t: 'visit', slug: 'open' }));
+        return tab;
+    }
+    const pose = { t: 'pose', p: [2, 1.62, -1], yaw: 1, pitch: 0 };
+
+    it('shares visitors\' positions with the other visitors, anonymously', async () => {
+        const a = await visitor(SESSION_A);
+        const b = await visitor(SESSION_B);
+        const editorTab = await connect(hub, SESSION_V, 'user-1');
+        await editorTab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
+        await a.handle.onMessage(json(pose));
+        const seen = b.conn.last('pose');
+        expect(seen).toMatchObject({ p: [2, 1.62, -1], yaw: 1 });
+        expect(seen?.session).toMatch(/^[0-9a-f]{12}$/);
+        expect(seen?.session).not.toBe(SESSION_A);
+        expect(a.conn.sent.some((m) => m.t === 'pose')).toBe(false);
+        expect(editorTab.conn.sent.some((m) => m.t === 'pose')).toBe(false);
+    });
+
+    it('shows a newcomer where the others stand and says when someone leaves', async () => {
+        jest.useFakeTimers();
+        const a = await visitor(SESSION_A);
+        await a.handle.onMessage(json(pose));
+        const b = await visitor(SESSION_B);
+        const id = b.conn.last('pose')?.session;
+        expect(id).toBeDefined();
+        await a.handle.onMessage(json({ t: 'leave' }));
+        expect(b.conn.last('gone')).toEqual({ t: 'gone', session: id });
+
+        // A closed tab is gone once its grace period ends.
+        const c = await visitor('55555555-5555-4555-8555-555555555555');
+        jest.advanceTimersByTime(100);
+        await c.handle.onMessage(json(pose));
+        const cid = b.conn.last('pose')?.session;
+        c.handle.onClose();
+        jest.advanceTimersByTime(5000);
+        expect(b.conn.last('gone')).toEqual({ t: 'gone', session: cid });
+    });
+});
