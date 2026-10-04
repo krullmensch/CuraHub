@@ -4,6 +4,7 @@ import { Handle, Position } from '@xyflow/react';
 import type { NodeProps, Node } from '@xyflow/react';
 import { Globe, Star } from 'lucide-react';
 import type { VersionNodeData } from './buildVersionGraph';
+import { VersionPresence } from '../live/PresenceAvatars';
 
 export const VersionNode = memo(({ data }: NodeProps<Node<VersionNodeData>>) => {
   const { version, isActive, isOnActiveBranch, isLatestOnBranch, branchColor } = data;
@@ -61,6 +62,7 @@ export const VersionNode = memo(({ data }: NodeProps<Node<VersionNodeData>>) => 
             {version.branch_name}
           </span>
           <div className="ml-auto flex items-center gap-1">
+            <VersionPresence versionId={version.id} />
             {version.is_featured && <Star className="h-3 w-3 text-yellow-400 shrink-0" />}
             {version.is_published && !version.is_featured && <Globe className="h-3 w-3 text-green-400 shrink-0" />}
           </div>
