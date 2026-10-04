@@ -12,6 +12,8 @@ import { RenderQualityControl } from '../components/RenderQualityControl';
 import { ToolbarPopoverButton } from '../components/ToolbarPopoverButton';
 import { MeasurementsControl } from '../components/MeasurementsControl';
 import { SelectionOutlineSvg, SelectionOutlineTracker } from '../components/SelectionOutline';
+import { LiveSceneLayer } from '../components/live/LiveSceneLayer';
+import { RemoteSelectionSvg } from '../components/live/RemoteSelections';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { BookViewerHost } from '../components/book/BookViewerHost';
@@ -691,6 +693,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           <Scene />
           <ArtworkPlacement />
           <SelectionOutlineTracker />
+          <LiveSceneLayer />
           {viewMode === 'firstPerson' && (
             <Suspense fallback={null}>
               <PhysicsWorld mode="editor" />
@@ -701,6 +704,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       <SceneLoadingIndicator />
       {/* Outline of the selected artwork (projected by SelectionOutlineTracker) */}
       <SelectionOutlineSvg />
+      {/* Other people's selections (live collaboration) */}
+      <RemoteSelectionSvg />
       <BookViewerHost />
       
       {/* ⇧ + drag: selection marquee over the 3D view */}

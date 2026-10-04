@@ -1,18 +1,26 @@
+import { randomBytes } from 'crypto';
 import {
     CLOSE,
+    MAX_CLAIM_KEYS,
     colorForUser,
     nameForEmail,
     parseClientMessage,
+    type ClaimEntry,
+    type ClaimHolder,
+    type ClientMessage,
     type EditorMode,
+    type LiveChange,
+    type LiveTransform,
     type LiveUser,
     type PresenceMember,
     type ServerMessage,
+    type VersionEvent,
 } from './protocol';
 
 /**
- * In-memory state of the live channel: sessions (one per browser tab), where they are and who
- * sees whom. No sockets in here — `ws` lives in live/server.ts — so the whole protocol is testable
- * with plain objects and fake timers.
+ * In-memory state of the live channel: sessions (one per browser tab), where they are, who
+ * sees whom and who holds which object (claims). No sockets in here — `ws` lives in
+ * live/server.ts — so the whole protocol is testable with plain objects and fake timers.
  */
 
 export interface LiveConnection {
@@ -32,6 +40,8 @@ export interface HubDeps {
     canAccessExhibition(claims: TokenClaims, exhibitionId: number, versionId: number | null): Promise<boolean>;
     /** Exhibition id behind a public slug, only while one of its versions is published. */
     resolvePublicSlug(slug: string): Promise<number | null>;
+    /** The subset of claim keys whose objects belong to this version. */
+    keysInVersion(versionId: number, keys: string[]): Promise<Set<string>>;
 }
 
 export interface HubOptions {
@@ -52,7 +62,22 @@ interface Session {
     graceTimer: ReturnType<typeof setTimeout> | null;
     /** Bumped per location request so a slow access check can't overwrite a newer one. */
     locationSeq: number;
+    /** Claim keys this tab holds; always objects of its current version. */
+    claimKeys: Set<string>;
+    /** Last camera pose, for tabs entering the version later. */
+    pose: { p: [number, number, number]; yaw: number; pitch: number } | null;
+    /** Time of the last relayed pose / drag (rate limit). */
+    lastPoseAt: number;
+    lastDragAt: number;
+    /**
+     * What other visitors of the public viewer know this tab by: random, never the session id
+     * (which is this tab's identity for claims) and never a name.
+     */
+    visitorId: string;
 }
+
+/** Poses and drags faster than this are dropped (clients send ≤ 15 per second). */
+const MIN_RELAY_INTERVAL_MS = 40;
 
 export interface ConnectionHandle {
     onMessage(raw: string): Promise<void>;
@@ -64,6 +89,10 @@ const DEFAULT_GRACE_MS = 10_000;
 
 export class LiveHub {
     private readonly sessions = new Map<string, Session>();
+    /** Claim key → session id. Keys are database ids, unique across versions. */
+    private readonly claimOwners = new Map<string, string>();
+    /** Number of the last change per version, so a tab can tell it missed one. */
+    private readonly versionSeq = new Map<number, number>();
     private readonly helloTimeoutMs: number;
     private readonly graceMs: number;
     private disposed = false;
@@ -84,43 +113,58 @@ export class LiveHub {
             if (!ready && !closed) conn.close(CLOSE.helloTimeout, 'hello expected');
         }, this.helloTimeoutMs);
 
-        return {
-            onMessage: async (raw) => {
-                if (closed) return;
-                const msg = parseClientMessage(raw);
-                if (!msg) {
-                    conn.send({ t: 'error', code: 'bad_message', message: 'Ungültige Nachricht' });
-                    return;
-                }
-                if (!ready) {
-                    if (msg.t !== 'hello') {
-                        clearTimeout(helloTimer);
-                        conn.close(CLOSE.badMessage, 'hello expected');
-                        return;
-                    }
+        // Messages of one socket are handled one after the other: a `claim` sent right behind a
+        // `where` must see the location that `where` sets after its database check.
+        let queue: Promise<void> = Promise.resolve();
+        const handleMessage = async (raw: string) => {
+            if (closed) return;
+            const msg = parseClientMessage(raw);
+            if (!msg) {
+                conn.send({ t: 'error', code: 'bad_message', message: 'Ungültige Nachricht' });
+                return;
+            }
+            if (!ready) {
+                if (msg.t !== 'hello') {
                     clearTimeout(helloTimer);
-                    ready = this.hello(conn, msg.session, msg.token).then((s) => {
-                        session = s;
-                        // The socket may have closed while the user was loaded.
-                        if (s && closed) this.detach(s, conn);
-                        return s;
-                    });
-                    await ready;
+                    conn.close(CLOSE.badMessage, 'hello expected');
                     return;
                 }
-                const current = await ready;
-                if (!current || closed || current.conn !== conn) return; // refused, or replaced by a newer socket of the same tab
-                switch (msg.t) {
-                    case 'hello':
-                        return;
-                    case 'where':
-                        return this.where(current, msg.exhibitionId, msg.versionId, msg.mode);
-                    case 'visit':
-                        return this.visit(current, msg.slug);
-                    case 'leave':
-                        current.locationSeq++;
-                        return this.moveTo(current, null);
-                }
+                clearTimeout(helloTimer);
+                ready = this.hello(conn, msg.session, msg.token).then((s) => {
+                    session = s;
+                    // The socket may have closed while the user was loaded.
+                    if (s && closed) this.detach(s, conn);
+                    return s;
+                });
+                await ready;
+                return;
+            }
+            const current = await ready;
+            if (!current || closed || current.conn !== conn) return; // refused, or replaced by a newer socket of the same tab
+            switch (msg.t) {
+                case 'hello':
+                    return;
+                case 'where':
+                    return this.where(current, msg.exhibitionId, msg.versionId, msg.mode);
+                case 'visit':
+                    return this.visit(current, msg.slug);
+                case 'leave':
+                    current.locationSeq++;
+                    return this.moveTo(current, null);
+                case 'claim':
+                    return this.claim(current, msg);
+                case 'pose':
+                    return this.pose(current, msg.p, msg.yaw, msg.pitch);
+                case 'drag':
+                    return this.drag(current, msg.transforms);
+            }
+        };
+
+        return {
+            onMessage: (raw) => {
+                const run = queue.then(() => handleMessage(raw));
+                queue = run.catch(() => undefined);
+                return run;
             },
             onClose: () => {
                 closed = true;
@@ -156,6 +200,50 @@ export class LiveHub {
         return count;
     }
 
+    /** Who holds this key, if anyone (REST guard, tests). */
+    holderOf(key: string): ClaimHolder | null {
+        const owner = this.claimOwners.get(key);
+        const session = owner ? this.sessions.get(owner) : undefined;
+        return session ? holderOfSession(session) : null;
+    }
+
+    /** All claims held in a version. */
+    claimsOf(versionId: number): ClaimEntry[] {
+        const entries: ClaimEntry[] = [];
+        for (const [key, owner] of this.claimOwners) {
+            const session = this.sessions.get(owner);
+            if (session && versionOf(session) === versionId) entries.push({ key, ...holderOfSession(session) });
+        }
+        return entries;
+    }
+
+    /** True while any tab is in this version — routes skip building change payloads otherwise. */
+    hasVersionListeners(versionId: number): boolean {
+        for (const s of this.sessions.values()) {
+            if (s.conn && versionOf(s) === versionId) return true;
+        }
+        return false;
+    }
+
+    /** Tells every tab in a version (including the one that made it) about a saved change. */
+    publishChange(versionId: number, by: string | null, change: LiveChange): void {
+        const seq = (this.versionSeq.get(versionId) ?? 0) + 1;
+        this.versionSeq.set(versionId, seq);
+        const msg = { t: 'changed', versionId, seq, by, ...change } as ServerMessage;
+        for (const s of this.sessions.values()) {
+            if (s.conn && versionOf(s) === versionId) s.conn.send(msg);
+        }
+    }
+
+    /** Tells the editors of an exhibition that its versions changed. */
+    publishVersionEvent(exhibitionId: number, by: string | null, event: VersionEvent, versionId: number, fallbackVersionId: number | null = null): void {
+        if (event === 'deleted') this.versionSeq.delete(versionId);
+        const msg: ServerMessage = { t: 'versions', exhibitionId, event, versionId, fallbackVersionId, by };
+        for (const s of this.sessions.values()) {
+            if (s.conn && s.location?.kind === 'editor' && s.location.exhibitionId === exhibitionId) s.conn.send(msg);
+        }
+    }
+
     get sessionCount(): number {
         return this.sessions.size;
     }
@@ -167,6 +255,7 @@ export class LiveHub {
             if (s.graceTimer) clearTimeout(s.graceTimer);
         }
         this.sessions.clear();
+        this.claimOwners.clear();
     }
 
     private async hello(conn: LiveConnection, sessionId: string, token: string | undefined): Promise<Session | null> {
@@ -202,11 +291,16 @@ export class LiveHub {
             session.conn = conn;
             session.claims = claims;
         } else {
-            session = { id: sessionId, user, claims, conn, location: null, graceTimer: null, locationSeq: 0 };
+            session = {
+                id: sessionId, user, claims, conn, location: null, graceTimer: null, locationSeq: 0,
+                claimKeys: new Set(), pose: null, lastPoseAt: 0, lastDragAt: 0,
+                visitorId: randomBytes(6).toString('hex'),
+            };
             this.sessions.set(sessionId, session);
         }
         conn.send({ t: 'welcome', session: sessionId, user });
-        // Resumed within the grace period: the others still list this tab; send it the current view.
+        // Resumed within the grace period: the others still list this tab and its claims are
+        // kept; send it the current view.
         if (session.location) this.sendLocationState(session);
         return session;
     }
@@ -245,7 +339,25 @@ export class LiveHub {
 
     private moveTo(session: Session, next: Location | null) {
         const prev = session.location;
+        const prevVersion = versionOf(session);
         session.location = next;
+        const nextVersion = versionOf(session);
+        const prevPublic = prev?.kind === 'public' ? prev.exhibitionId : null;
+        const nextPublic = next?.kind === 'public' ? next.exhibitionId : null;
+        if (prevPublic !== nextPublic) {
+            session.pose = null;
+            if (prevPublic !== null) this.sendToVisitors(prevPublic, { t: 'gone', session: session.visitorId }, session.id);
+            if (nextPublic !== null && session.conn) this.sendVisitorPoses(session.conn, nextPublic, session.id);
+        }
+        if (prevVersion !== nextVersion) {
+            session.pose = null; // a camera pose belongs to the scene it was taken in
+            // Claims belong to the version: whoever leaves it lets go.
+            if (session.claimKeys.size > 0) {
+                this.releaseAll(session);
+                if (prevVersion !== null) this.broadcastClaims(prevVersion);
+            }
+            if (nextVersion !== null && session.conn) this.sendVersionState(session.conn, nextVersion);
+        }
         const touched = new Set<number>();
         if (prev) touched.add(prev.exhibitionId);
         if (next) touched.add(next.exhibitionId);
@@ -263,7 +375,13 @@ export class LiveHub {
         session.graceTimer = setTimeout(() => {
             session.graceTimer = null;
             if (session.conn) return;
+            const version = versionOf(session);
+            this.releaseAll(session);
             this.sessions.delete(session.id);
+            if (version !== null) this.broadcastClaims(version);
+            if (session.location?.kind === 'public') {
+                this.sendToVisitors(session.location.exhibitionId, { t: 'gone', session: session.visitorId }, session.id);
+            }
             if (session.location) {
                 const exhibitionId = session.location.exhibitionId;
                 session.location = null;
@@ -283,12 +401,158 @@ export class LiveHub {
         }
     }
 
+    private async claim(session: Session, msg: Extract<ClientMessage, { t: 'claim' }>) {
+        const conn = session.conn;
+        const versionId = versionOf(session);
+        const total = msg.groups.reduce((n, g) => n + g.length, 0);
+        if (versionId === null || !session.user || total > MAX_CLAIM_KEYS) {
+            conn?.send({ t: 'error', code: 'claim_refused', message: 'Sperren nur innerhalb einer Version möglich' });
+            return;
+        }
+
+        // Only objects of this version can be claimed; checked once per newly requested key.
+        const fresh = [...new Set(msg.groups.flat())].filter((k) => !session.claimKeys.has(k));
+        const valid = fresh.length > 0 ? await this.deps.keysInVersion(versionId, fresh) : new Set<string>();
+        if (versionOf(session) !== versionId || !this.sessions.has(session.id)) return;
+
+        const wanted = new Set<string>();
+        const denied = new Map<string, ClaimHolder>();
+        for (const group of msg.groups) {
+            let ok = true;
+            for (const key of group) {
+                if (session.claimKeys.has(key)) continue;
+                const owner = this.claimOwners.get(key);
+                const holder = owner && owner !== session.id ? this.sessions.get(owner) : undefined;
+                if (holder) {
+                    denied.set(key, holderOfSession(holder));
+                    ok = false;
+                } else if (!valid.has(key)) {
+                    ok = false;
+                }
+            }
+            // A refused group still keeps what this tab already held in it — a wall stays claimed
+            // when an artwork that someone else holds is hung on it later.
+            for (const key of group) {
+                if (ok || session.claimKeys.has(key)) wanted.add(key);
+            }
+        }
+
+        let changed = false;
+        for (const key of session.claimKeys) {
+            if (!wanted.has(key)) {
+                this.claimOwners.delete(key);
+                changed = true;
+            }
+        }
+        for (const key of wanted) {
+            if (!session.claimKeys.has(key)) changed = true;
+            this.claimOwners.set(key, session.id);
+        }
+        session.claimKeys = wanted;
+
+        conn?.send({
+            t: 'claimed',
+            seq: msg.seq,
+            granted: [...wanted],
+            denied: [...denied].map(([key, holder]) => ({ key, holder })),
+        });
+        if (changed) this.broadcastClaims(versionId);
+    }
+
+    /** What a tab entering (or resuming in) a version needs first: change counter and claims. */
+    private sendVersionState(conn: LiveConnection, versionId: number) {
+        conn.send({ t: 'version', versionId, seq: this.versionSeq.get(versionId) ?? 0 });
+        conn.send({ t: 'claims', versionId, entries: this.claimsOf(versionId) });
+        // Where the others' cameras are, so their avatars show up at once.
+        for (const s of this.sessions.values()) {
+            if (s.pose && s.conn !== conn && versionOf(s) === versionId) {
+                conn.send({ t: 'pose', session: s.id, ...s.pose });
+            }
+        }
+    }
+
+    private pose(session: Session, p: [number, number, number], yaw: number, pitch: number) {
+        const now = Date.now();
+        if (now - session.lastPoseAt < MIN_RELAY_INTERVAL_MS) return;
+        const loc = session.location;
+        const versionId = versionOf(session);
+        if (loc?.kind === 'public') {
+            // Visitors see each other anonymously (blobs), only within the same exhibition.
+            session.lastPoseAt = now;
+            session.pose = { p, yaw, pitch };
+            this.sendToVisitors(loc.exhibitionId, { t: 'pose', session: session.visitorId, p, yaw, pitch }, session.id);
+            return;
+        }
+        if (versionId === null || !session.user) return;
+        session.lastPoseAt = now;
+        session.pose = { p, yaw, pitch };
+        this.sendToVersion(versionId, { t: 'pose', session: session.id, p, yaw, pitch }, session.id);
+    }
+
+    private sendToVisitors(exhibitionId: number, msg: ServerMessage, exceptSession: string | null) {
+        for (const s of this.sessions.values()) {
+            if (s.conn && s.id !== exceptSession && s.location?.kind === 'public' && s.location.exhibitionId === exhibitionId) s.conn.send(msg);
+        }
+    }
+
+    /** Where the other visitors are, for a visitor arriving (or resuming). */
+    private sendVisitorPoses(conn: LiveConnection, exhibitionId: number, selfId: string) {
+        for (const s of this.sessions.values()) {
+            if (s.id !== selfId && s.pose && s.location?.kind === 'public' && s.location.exhibitionId === exhibitionId) {
+                conn.send({ t: 'pose', session: s.visitorId, ...s.pose });
+            }
+        }
+    }
+
+    private drag(session: Session, transforms: LiveTransform[]) {
+        const versionId = versionOf(session);
+        const now = Date.now();
+        if (versionId === null || now - session.lastDragAt < MIN_RELAY_INTERVAL_MS) return;
+        session.lastDragAt = now;
+        // Only objects this tab holds can be shown moving.
+        const own = transforms.filter((t) => this.claimOwners.get(t.k) === session.id);
+        this.sendToVersion(versionId, { t: 'drag', session: session.id, transforms: own }, session.id);
+    }
+
+    private sendToVersion(versionId: number, msg: ServerMessage, exceptSession: string | null) {
+        for (const s of this.sessions.values()) {
+            if (s.conn && s.id !== exceptSession && versionOf(s) === versionId) s.conn.send(msg);
+        }
+    }
+
+    private releaseAll(session: Session) {
+        for (const key of session.claimKeys) {
+            if (this.claimOwners.get(key) === session.id) this.claimOwners.delete(key);
+        }
+        session.claimKeys = new Set();
+    }
+
+    private broadcastClaims(versionId: number) {
+        const msg: ServerMessage = { t: 'claims', versionId, entries: this.claimsOf(versionId) };
+        for (const s of this.sessions.values()) {
+            if (s.conn && versionOf(s) === versionId) s.conn.send(msg);
+        }
+    }
+
     private sendLocationState(session: Session) {
         const loc = session.location;
         if (!loc || !session.conn) return;
+        const version = versionOf(session);
+        if (version !== null) this.sendVersionState(session.conn, version);
+        if (loc.kind === 'public') this.sendVisitorPoses(session.conn, loc.exhibitionId, session.id);
         const publicVisitors = this.publicVisitorsOf(loc.exhibitionId);
         session.conn.send(loc.kind === 'editor'
             ? { t: 'presence', exhibitionId: loc.exhibitionId, members: this.presenceOf(loc.exhibitionId), publicVisitors }
             : { t: 'visitors', count: publicVisitors });
     }
+}
+
+function versionOf(session: Session): number | null {
+    const loc = session.location;
+    return loc?.kind === 'editor' ? loc.versionId : null;
+}
+
+function holderOfSession(session: Session): ClaimHolder {
+    const user = session.user;
+    return { session: session.id, userId: user?.id ?? 0, name: user?.name ?? '', color: user?.color ?? '#888888' };
 }

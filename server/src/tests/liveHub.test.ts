@@ -15,6 +15,13 @@ const deps: HubDeps = {
     canAccessExhibition: async (claims, exhibitionId, versionId) =>
         exhibitionId === 10 && claims.userId !== 3 && (versionId === null || versionId === 100 || versionId === 101),
     resolvePublicSlug: async (slug) => (slug === 'open' ? 10 : null),
+    // Version 100 has instances 1–9, wall 5 and figure 2; version 101 has instance 50.
+    keysInVersion: async (versionId, keys) => new Set(keys.filter((k) => {
+        const [kind, raw] = k.split(':');
+        const id = Number(raw);
+        if (versionId === 100) return (kind === 'instance' && id < 10) || k === 'wall:5' || k === 'figure:2';
+        return versionId === 101 && k === 'instance:50';
+    })),
 };
 
 class FakeConn implements LiveConnection {
@@ -196,7 +203,7 @@ describe('LiveHub', () => {
         expect(anon.conn.closed?.code).toBe(CLOSE.sessionTaken);
     });
 
-    it('applies only the newest of two overlapping location requests', async () => {
+    it('handles a socket\'s messages in order, so the newest location wins', async () => {
         let release: (ok: boolean) => void = () => {};
         const slowDeps: HubDeps = {
             ...deps,
@@ -206,9 +213,10 @@ describe('LiveHub', () => {
         const slowHub = new LiveHub(slowDeps);
         const a = await connect(slowHub, SESSION_A, 'user-1');
         const first = a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
-        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
+        const second = a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
+        await new Promise((resolve) => setImmediate(resolve)); // first check is waiting now
         release(true);
-        await first;
+        await Promise.all([first, second]);
         expect(slowHub.presenceOf(10).map((m) => m.versionId)).toEqual([101]);
         slowHub.dispose();
     });
@@ -240,5 +248,301 @@ describe('live origin + path', () => {
         expect(isLivePath('/live?x=1')).toBe(true);
         expect(isLivePath('/api/live/x')).toBe(false);
         expect(isLivePath(undefined)).toBe(false);
+    });
+});
+
+describe('LiveHub claims', () => {
+    let hub: LiveHub;
+    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); });
+    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
+
+    async function editor(session: string, user: number, versionId = 100) {
+        const tab = await connect(hub, session, `user-${user}`);
+        await tab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId, mode: 'orbit' }));
+        return tab;
+    }
+    const claim = (tab: { handle: { onMessage(raw: string): Promise<void> } }, seq: number, groups: string[][]) =>
+        tab.handle.onMessage(json({ t: 'claim', seq, groups }));
+
+    it('grants free keys, refuses held ones and tells the version', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await claim(a, 1, [['instance:1'], ['instance:2']]);
+        expect(a.conn.last('claimed')).toEqual({ t: 'claimed', seq: 1, granted: ['instance:1', 'instance:2'], denied: [] });
+        expect(b.conn.last('claims')?.entries.map((e) => [e.key, e.name])).toEqual([['instance:1', 'anna'], ['instance:2', 'anna']]);
+
+        await claim(b, 7, [['instance:2'], ['instance:3']]);
+        const answer = b.conn.last('claimed');
+        expect(answer?.seq).toBe(7);
+        expect(answer?.granted).toEqual(['instance:3']);
+        expect(answer?.denied).toEqual([{ key: 'instance:2', holder: { session: SESSION_A, userId: 1, name: 'anna', color: colorForUser(1) } }]);
+        expect(hub.holderOf('instance:2')?.session).toBe(SESSION_A);
+        expect(hub.holderOf('instance:3')?.session).toBe(SESSION_B);
+    });
+
+    it('treats a claim as the full set: keys left out are released', async () => {
+        const a = await editor(SESSION_A, 1);
+        await claim(a, 1, [['instance:1'], ['instance:2']]);
+        await claim(a, 2, [['instance:2']]);
+        expect(hub.holderOf('instance:1')).toBeNull();
+        await claim(a, 3, []);
+        expect(hub.claimsOf(100)).toEqual([]);
+        expect(a.conn.last('claims')?.entries).toEqual([]);
+    });
+
+    it('grants a group all or nothing', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await claim(a, 1, [['instance:4']]);
+        await claim(b, 1, [['wall:5', 'instance:3', 'instance:4']]);
+        expect(b.conn.last('claimed')?.granted).toEqual([]);
+        expect(hub.holderOf('wall:5')).toBeNull();
+        expect(hub.holderOf('instance:3')).toBeNull();
+    });
+
+    it('keeps what a refused group already held', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await claim(b, 1, [['wall:5', 'instance:3']]);
+        await claim(a, 1, [['instance:4']]);
+        // Instance 4 was hung on wall 5 meanwhile: b keeps the wall, a keeps the instance.
+        await claim(b, 2, [['wall:5', 'instance:3', 'instance:4']]);
+        expect(b.conn.last('claimed')?.granted.sort()).toEqual(['instance:3', 'wall:5']);
+        expect(hub.holderOf('instance:4')?.session).toBe(SESSION_A);
+    });
+
+    it('only claims objects of the own version', async () => {
+        const a = await editor(SESSION_A, 1);
+        await claim(a, 1, [['instance:50'], ['figure:2'], ['instance:9999']]);
+        expect(a.conn.last('claimed')?.granted).toEqual(['figure:2']);
+    });
+
+    it('refuses claims outside a version, from visitors, and oversized sets', async () => {
+        const v = await connect(hub, SESSION_V);
+        await v.handle.onMessage(json({ t: 'visit', slug: 'open' }));
+        await claim(v, 1, [['instance:1']]);
+        expect(v.conn.last('error')?.code).toBe('claim_refused');
+
+        const a = await connect(hub, SESSION_A, 'user-1');
+        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: null, mode: 'orbit' }));
+        await claim(a, 1, [['instance:1']]);
+        expect(a.conn.last('error')?.code).toBe('claim_refused');
+
+        const b = await editor(SESSION_B, 2);
+        const huge = Array.from({ length: 1001 }, (_, i) => [`instance:${i + 1}`, `instance:${i + 5000}`]);
+        await claim(b, 1, huge);
+        expect(b.conn.last('error')?.code).toBe('claim_refused');
+        expect(hub.claimsOf(100)).toEqual([]);
+    });
+
+    it('rejects malformed keys', async () => {
+        const a = await editor(SESSION_A, 1);
+        await claim(a, 1, [['instance:-1']]);
+        await claim(a, 2, [['zone:1']]);
+        expect(a.conn.sent.filter((m) => m.t === 'error').map((m) => m.t === 'error' && m.code)).toEqual(['bad_message', 'bad_message']);
+    });
+
+    it('handles a claim sent right behind its where', async () => {
+        const a = await connect(hub, SESSION_A, 'user-1');
+        const where = a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
+        const claimed = claim(a, 1, [['instance:1']]);
+        await Promise.all([where, claimed]);
+        expect(a.conn.last('claimed')?.granted).toEqual(['instance:1']);
+    });
+
+    it('releases on version switch and leave, and shows a newcomer the version\'s claims', async () => {
+        const a = await editor(SESSION_A, 1);
+        await claim(a, 1, [['instance:1']]);
+        const b = await editor(SESSION_B, 2);
+        expect(b.conn.last('claims')?.entries.map((e) => e.key)).toEqual(['instance:1']);
+
+        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
+        expect(hub.holderOf('instance:1')).toBeNull();
+        expect(b.conn.last('claims')?.entries).toEqual([]);
+
+        await claim(b, 1, [['instance:2']]);
+        await b.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'firstPerson' }));
+        expect(hub.holderOf('instance:2')?.session).toBe(SESSION_B); // mode change keeps claims
+        await b.handle.onMessage(json({ t: 'leave' }));
+        expect(hub.holderOf('instance:2')).toBeNull();
+    });
+
+    it('keeps claims through a reconnect and drops them after the grace period', async () => {
+        jest.useFakeTimers();
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await claim(b, 1, [['instance:1']]);
+        b.handle.onClose();
+        jest.advanceTimersByTime(4000);
+        expect(hub.holderOf('instance:1')?.session).toBe(SESSION_B);
+
+        const again = await connect(hub, SESSION_B, 'user-2');
+        expect(again.conn.last('claims')?.entries.map((e) => e.key)).toEqual(['instance:1']);
+        again.handle.onClose();
+        jest.advanceTimersByTime(5000);
+        expect(hub.holderOf('instance:1')).toBeNull();
+        expect(a.conn.last('claims')?.entries).toEqual([]);
+    });
+
+    it('lets the same person\'s other tab be refused like anyone else', async () => {
+        const first = await editor(SESSION_A, 1);
+        const second = await editor(SESSION_B, 1);
+        await claim(first, 1, [['instance:1']]);
+        await claim(second, 1, [['instance:1']]);
+        expect(second.conn.last('claimed')?.denied[0].holder.session).toBe(SESSION_A);
+    });
+});
+
+describe('LiveHub changes', () => {
+    let hub: LiveHub;
+    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); });
+    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
+
+    async function editor(session: string, user: number, versionId: number | null = 100) {
+        const tab = await connect(hub, session, `user-${user}`);
+        await tab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId, mode: 'orbit' }));
+        return tab;
+    }
+
+    it('numbers changes per version and sends them to every tab in it', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2, 101);
+        expect(a.conn.last('version')).toEqual({ t: 'version', versionId: 100, seq: 0 });
+        expect(hub.hasVersionListeners(100)).toBe(true);
+        expect(hub.hasVersionListeners(102)).toBe(false);
+
+        hub.publishChange(100, SESSION_A, { kind: 'instance', op: 'upsert', data: { id: 1, position_x: 2 } });
+        hub.publishChange(100, null, { kind: 'wall', op: 'delete', data: { id: 5 } });
+        hub.publishChange(101, null, { kind: 'figure', op: 'delete', data: { id: 9 } });
+        const changes = a.conn.sent.filter((m) => m.t === 'changed');
+        expect(changes).toEqual([
+            { t: 'changed', versionId: 100, seq: 1, by: SESSION_A, kind: 'instance', op: 'upsert', data: { id: 1, position_x: 2 } },
+            { t: 'changed', versionId: 100, seq: 2, by: null, kind: 'wall', op: 'delete', data: { id: 5 } },
+        ]);
+        expect(b.conn.last('changed')).toMatchObject({ versionId: 101, seq: 1 });
+    });
+
+    it('tells a tab entering or resuming a version the current number', async () => {
+        hub.publishChange(100, null, { kind: 'wallLayout', op: 'upsert', data: { hangingHeight: 1.5, guides: {} } });
+        const a = await editor(SESSION_A, 1);
+        expect(a.conn.last('version')?.seq).toBe(1);
+        a.handle.onClose();
+        hub.publishChange(100, null, { kind: 'instance', op: 'delete', data: { id: 3 } });
+        const again = await connect(hub, SESSION_A, 'user-1');
+        expect(again.conn.last('version')).toEqual({ t: 'version', versionId: 100, seq: 2 });
+    });
+
+    it('sends version events to the exhibition\'s editors only', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2, null);
+        const v = await connect(hub, SESSION_V);
+        await v.handle.onMessage(json({ t: 'visit', slug: 'open' }));
+        hub.publishVersionEvent(10, SESSION_B, 'deleted', 100, 99);
+        const event = { t: 'versions', exhibitionId: 10, event: 'deleted', versionId: 100, fallbackVersionId: 99, by: SESSION_B };
+        expect(a.conn.last('versions')).toEqual(event);
+        expect(b.conn.last('versions')).toEqual(event);
+        expect(v.conn.sent.some((m) => m.t === 'versions')).toBe(false);
+    });
+});
+
+describe('LiveHub poses and drags', () => {
+    let hub: LiveHub;
+    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); jest.useFakeTimers({ now: 1_000_000, doNotFake: ['queueMicrotask', 'nextTick', 'setImmediate'] }); });
+    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
+
+    async function editor(session: string, user: number, versionId: number | null = 100) {
+        const tab = await connect(hub, session, `user-${user}`);
+        await tab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId, mode: 'orbit' }));
+        return tab;
+    }
+    const pose = { t: 'pose', p: [1, 1.6, -2], yaw: 0.5, pitch: -0.1 };
+
+    it('relays poses to the other tabs of the version and drops floods', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        const elsewhere = await editor(SESSION_V, 3, 101);
+        await a.handle.onMessage(json(pose));
+        await a.handle.onMessage(json({ ...pose, yaw: 1 })); // < 40 ms later: dropped
+        expect(b.conn.sent.filter((m) => m.t === 'pose')).toEqual([{ t: 'pose', session: SESSION_A, p: [1, 1.6, -2], yaw: 0.5, pitch: -0.1 }]);
+        expect(a.conn.sent.some((m) => m.t === 'pose')).toBe(false);
+        expect(elsewhere.conn.sent.some((m) => m.t === 'pose')).toBe(false);
+        jest.advanceTimersByTime(50);
+        await a.handle.onMessage(json({ ...pose, yaw: 1 }));
+        expect(b.conn.last('pose')?.yaw).toBe(1);
+    });
+
+    it('tells a tab entering the version where the others are', async () => {
+        const a = await editor(SESSION_A, 1);
+        await a.handle.onMessage(json(pose));
+        const b = await editor(SESSION_B, 2);
+        expect(b.conn.last('pose')).toMatchObject({ session: SESSION_A, yaw: 0.5 });
+        // A pose belongs to its version: after a switch it is forgotten.
+        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
+        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
+        const c = await editor('44444444-4444-4444-8444-444444444444', 1);
+        expect(c.conn.sent.some((m) => m.t === 'pose' && m.session === SESSION_A)).toBe(false);
+    });
+
+    it('relays only drags of objects the tab holds', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await a.handle.onMessage(json({ t: 'claim', seq: 1, groups: [['instance:1']] }));
+        const t = (k: string) => ({ k, p: [0, 1, 2], q: [0, 0, 0, 1], s: [1, 1, 1] });
+        await a.handle.onMessage(json({ t: 'drag', transforms: [t('instance:1'), t('instance:2')] }));
+        expect(b.conn.last('drag')).toEqual({ t: 'drag', session: SESSION_A, transforms: [t('instance:1')] });
+        expect(a.conn.sent.some((m) => m.t === 'drag')).toBe(false);
+    });
+
+    it('rejects poses out of range and visitors\' poses in the editor', async () => {
+        const a = await editor(SESSION_A, 1);
+        await a.handle.onMessage(json({ ...pose, p: [1e9, 0, 0] }));
+        expect(a.conn.last('error')?.code).toBe('bad_message');
+    });
+});
+
+describe('LiveHub visitors (public viewer)', () => {
+    let hub: LiveHub;
+    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); });
+    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
+
+    async function visitor(session: string) {
+        const tab = await connect(hub, session);
+        await tab.handle.onMessage(json({ t: 'visit', slug: 'open' }));
+        return tab;
+    }
+    const pose = { t: 'pose', p: [2, 1.62, -1], yaw: 1, pitch: 0 };
+
+    it('shares visitors\' positions with the other visitors, anonymously', async () => {
+        const a = await visitor(SESSION_A);
+        const b = await visitor(SESSION_B);
+        const editorTab = await connect(hub, SESSION_V, 'user-1');
+        await editorTab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
+        await a.handle.onMessage(json(pose));
+        const seen = b.conn.last('pose');
+        expect(seen).toMatchObject({ p: [2, 1.62, -1], yaw: 1 });
+        expect(seen?.session).toMatch(/^[0-9a-f]{12}$/);
+        expect(seen?.session).not.toBe(SESSION_A);
+        expect(a.conn.sent.some((m) => m.t === 'pose')).toBe(false);
+        expect(editorTab.conn.sent.some((m) => m.t === 'pose')).toBe(false);
+    });
+
+    it('shows a newcomer where the others stand and says when someone leaves', async () => {
+        jest.useFakeTimers();
+        const a = await visitor(SESSION_A);
+        await a.handle.onMessage(json(pose));
+        const b = await visitor(SESSION_B);
+        const id = b.conn.last('pose')?.session;
+        expect(id).toBeDefined();
+        await a.handle.onMessage(json({ t: 'leave' }));
+        expect(b.conn.last('gone')).toEqual({ t: 'gone', session: id });
+
+        // A closed tab is gone once its grace period ends.
+        const c = await visitor('55555555-5555-4555-8555-555555555555');
+        jest.advanceTimersByTime(100);
+        await c.handle.onMessage(json(pose));
+        const cid = b.conn.last('pose')?.session;
+        c.handle.onClose();
+        jest.advanceTimersByTime(5000);
+        expect(b.conn.last('gone')).toEqual({ t: 'gone', session: cid });
     });
 });

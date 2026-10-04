@@ -1,9 +1,11 @@
 import { Router, type Request } from 'express';
-import { PrismaClient, type Prisma } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { ensureNotClaimed } from '../live/claimGuard';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
 import { dropWallGuides, parseWallGuides } from '../lib/wallGuides';
+import { publishChange } from '../live/broadcast';
 
 export const wallsRouter = Router();
 const prisma = new PrismaClient();
@@ -23,7 +25,15 @@ const createWallSchema = z.object({
     thickness: z.number().min(0.01).max(1).default(0.12),
     color: z.string().default('#ffffff'),
     isLocked: z.boolean().default(false),
+    /**
+     * One of the default walls every tab starts an empty version with. Created once per version
+     * and label: when two tabs save the defaults at the same time, the second gets the first's.
+     */
+    isDefault: z.boolean().optional(),
 });
+
+/** Serializable transactions that collided are retried this often. */
+const DEFAULT_WALL_ATTEMPTS = 4;
 
 const updateWallSchema = z.object({
     label: z.string().max(100).optional(),
@@ -83,31 +93,39 @@ wallsRouter.post('/', authenticate, idempotency, async (req: Request, res) => {
         });
         if (!version) return res.status(404).json({ error: 'Version not found' });
 
-        // Check wall count limit (max 20 per version)
-        const wallCount = await prisma.modularWall.count({ where: { versionId: data.versionId } });
-        if (wallCount >= 20) {
-            return res.status(400).json({ error: 'Maximum of 20 walls per version reached' });
+        const { isDefault, ...fields } = data;
+        const create = async (tx: Prisma.TransactionClient) => {
+            if (isDefault && fields.label) {
+                const existing = await tx.modularWall.findFirst({ where: { versionId: fields.versionId, label: fields.label } });
+                if (existing) return { wall: existing, created: false };
+            }
+            // Check wall count limit (max 20 per version)
+            const wallCount = await tx.modularWall.count({ where: { versionId: fields.versionId } });
+            if (wallCount >= 20) return null;
+            return { wall: await tx.modularWall.create({ data: fields }), created: true };
+        };
+
+        let result: Awaited<ReturnType<typeof create>> = null;
+        if (isDefault) {
+            // Two tabs saving the defaults at once: one transaction loses (P2034) and, retried,
+            // finds the other's wall.
+            for (let attempt = 1; ; attempt++) {
+                try {
+                    result = await prisma.$transaction(create, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+                    break;
+                } catch (err) {
+                    const conflict = err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2034';
+                    if (!conflict || attempt >= DEFAULT_WALL_ATTEMPTS) throw err;
+                }
+            }
+        } else {
+            result = await create(prisma);
         }
+        if (!result) return res.status(400).json({ error: 'Maximum of 20 walls per version reached' });
 
-        const wall = await prisma.modularWall.create({
-            data: {
-                versionId: data.versionId,
-                label: data.label,
-                position_x: data.position_x,
-                position_y: data.position_y,
-                position_z: data.position_z,
-                rotation_x: data.rotation_x,
-                rotation_y: data.rotation_y,
-                rotation_z: data.rotation_z,
-                width: data.width,
-                height: data.height,
-                thickness: data.thickness,
-                color: data.color,
-                isLocked: data.isLocked,
-            },
-        });
-
-        res.status(201).json(wall);
+        const { wall, created } = result;
+        res.status(created ? 201 : 200).json(wall);
+        if (created) publishChange(req, wall.versionId, { kind: 'wall', op: 'upsert', data: wall });
     } catch (e) {
         console.error('Failed to create wall:', e);
         if (e instanceof z.ZodError) {
@@ -134,6 +152,7 @@ wallsRouter.patch('/:id', authenticate, async (req: Request, res) => {
             }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });
+        if (!ensureNotClaimed(req, res, 'wall', wallId)) return;
 
         const wall = await prisma.modularWall.update({
             where: { id: wallId },
@@ -141,6 +160,7 @@ wallsRouter.patch('/:id', authenticate, async (req: Request, res) => {
         });
 
         res.json(wall);
+        publishChange(req, wall.versionId, { kind: 'wall', op: 'upsert', data: wall });
     } catch (e) {
         console.error('Failed to update wall:', e);
         if (e instanceof z.ZodError) {
@@ -165,6 +185,7 @@ wallsRouter.delete('/:id', authenticate, async (req: Request, res) => {
             }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });
+        if (!ensureNotClaimed(req, res, 'wall', wallId)) return;
 
         // Detach artworks: set wallId to null on any ArtworkInstances referencing this wall
         await prisma.artworkInstance.updateMany({
@@ -192,6 +213,8 @@ wallsRouter.delete('/:id', authenticate, async (req: Request, res) => {
         }
 
         res.json({ success: true, message: 'Wall deleted, artworks detached' });
+        // Receivers detach the wall's artworks and drop its guides themselves, as deleteWall does.
+        publishChange(req, existing.versionId, { kind: 'wall', op: 'delete', data: { id: wallId } });
     } catch (e) {
         console.error('Failed to delete wall:', e);
         res.status(500).json({ error: 'Failed to delete wall' });

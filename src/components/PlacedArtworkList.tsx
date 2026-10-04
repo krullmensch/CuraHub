@@ -6,6 +6,8 @@ import { useWallEditorView } from '../store/wallEditorViewStore';
 import { cn } from '@/lib/utils';
 import { displayArtworkTitle } from '@/lib/artworkTitle';
 import { groupPlacedArtworks, rangeSelection } from '@/lib/placedArtworkGroups';
+import { HolderBadge } from './live/PresenceAvatars';
+import { useHeldByOthers } from '../hooks/use-held-claims';
 
 const Thumbnail = ({ inst }: { inst: ArtworkInstanceData }) => {
     const asset = inst.artwork.asset;
@@ -36,6 +38,7 @@ export const PlacedArtworkList = () => {
     const toggleInstanceInSelection = useEditorStore((state) => state.toggleInstanceInSelection);
     const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set());
     const rowRefs = useRef(new Map<number, HTMLButtonElement>());
+    const held = useHeldByOthers();
 
     const groups = useMemo(() => groupPlacedArtworks(localInstances, localWalls, roomFaces), [localInstances, localWalls, roomFaces]);
     const byId = useMemo(() => new Map(localInstances.map((inst) => [inst.id, inst])), [localInstances]);
@@ -92,6 +95,7 @@ export const PlacedArtworkList = () => {
                             const inst = byId.get(id);
                             if (!inst) return null;
                             const selected = selectedIds.includes(id);
+                            const holder = held.get(`instance:${id}`);
                             return (
                                 <button
                                     key={id}
@@ -104,6 +108,7 @@ export const PlacedArtworkList = () => {
                                     className={cn(
                                         'w-full flex items-center gap-2 rounded-md px-2 py-1 text-left transition-colors',
                                         selected ? 'bg-blue-600/30 hover:bg-blue-600/40' : 'hover:bg-zinc-800',
+                                        holder && 'opacity-60',
                                     )}
                                 >
                                     <Thumbnail inst={inst} />
@@ -113,6 +118,7 @@ export const PlacedArtworkList = () => {
                                     )}>
                                         {displayArtworkTitle(inst.artwork?.title || '') || 'Ohne Titel'}
                                     </span>
+                                    {holder && <HolderBadge holder={holder} />}
                                 </button>
                             );
                         })}

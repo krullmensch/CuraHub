@@ -2,6 +2,7 @@ import { Router, type Request } from 'express';
 import { PrismaClient, type Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { authenticate, requireCurator, userCanAccessProject } from '../lib/middleware';
+import { hasLiveListeners, publishChange } from '../live/broadcast';
 
 export const artworksRouter = Router();
 const prisma = new PrismaClient();
@@ -137,6 +138,17 @@ export const artworkUpdateSchema = z.object({
     publicReadable: z.boolean().optional(),
 });
 
+/** Tells every version that shows this artwork about its new metadata. Runs after the response. */
+function announceArtwork(req: Request, artwork: { id: number } & Record<string, unknown>): void {
+    prisma.artworkInstance.findMany({ where: { artworkId: artwork.id }, distinct: ['versionId'], select: { versionId: true } })
+        .then((rows) => {
+            for (const { versionId } of rows) {
+                if (hasLiveListeners(versionId)) publishChange(req, versionId, { kind: 'artwork', op: 'upsert', data: artwork });
+            }
+        })
+        .catch((err) => console.error('[Live] Artwork broadcast failed:', err));
+}
+
 // Update Artwork — authenticated curators only; the linked asset's project must be
 // accessible to the user (SEC-02).
 artworksRouter.put('/:id', authenticate, requireCurator, async (req: Request, res) => {
@@ -184,6 +196,7 @@ artworksRouter.put('/:id', authenticate, requireCurator, async (req: Request, re
         });
 
         res.json(artwork);
+        announceArtwork(req, artwork);
     } catch (error) {
         console.error('Error updating artwork:', error);
         res.status(400).json({ error: 'Failed to update artwork' });

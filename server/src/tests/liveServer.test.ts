@@ -11,6 +11,7 @@ const deps: HubDeps = {
     loadUser: async (id) => ({ id, email: 'dora@hsbi.de' }),
     canAccessExhibition: async () => true,
     resolvePublicSlug: async () => 5,
+    keysInVersion: async (_versionId, keys) => new Set(keys),
 };
 
 let server: http.Server;
@@ -67,7 +68,9 @@ it('runs hello → where → presence over a real socket on both mount points', 
         ws.send(JSON.stringify({ t: 'hello', session: '44444444-4444-4444-8444-444444444444', token: 'ok' }));
         ws.send(JSON.stringify({ t: 'where', exhibitionId: 3, versionId: 9, mode: 'orbit' }));
         expect(await next()).toMatchObject({ t: 'welcome', user: { id: 7, name: 'dora' } });
-        expect(await next()).toMatchObject({ t: 'presence', exhibitionId: 3, members: [{ userId: 7, versionId: 9 }] });
+        let msg = await next();
+        while (msg.t !== 'presence') msg = await next();
+        expect(msg).toMatchObject({ exhibitionId: 3, members: [{ userId: 7, versionId: 9 }] });
         ws.close();
     }
 });
@@ -76,4 +79,26 @@ it('refuses other paths and an instance that is not set up', async () => {
     expect(await upgradeStatus('/socket')).toBe(404);
     setSetupState({ complete: false, publicUrl: null });
     expect(await upgradeStatus('/api/live')).toBe(503);
+});
+
+it('gives a claimed object to the first tab and tells the second who has it', async () => {
+    const a = await open('/api/live');
+    const b = await open('/api/live');
+    const until = async (tab: typeof a, t: ServerMessage['t']) => {
+        let msg = await tab.next();
+        while (msg.t !== t) msg = await tab.next();
+        return msg;
+    };
+    a.ws.send(JSON.stringify({ t: 'hello', session: '88888888-8888-4888-8888-888888888888', token: 'ok' }));
+    a.ws.send(JSON.stringify({ t: 'where', exhibitionId: 3, versionId: 9, mode: 'orbit' }));
+    a.ws.send(JSON.stringify({ t: 'claim', seq: 1, groups: [['instance:42']] }));
+    expect(await until(a, 'claimed')).toMatchObject({ seq: 1, granted: ['instance:42'], denied: [] });
+
+    b.ws.send(JSON.stringify({ t: 'hello', session: '99999999-9999-4999-8999-999999999999', token: 'ok' }));
+    b.ws.send(JSON.stringify({ t: 'where', exhibitionId: 3, versionId: 9, mode: 'orbit' }));
+    expect(await until(b, 'claims')).toMatchObject({ versionId: 9, entries: [{ key: 'instance:42', name: 'dora' }] });
+    b.ws.send(JSON.stringify({ t: 'claim', seq: 1, groups: [['instance:42']] }));
+    expect(await until(b, 'claimed')).toMatchObject({ granted: [], denied: [{ key: 'instance:42', holder: { session: '88888888-8888-4888-8888-888888888888' } }] });
+    a.ws.close();
+    b.ws.close();
 });

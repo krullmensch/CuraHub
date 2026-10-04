@@ -1,8 +1,10 @@
 import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { ensureNotClaimed } from '../live/claimGuard';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
+import { publishChange } from '../live/broadcast';
 
 export const scaleFiguresRouter = Router();
 const prisma = new PrismaClient();
@@ -75,6 +77,7 @@ scaleFiguresRouter.post('/', authenticate, idempotency, async (req: Request, res
 
         const figure = await prisma.scaleFigure.create({ data });
         res.status(201).json(figure);
+        publishChange(req, figure.versionId, { kind: 'figure', op: 'upsert', data: figure });
     } catch (e) {
         console.error('Failed to create scale figure:', e);
         if (e instanceof z.ZodError) {
@@ -92,9 +95,11 @@ scaleFiguresRouter.patch('/:id', authenticate, async (req: Request, res) => {
 
         const data = updateScaleFigureSchema.parse(req.body);
         if (!(await findAccessibleFigure(req, id))) return res.status(404).json({ error: 'Scale figure not found' });
+        if (!ensureNotClaimed(req, res, 'figure', id)) return;
 
         const figure = await prisma.scaleFigure.update({ where: { id }, data });
         res.json(figure);
+        publishChange(req, figure.versionId, { kind: 'figure', op: 'upsert', data: figure });
     } catch (e) {
         console.error('Failed to update scale figure:', e);
         if (e instanceof z.ZodError) {
@@ -110,10 +115,13 @@ scaleFiguresRouter.delete('/:id', authenticate, async (req: Request, res) => {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ error: 'Invalid scale figure ID' });
 
-        if (!(await findAccessibleFigure(req, id))) return res.status(404).json({ error: 'Scale figure not found' });
+        const existing = await findAccessibleFigure(req, id);
+        if (!existing) return res.status(404).json({ error: 'Scale figure not found' });
+        if (!ensureNotClaimed(req, res, 'figure', id)) return;
 
         await prisma.scaleFigure.delete({ where: { id } });
         res.json({ success: true });
+        publishChange(req, existing.versionId, { kind: 'figure', op: 'delete', data: { id } });
     } catch (e) {
         console.error('Failed to delete scale figure:', e);
         res.status(500).json({ error: 'Failed to delete scale figure' });

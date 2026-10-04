@@ -12,7 +12,20 @@ export type ClientMessage =
   | { t: 'hello'; session: string; token?: string }
   | { t: 'where'; exhibitionId: number; versionId: number | null; mode: EditorMode }
   | { t: 'visit'; slug: string }
-  | { t: 'leave' };
+  | { t: 'leave' }
+  | { t: 'claim'; seq: number; groups: string[][] }
+  | { t: 'pose'; p: Vec3; yaw: number; pitch: number }
+  | { t: 'drag'; transforms: LiveTransform[] };
+
+export type Vec3 = [number, number, number];
+
+/** An object's unsaved transform while its holder moves it (local position, quaternion, scale). */
+export interface LiveTransform {
+  k: string;
+  p: Vec3;
+  q: [number, number, number, number];
+  s: Vec3;
+}
 
 const liveUserSchema = z.object({ id: z.number(), name: z.string(), color: z.string() });
 
@@ -25,6 +38,9 @@ const presenceMemberSchema = z.object({
   mode: z.enum(EDITOR_MODES),
 });
 
+const claimHolderSchema = z.object({ session: z.string(), userId: z.number(), name: z.string(), color: z.string() });
+const claimEntrySchema = claimHolderSchema.extend({ key: z.string() });
+
 const serverMessageSchema = z.discriminatedUnion('t', [
   z.object({ t: z.literal('welcome'), session: z.string(), user: liveUserSchema.nullable() }),
   z.object({
@@ -34,12 +50,60 @@ const serverMessageSchema = z.discriminatedUnion('t', [
     publicVisitors: z.number(),
   }),
   z.object({ t: z.literal('visitors'), count: z.number() }),
+  z.object({
+    t: z.literal('claimed'),
+    seq: z.number(),
+    granted: z.array(z.string()),
+    denied: z.array(z.object({ key: z.string(), holder: claimHolderSchema })),
+  }),
+  z.object({ t: z.literal('claims'), versionId: z.number(), entries: z.array(claimEntrySchema) }),
+  z.object({ t: z.literal('version'), versionId: z.number(), seq: z.number() }),
+  z.object({
+    t: z.literal('changed'),
+    versionId: z.number(),
+    seq: z.number(),
+    by: z.string().nullable(),
+    kind: z.enum(['instance', 'wall', 'figure', 'artwork', 'wallLayout']),
+    op: z.enum(['upsert', 'delete']),
+    // Rows as the REST routes return them; checked per kind where they are applied.
+    data: z.record(z.string(), z.unknown()),
+  }),
+  z.object({
+    t: z.literal('versions'),
+    exhibitionId: z.number(),
+    event: z.enum(['created', 'deleted', 'published', 'featured']),
+    versionId: z.number(),
+    fallbackVersionId: z.number().nullable(),
+    by: z.string().nullable(),
+  }),
+  z.object({
+    t: z.literal('pose'),
+    session: z.string(),
+    p: z.tuple([z.number(), z.number(), z.number()]),
+    yaw: z.number(),
+    pitch: z.number(),
+  }),
+  z.object({
+    t: z.literal('drag'),
+    session: z.string(),
+    transforms: z.array(z.object({
+      k: z.string(),
+      p: z.tuple([z.number(), z.number(), z.number()]),
+      q: z.tuple([z.number(), z.number(), z.number(), z.number()]),
+      s: z.tuple([z.number(), z.number(), z.number()]),
+    })),
+  }),
+  z.object({ t: z.literal('gone'), session: z.string() }),
   z.object({ t: z.literal('error'), code: z.string(), message: z.string() }),
 ]);
 
 export type LiveUser = z.infer<typeof liveUserSchema>;
 export type PresenceMember = z.infer<typeof presenceMemberSchema>;
 export type ServerMessage = z.infer<typeof serverMessageSchema>;
+export type ClaimHolder = z.infer<typeof claimHolderSchema>;
+export type ClaimEntry = z.infer<typeof claimEntrySchema>;
+export type ChangedMessage = Extract<ServerMessage, { t: 'changed' }>;
+export type VersionsMessage = Extract<ServerMessage, { t: 'versions' }>;
 
 /** Close codes the server uses (see server/src/live/protocol.ts). */
 export const CLOSE = {

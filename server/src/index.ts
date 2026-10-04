@@ -32,6 +32,7 @@ import { createSetupRouter } from './routes/setup';
 import { createHealthRouter } from './routes/health';
 import { LiveHub } from './live/hub';
 import { attachLiveServer, prismaHubDeps } from './live/server';
+import { setLiveHub } from './live/registry';
 
 const app = express();
 const prisma = new PrismaClient();
@@ -233,7 +234,9 @@ async function start() {
         resumeBookJobs().catch((err) => console.error('[BookJobs] Resume failed:', err));
     });
     // Presence (and later claims and live changes) over WebSockets, see src/live/.
-    attachLiveServer(server, new LiveHub(prismaHubDeps(prisma)));
+    const liveHub = new LiveHub(prismaHubDeps(prisma));
+    setLiveHub(liveHub);
+    attachLiveServer(server, liveHub);
 }
 
 if (process.env.NODE_ENV !== 'test') {
