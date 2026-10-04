@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import { PrismaClient, type Prisma } from '@prisma/client';
+import { ensureNotClaimed } from '../live/claimGuard';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
@@ -134,6 +135,7 @@ wallsRouter.patch('/:id', authenticate, async (req: Request, res) => {
             }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });
+        if (!ensureNotClaimed(req, res, 'wall', wallId)) return;
 
         const wall = await prisma.modularWall.update({
             where: { id: wallId },
@@ -165,6 +167,7 @@ wallsRouter.delete('/:id', authenticate, async (req: Request, res) => {
             }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });
+        if (!ensureNotClaimed(req, res, 'wall', wallId)) return;
 
         // Detach artworks: set wallId to null on any ArtworkInstances referencing this wall
         await prisma.artworkInstance.updateMany({

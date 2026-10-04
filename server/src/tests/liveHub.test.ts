@@ -15,6 +15,13 @@ const deps: HubDeps = {
     canAccessExhibition: async (claims, exhibitionId, versionId) =>
         exhibitionId === 10 && claims.userId !== 3 && (versionId === null || versionId === 100 || versionId === 101),
     resolvePublicSlug: async (slug) => (slug === 'open' ? 10 : null),
+    // Version 100 has instances 1–9, wall 5 and figure 2; version 101 has instance 50.
+    keysInVersion: async (versionId, keys) => new Set(keys.filter((k) => {
+        const [kind, raw] = k.split(':');
+        const id = Number(raw);
+        if (versionId === 100) return (kind === 'instance' && id < 10) || k === 'wall:5' || k === 'figure:2';
+        return versionId === 101 && k === 'instance:50';
+    })),
 };
 
 class FakeConn implements LiveConnection {
@@ -196,7 +203,7 @@ describe('LiveHub', () => {
         expect(anon.conn.closed?.code).toBe(CLOSE.sessionTaken);
     });
 
-    it('applies only the newest of two overlapping location requests', async () => {
+    it('handles a socket\'s messages in order, so the newest location wins', async () => {
         let release: (ok: boolean) => void = () => {};
         const slowDeps: HubDeps = {
             ...deps,
@@ -206,9 +213,10 @@ describe('LiveHub', () => {
         const slowHub = new LiveHub(slowDeps);
         const a = await connect(slowHub, SESSION_A, 'user-1');
         const first = a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
-        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
+        const second = a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
+        await new Promise((resolve) => setImmediate(resolve)); // first check is waiting now
         release(true);
-        await first;
+        await Promise.all([first, second]);
         expect(slowHub.presenceOf(10).map((m) => m.versionId)).toEqual([101]);
         slowHub.dispose();
     });
@@ -240,5 +248,147 @@ describe('live origin + path', () => {
         expect(isLivePath('/live?x=1')).toBe(true);
         expect(isLivePath('/api/live/x')).toBe(false);
         expect(isLivePath(undefined)).toBe(false);
+    });
+});
+
+describe('LiveHub claims', () => {
+    let hub: LiveHub;
+    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); });
+    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
+
+    async function editor(session: string, user: number, versionId = 100) {
+        const tab = await connect(hub, session, `user-${user}`);
+        await tab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId, mode: 'orbit' }));
+        return tab;
+    }
+    const claim = (tab: { handle: { onMessage(raw: string): Promise<void> } }, seq: number, groups: string[][]) =>
+        tab.handle.onMessage(json({ t: 'claim', seq, groups }));
+
+    it('grants free keys, refuses held ones and tells the version', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await claim(a, 1, [['instance:1'], ['instance:2']]);
+        expect(a.conn.last('claimed')).toEqual({ t: 'claimed', seq: 1, granted: ['instance:1', 'instance:2'], denied: [] });
+        expect(b.conn.last('claims')?.entries.map((e) => [e.key, e.name])).toEqual([['instance:1', 'anna'], ['instance:2', 'anna']]);
+
+        await claim(b, 7, [['instance:2'], ['instance:3']]);
+        const answer = b.conn.last('claimed');
+        expect(answer?.seq).toBe(7);
+        expect(answer?.granted).toEqual(['instance:3']);
+        expect(answer?.denied).toEqual([{ key: 'instance:2', holder: { session: SESSION_A, userId: 1, name: 'anna', color: colorForUser(1) } }]);
+        expect(hub.holderOf('instance:2')?.session).toBe(SESSION_A);
+        expect(hub.holderOf('instance:3')?.session).toBe(SESSION_B);
+    });
+
+    it('treats a claim as the full set: keys left out are released', async () => {
+        const a = await editor(SESSION_A, 1);
+        await claim(a, 1, [['instance:1'], ['instance:2']]);
+        await claim(a, 2, [['instance:2']]);
+        expect(hub.holderOf('instance:1')).toBeNull();
+        await claim(a, 3, []);
+        expect(hub.claimsOf(100)).toEqual([]);
+        expect(a.conn.last('claims')?.entries).toEqual([]);
+    });
+
+    it('grants a group all or nothing', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await claim(a, 1, [['instance:4']]);
+        await claim(b, 1, [['wall:5', 'instance:3', 'instance:4']]);
+        expect(b.conn.last('claimed')?.granted).toEqual([]);
+        expect(hub.holderOf('wall:5')).toBeNull();
+        expect(hub.holderOf('instance:3')).toBeNull();
+    });
+
+    it('keeps what a refused group already held', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await claim(b, 1, [['wall:5', 'instance:3']]);
+        await claim(a, 1, [['instance:4']]);
+        // Instance 4 was hung on wall 5 meanwhile: b keeps the wall, a keeps the instance.
+        await claim(b, 2, [['wall:5', 'instance:3', 'instance:4']]);
+        expect(b.conn.last('claimed')?.granted.sort()).toEqual(['instance:3', 'wall:5']);
+        expect(hub.holderOf('instance:4')?.session).toBe(SESSION_A);
+    });
+
+    it('only claims objects of the own version', async () => {
+        const a = await editor(SESSION_A, 1);
+        await claim(a, 1, [['instance:50'], ['figure:2'], ['instance:9999']]);
+        expect(a.conn.last('claimed')?.granted).toEqual(['figure:2']);
+    });
+
+    it('refuses claims outside a version, from visitors, and oversized sets', async () => {
+        const v = await connect(hub, SESSION_V);
+        await v.handle.onMessage(json({ t: 'visit', slug: 'open' }));
+        await claim(v, 1, [['instance:1']]);
+        expect(v.conn.last('error')?.code).toBe('claim_refused');
+
+        const a = await connect(hub, SESSION_A, 'user-1');
+        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: null, mode: 'orbit' }));
+        await claim(a, 1, [['instance:1']]);
+        expect(a.conn.last('error')?.code).toBe('claim_refused');
+
+        const b = await editor(SESSION_B, 2);
+        const huge = Array.from({ length: 1001 }, (_, i) => [`instance:${i + 1}`, `instance:${i + 5000}`]);
+        await claim(b, 1, huge);
+        expect(b.conn.last('error')?.code).toBe('claim_refused');
+        expect(hub.claimsOf(100)).toEqual([]);
+    });
+
+    it('rejects malformed keys', async () => {
+        const a = await editor(SESSION_A, 1);
+        await claim(a, 1, [['instance:-1']]);
+        await claim(a, 2, [['zone:1']]);
+        expect(a.conn.sent.filter((m) => m.t === 'error').map((m) => m.t === 'error' && m.code)).toEqual(['bad_message', 'bad_message']);
+    });
+
+    it('handles a claim sent right behind its where', async () => {
+        const a = await connect(hub, SESSION_A, 'user-1');
+        const where = a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
+        const claimed = claim(a, 1, [['instance:1']]);
+        await Promise.all([where, claimed]);
+        expect(a.conn.last('claimed')?.granted).toEqual(['instance:1']);
+    });
+
+    it('releases on version switch and leave, and shows a newcomer the version\'s claims', async () => {
+        const a = await editor(SESSION_A, 1);
+        await claim(a, 1, [['instance:1']]);
+        const b = await editor(SESSION_B, 2);
+        expect(b.conn.last('claims')?.entries.map((e) => e.key)).toEqual(['instance:1']);
+
+        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
+        expect(hub.holderOf('instance:1')).toBeNull();
+        expect(b.conn.last('claims')?.entries).toEqual([]);
+
+        await claim(b, 1, [['instance:2']]);
+        await b.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'firstPerson' }));
+        expect(hub.holderOf('instance:2')?.session).toBe(SESSION_B); // mode change keeps claims
+        await b.handle.onMessage(json({ t: 'leave' }));
+        expect(hub.holderOf('instance:2')).toBeNull();
+    });
+
+    it('keeps claims through a reconnect and drops them after the grace period', async () => {
+        jest.useFakeTimers();
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await claim(b, 1, [['instance:1']]);
+        b.handle.onClose();
+        jest.advanceTimersByTime(4000);
+        expect(hub.holderOf('instance:1')?.session).toBe(SESSION_B);
+
+        const again = await connect(hub, SESSION_B, 'user-2');
+        expect(again.conn.last('claims')?.entries.map((e) => e.key)).toEqual(['instance:1']);
+        again.handle.onClose();
+        jest.advanceTimersByTime(5000);
+        expect(hub.holderOf('instance:1')).toBeNull();
+        expect(a.conn.last('claims')?.entries).toEqual([]);
+    });
+
+    it('lets the same person\'s other tab be refused like anyone else', async () => {
+        const first = await editor(SESSION_A, 1);
+        const second = await editor(SESSION_B, 1);
+        await claim(first, 1, [['instance:1']]);
+        await claim(second, 1, [['instance:1']]);
+        expect(second.conn.last('claimed')?.denied[0].holder.session).toBe(SESSION_A);
     });
 });

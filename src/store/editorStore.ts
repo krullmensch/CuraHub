@@ -9,6 +9,9 @@ import { DEFAULT_FRAME_STYLE, frameStyleOf, type FrameStyleId, type Passepartout
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
 import { sanitiseFigurePose } from '../lib/scaleFigure';
 import { emitWallEvent } from '../lib/wallEvents';
+import { heldBy, reportHeld } from '../lib/live/claimGate';
+import { claimKey, keepHeldInstances, restoreRefused, splitClaimedInstances, wallBlocker } from '../lib/live/claims';
+import { liveSessionHeaders } from '../lib/live/session';
 
 // Non-reactive shared ref map for accessing instance Three.js groups from outside PlacedArtworks
 export const instanceRefMap = new Map<number, THREE.Group>();
@@ -376,10 +379,19 @@ let localEditSeq = 0;
 
 export const clearInstanceSelection = { selectedInstanceId: null, selectedInstanceIds: [] as number[] };
 
-/** Selection fields for `ids` (deduped, only existing artworks); primary defaults to the last. */
+/** Artwork ids without those another tab holds (live claims); tells the user about the rest. */
+function claimableInstanceIds(ids: number[]): number[] {
+  const { allowed, holders } = splitClaimedInstances(ids, heldBy);
+  reportHeld(holders);
+  return allowed;
+}
+
+const isInstanceHeld = (id: number) => heldBy(claimKey('instance', id)) !== undefined;
+
+/** Selection fields for `ids` (deduped, only existing artworks, none held by another tab); primary defaults to the last. */
 function instanceSelection(ids: number[], instances: ArtworkInstanceData[], primary?: number | null) {
   const known = new Set(instances.map(i => i.id));
-  const unique = [...new Set(ids)].filter(id => known.has(id));
+  const unique = claimableInstanceIds([...new Set(ids)].filter(id => known.has(id)));
   const main = primary != null && unique.includes(primary) ? primary : unique[unique.length - 1] ?? null;
   return { selectedInstanceIds: unique, selectedInstanceId: main };
 }
@@ -507,15 +519,36 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
 
   // Phase 4.2 actions
-  selectInstance: (id) => set((state) => ({
-    ...(id === null ? clearInstanceSelection : instanceSelection([id], state.localInstances)),
-    selectedWallId: null,
-    selectedZoneId: null,
-    selectedFigureId: null,
-  })),
-  selectWall: (id) => set({ selectedWallId: id, ...clearInstanceSelection, selectedZoneId: null, selectedFigureId: null }),
+  selectInstance: (id) => set((state) => {
+    // Held by another tab: the click changes nothing (instanceSelection tells the user).
+    if (id !== null && isInstanceHeld(id)) {
+      claimableInstanceIds([id]);
+      return state;
+    }
+    return {
+      ...(id === null ? clearInstanceSelection : instanceSelection([id], state.localInstances)),
+      selectedWallId: null,
+      selectedZoneId: null,
+      selectedFigureId: null,
+    };
+  }),
+  selectWall: (id) => set((state) => {
+    const holder = id === null ? undefined : wallBlocker(id, state.localInstances, heldBy);
+    if (holder) {
+      reportHeld([holder]);
+      return state;
+    }
+    return { selectedWallId: id, ...clearInstanceSelection, selectedZoneId: null, selectedFigureId: null };
+  }),
   selectZone: (id) => set({ selectedZoneId: id, ...clearInstanceSelection, selectedWallId: null, selectedFigureId: null }),
-  selectFigure: (id) => set({ selectedFigureId: id, ...clearInstanceSelection, selectedWallId: null, selectedZoneId: null }),
+  selectFigure: (id) => set((state) => {
+    const holder = id === null ? undefined : heldBy(claimKey('figure', id));
+    if (holder) {
+      reportHeld([holder]);
+      return state;
+    }
+    return { selectedFigureId: id, ...clearInstanceSelection, selectedWallId: null, selectedZoneId: null };
+  }),
   setInstanceSelection: (ids, primary) => set((state) => ({
     ...instanceSelection(ids, state.localInstances, primary),
     selectedWallId: null,
@@ -524,6 +557,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   })),
   toggleInstanceInSelection: (id) => set((state) => {
     const has = state.selectedInstanceIds.includes(id);
+    if (!has && isInstanceHeld(id)) {
+      claimableInstanceIds([id]);
+      return state;
+    }
     const ids = has ? state.selectedInstanceIds.filter(i => i !== id) : [...state.selectedInstanceIds, id];
     const primary = has ? (state.selectedInstanceId === id ? undefined : state.selectedInstanceId) : id;
     return { ...instanceSelection(ids, state.localInstances, primary), selectedWallId: null, selectedZoneId: null, selectedFigureId: null };
@@ -656,7 +693,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   undo: () => set((state) => {
     if (state.pastInstances.length === 0) return state;
-    const previous = state.pastInstances[state.pastInstances.length - 1];
+    // Artworks another tab holds stay as they are: undo only reverts your own work.
+    const previous = keepHeldInstances(state.pastInstances[state.pastInstances.length - 1], state.localInstances, isInstanceHeld);
     const newPast = state.pastInstances.slice(0, state.pastInstances.length - 1);
     localEditSeq++;
     return {
@@ -671,7 +709,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   }),
   redo: () => set((state) => {
     if (state.futureInstances.length === 0) return state;
-    const next = state.futureInstances[0];
+    const next = keepHeldInstances(state.futureInstances[0], state.localInstances, isInstanceHeld);
     const newFuture = state.futureInstances.slice(1);
     localEditSeq++;
     return {
@@ -791,7 +829,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     if (target.kind === 'wall' && !state.localWalls.some(w => w.id === target.wallId)) return state;
     return {
       wallEditor: target,
-      wallEditorSelection: selection,
+      wallEditorSelection: claimableInstanceIds(selection),
       // The 3D selection (gizmos, halos) stays out of the 2D view.
       ...clearInstanceSelection,
       selectedWallId: null,
@@ -806,7 +844,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   closeWallEditor: () => set((state) => {
     const target = state.wallEditor;
     if (!target) return state;
-    const wallId = target.kind === 'wall' && state.localWalls.some(w => w.id === target.wallId) ? target.wallId : null;
+    const wallId = target.kind === 'wall' && state.localWalls.some(w => w.id === target.wallId)
+      && !wallBlocker(target.wallId, state.localInstances, heldBy) ? target.wallId : null;
     // Artworks selected in the 2D editor stay selected in 3D; otherwise an edited modular wall does.
     const selection = instanceSelection(state.wallEditorSelection, state.localInstances);
     return {
@@ -822,7 +861,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ? { wallEditor: { ...state.wallEditor, side }, wallEditorSelection: [] }
       : state
   )),
-  setWallEditorSelection: (ids) => set({ wallEditorSelection: ids }),
+  setWallEditorSelection: (ids) => set({ wallEditorSelection: claimableInstanceIds(ids) }),
 }));
 
 // ─── Auto-sync: persist every local change to backend immediately ────────────
@@ -941,10 +980,26 @@ async function fetchWithRetry(url: string, init: RequestInit): Promise<Response 
   }
 }
 
+/**
+ * Who holds an object when the server refused a change with 423 (live claims): that change is
+ * not retried but undone locally. null for every other response.
+ */
+async function refusedBy(res: Response | null): Promise<string | null> {
+  if (res?.status !== 423) return null;
+  try {
+    const body: unknown = await res.json();
+    const name = (body as { holder?: { name?: unknown } } | null)?.holder?.name;
+    return typeof name === 'string' ? name : 'jemand anderem';
+  } catch {
+    return 'jemand anderem';
+  }
+}
+
 const getAuthHeaders = (): Record<string, string> | null => {
   const token = useAuthStore.getState().token;
   if (!token) return null;
-  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` };
+  // X-Live-Session: the server lets this tab change what it has claimed (live collaboration).
+  return { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, ...liveSessionHeaders() };
 };
 
 // "Believed persisted in DB" snapshots, used for diffing (see invariant #3 above).
@@ -1065,6 +1120,9 @@ const syncToBackend = async () => {
     const currFigures = localScaleFigures;
 
     const tasks: Promise<void>[] = [];
+    // Changes the server refused because another tab holds the object (423) — undone below.
+    const refusedNames: string[] = [];
+    const refused = { instances: new Set<number>(), walls: new Set<number>(), figures: new Set<number>() };
 
     // ── Instance sync ──
     const prevMap = new Map(prevInstances.map(i => [i.id, i]));
@@ -1143,6 +1201,8 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        const holder = await refusedBy(res);
+        if (holder !== null) { refusedNames.push(holder); refused.instances.add(prev.id); return; }
         if (!res?.ok) {
           anyFailure = true;
           console.error('[AutoSync] Failed to delete instance after retries:', prev.id, res?.status);
@@ -1187,6 +1247,8 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        const holder = await refusedBy(res);
+        if (holder !== null) { refusedNames.push(holder); refused.instances.add(curr.id); return; }
         if (!res?.ok) {
           anyFailure = true;
           console.error('[AutoSync] Failed to update instance after retries:', curr.id, res?.status);
@@ -1258,6 +1320,8 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/walls/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        const holder = await refusedBy(res);
+        if (holder !== null) { refusedNames.push(holder); refused.walls.add(prev.id); return; }
         if (!res?.ok) {
           anyFailure = true;
           console.error('[AutoSync] Failed to delete wall after retries:', prev.id, res?.status);
@@ -1289,6 +1353,8 @@ const syncToBackend = async () => {
           }),
         });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        const holder = await refusedBy(res);
+        if (holder !== null) { refusedNames.push(holder); refused.walls.add(curr.id); return; }
         if (!res?.ok) {
           anyFailure = true;
           console.error('[AutoSync] Failed to update wall after retries:', curr.id, res?.status);
@@ -1354,6 +1420,8 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/scale-figures/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        const holder = await refusedBy(res);
+        if (holder !== null) { refusedNames.push(holder); refused.figures.add(prev.id); return; }
         if (!res?.ok) {
           anyFailure = true;
           console.error('[AutoSync] Failed to delete scale figure after retries:', prev.id, res?.status);
@@ -1383,6 +1451,8 @@ const syncToBackend = async () => {
           }),
         });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        const holder = await refusedBy(res);
+        if (holder !== null) { refusedNames.push(holder); refused.figures.add(curr.id); return; }
         if (!res?.ok) {
           anyFailure = true;
           console.error('[AutoSync] Failed to update scale figure after retries:', curr.id, res?.status);
@@ -1399,6 +1469,20 @@ const syncToBackend = async () => {
     prevInstances = Array.from(nextInstancesMap.values());
     prevWalls = Array.from(nextWallsMap.values());
     prevScaleFigures = Array.from(nextFiguresMap.values());
+
+    // Refused because someone else holds the object: back to the saved state, no retry.
+    if (refusedNames.length > 0) {
+      const current = useEditorStore.getState();
+      useEditorStore.setState({
+        localInstances: restoreRefused(current.localInstances, refused.instances, nextInstancesMap),
+        localWalls: restoreRefused(current.localWalls, refused.walls, nextWallsMap),
+        localScaleFigures: restoreRefused(current.localScaleFigures, refused.figures, nextFiguresMap),
+      });
+      const names = [...new Set(refusedNames)];
+      gooeyToast.error('Änderung verworfen', {
+        description: `${names.length === 1 ? names[0] : names.join(', ')} bearbeitet ${refusedNames.length === 1 ? 'dieses Objekt' : 'diese Objekte'} gerade.`,
+      });
+    }
 
     const newSyncStatus: 'idle' | 'error' = anyFailure ? 'error' : 'idle';
     // Only toast on the transition INTO 'error' — repeated automatic retries that keep

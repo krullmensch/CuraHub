@@ -12,7 +12,7 @@ import { VersionPanel } from './VersionPanel';
 
 import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
-import { LivePresenceBar } from './live/PresenceAvatars';
+import { LivePresenceBar, SelfAvatar } from './live/PresenceAvatars';
 import { startEditorPresence } from '../lib/live/liveConnection';
 
 const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
@@ -260,7 +260,8 @@ export const EditorLayout = () => {
             )}
 
             {user?.email && (
-                <span className="text-xs text-gray-500 hidden sm:inline-block">
+                <span className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
+                    <SelfAvatar />
                     {user.email.split('@')[0]}
                 </span>
             )}

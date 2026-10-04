@@ -42,6 +42,8 @@ export class LiveClient {
   private retries = 0;
   private retryTimer: ReturnType<typeof setTimeout> | null = null;
   private session: string;
+  private claimGroups: string[][] = [];
+  private claimSeq = 0;
   private readonly deps: LiveClientDeps;
 
   constructor(deps: LiveClientDeps) {
@@ -53,11 +55,28 @@ export class LiveClient {
     return this.session;
   }
 
+  /** Sequence number of the newest claim request; older `claimed` answers are stale. */
+  get latestClaimSeq(): number {
+    return this.claimSeq;
+  }
+
+  /**
+   * The full set of claims this tab wants (groups, see lib/live/claims.ts). Kept and sent again
+   * after every reconnect; only meaningful while the location is an editor version.
+   */
+  setClaims(groups: string[][]): number {
+    this.claimGroups = groups;
+    this.claimSeq++;
+    if (this.location?.t === 'where') this.send({ t: 'claim', seq: this.claimSeq, groups });
+    return this.claimSeq;
+  }
+
   /** Where this tab is; null closes the connection. Repeated equal locations are not re-sent. */
   setLocation(location: LiveLocation | null): void {
     if (sameLocation(this.location, location)) return;
     this.location = location;
     if (!location) {
+      this.claimGroups = [];
       this.send({ t: 'leave' });
       this.disconnect();
       return;
@@ -77,6 +96,9 @@ export class LiveClient {
       const token = this.deps.getToken();
       this.send({ t: 'hello', session: this.session, ...(token ? { token } : {}) });
       if (this.location) this.send(this.location);
+      if (this.location?.t === 'where' && this.claimGroups.length > 0) {
+        this.send({ t: 'claim', seq: ++this.claimSeq, groups: this.claimGroups });
+      }
       this.deps.onStatus('open');
     };
     socket.onmessage = (ev) => {

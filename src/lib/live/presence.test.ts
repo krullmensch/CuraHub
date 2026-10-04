@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { editorModeOf, initialOf, peopleCount, peopleOf, personTitle, versionPresence } from './presence';
+import { avatarPalette, editorModeOf, mixHex, peopleCount, peopleOf, personTitle, versionPresence } from './presence';
 import type { PresenceMember } from './protocol';
 
 const member = (session: string, userId: number, versionId: number | null, mode: PresenceMember['mode'] = 'orbit'): PresenceMember => ({
@@ -25,12 +25,20 @@ describe('presence helpers', () => {
   });
 
   it('labels', () => {
-    expect(initialOf('  émile')).toBe('É');
-    expect(initialOf('42x')).toBe('4');
-    expect(initialOf('…')).toBe('?');
     expect(peopleCount(1)).toBe('1 Person');
     expect(peopleCount(3)).toBe('3 Personen');
     expect(personTitle({ userId: 1, name: 'anna', color: '', mode: 'firstPerson', tabs: 2 })).toBe('anna – in der Ego-Perspektive (2 Tabs)');
+  });
+
+  it('tints colours for the avatar palette', () => {
+    expect(mixHex('#000000', '#ffffff', 0.5)).toBe('#808080');
+    expect(mixHex('#f97316', '#f97316', 0.3)).toBe('#f97316');
+    expect(mixHex('nope', '#ffffff', 0.5)).toBe('nope');
+    const palette = avatarPalette('#3b82f6');
+    expect(palette).toHaveLength(5);
+    expect(palette[0]).toBe('#3b82f6');
+    expect(palette).toContain(mixHex('#3b82f6', '#ffffff', 0.6));
+    expect(palette).not.toContain('#ffffff');
   });
 
   it('derives the editor mode', () => {

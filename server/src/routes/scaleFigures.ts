@@ -1,5 +1,6 @@
 import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { ensureNotClaimed } from '../live/claimGuard';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
@@ -92,6 +93,7 @@ scaleFiguresRouter.patch('/:id', authenticate, async (req: Request, res) => {
 
         const data = updateScaleFigureSchema.parse(req.body);
         if (!(await findAccessibleFigure(req, id))) return res.status(404).json({ error: 'Scale figure not found' });
+        if (!ensureNotClaimed(req, res, 'figure', id)) return;
 
         const figure = await prisma.scaleFigure.update({ where: { id }, data });
         res.json(figure);
@@ -111,6 +113,7 @@ scaleFiguresRouter.delete('/:id', authenticate, async (req: Request, res) => {
         if (isNaN(id)) return res.status(400).json({ error: 'Invalid scale figure ID' });
 
         if (!(await findAccessibleFigure(req, id))) return res.status(404).json({ error: 'Scale figure not found' });
+        if (!ensureNotClaimed(req, res, 'figure', id)) return;
 
         await prisma.scaleFigure.delete({ where: { id } });
         res.json({ success: true });

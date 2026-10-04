@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { LiveUser, PresenceMember } from '../lib/live/protocol';
+import type { ClaimEntry, LiveUser, PresenceMember } from '../lib/live/protocol';
 import type { LiveStatus } from '../lib/live/liveClient';
 
 /**
@@ -17,6 +17,8 @@ interface LiveState {
   publicVisitors: number;
   /** Visitors in the exhibition this tab is visiting (public viewer), including this tab. */
   visitorCount: number;
+  /** Claims in this tab's version (all tabs, this one included). */
+  claims: ClaimEntry[];
 }
 
 export const useLiveStore = create<LiveState>()(() => ({
@@ -26,4 +28,5 @@ export const useLiveStore = create<LiveState>()(() => ({
   members: [],
   publicVisitors: 0,
   visitorCount: 0,
+  claims: [],
 }));
