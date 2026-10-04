@@ -11,6 +11,11 @@ describe('artwork update', () => {
         expect(artworkUpdateSchema.parse({ publicReadable: true }).publicReadable).toBe(true);
         expect(() => artworkUpdateSchema.parse({ publicReadable: 'ja' })).toThrow();
     });
+    it('accepts a real height in cm, or null for the capture\'s own scale', () => {
+        expect(artworkUpdateSchema.parse({ height: 140 }).height).toBe(140);
+        expect(artworkUpdateSchema.parse({ height: null }).height).toBeNull();
+        expect(() => artworkUpdateSchema.parse({ height: 0 })).toThrow();
+    });
     it('keeps the existing fields', () => {
         expect(artworkUpdateSchema.parse({ title: 'Katalog', artist: 'A. B.', year: '2024' })).toMatchObject({ title: 'Katalog' });
     });

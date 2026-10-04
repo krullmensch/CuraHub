@@ -73,6 +73,30 @@ export function splatAnchor(frame: SplatFrame): { offset: [number, number, numbe
     };
 }
 
+/**
+ * Splat files carry no unit: photo-trained captures come out in whatever scale the camera solve
+ * picked. The curator gives the real height once (Artwork.height, cm, the height of the robust
+ * frame, `splatAnchor(frame).size.y` in file units); every placement is scaled by this factor.
+ * Without it the file's units count as metres.
+ */
+export function splatRealScale(frameHeight: number, heightCm: number | null | undefined): number {
+    return heightCm != null && heightCm > 0 && frameHeight > 1e-6 ? heightCm / 100 / frameHeight : 1;
+}
+
+/** Real height field in metres: '' = the file's own scale (null), otherwise 1 cm – 1 km in cm. */
+export function parseSplatHeight(raw: string): number | null | 'invalid' {
+    const trimmed = raw.trim();
+    if (trimmed === '') return null;
+    const metres = Number(trimmed.replace(',', '.'));
+    return Number.isFinite(metres) && metres >= 0.01 && metres <= 1000 ? Math.round(metres * 1000) / 10 : 'invalid';
+}
+
+/** Field text for a stored real height: metres with a German decimal comma, '' = file scale. */
+export function splatHeightToField(heightCm: number | null | undefined): string {
+    if (heightCm == null) return '';
+    return String(Math.round(heightCm * 10) / 1000).replace('.', ',');
+}
+
 /** A loaded splat, ready to be added below the SPLAT_UP_FLIP group. */
 export interface SplatHandle {
     object: THREE.Object3D;

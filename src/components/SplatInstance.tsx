@@ -3,7 +3,7 @@ import { useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
 import { gooeyToast } from 'goey-toast';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
-import { SPLAT_UP_FLIP, loadSplat, splatAnchor, type SplatHandle } from '../lib/splats';
+import { SPLAT_UP_FLIP, loadSplat, splatAnchor, splatRealScale, type SplatHandle } from '../lib/splats';
 import { BoxHitProxy } from '../lib/boxHitProxy';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
 
@@ -26,7 +26,8 @@ const noRaycast = () => {};
 
 /**
  * Gaussian splat artwork. Stands on the floor like a 3D model: the capture is turned upright
- * (SPLAT_UP_FLIP) and moved so the center of its robust bounds sits on the instance origin.
+ * (SPLAT_UP_FLIP), moved so the center of its robust bounds sits on the instance origin, and
+ * brought to its real height when the curator gave one (splatRealScale).
  * WebGPU renders it with three.js' GaussianSplat, the WebGL fallback with Spark (lib/splats).
  */
 export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
@@ -78,14 +79,22 @@ export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
         }, [url, gl, scene, invalidate, isEditor]);
 
         const anchor = useMemo(() => (load.status === 'ready' ? splatAnchor(load.handle.frame) : null), [load]);
-        const size = anchor?.size ?? new THREE.Vector3(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE, PLACEHOLDER_SIZE);
+        // Real height set by the curator (Artwork.height, cm); otherwise the file's units are metres.
+        const heightCm = instance.artwork.height;
+        const realScale = anchor ? splatRealScale(anchor.size.y, heightCm) : 1;
+        const size = useMemo(
+            () => anchor?.size.clone().multiplyScalar(realScale)
+                ?? new THREE.Vector3(PLACEHOLDER_SIZE, PLACEHOLDER_SIZE, PLACEHOLDER_SIZE),
+            [anchor, realScale],
+        );
 
         useEffect(() => {
             hitProxy.box.min.set(-size.x / 2, 0, -size.z / 2);
             hitProxy.box.max.set(size.x / 2, size.y, size.z / 2);
         }, [hitProxy, size.x, size.y, size.z]);
 
-        // Natural size for PropertiesPanel (same map 3D models use).
+        // Size in file units for PropertiesPanel (same map 3D models use); the panel applies the
+        // real height itself, so it never waits for this effect.
         useEffect(() => {
             if (!anchor) return;
             modelBBoxMap.set(instance.id, anchor.size.clone());
@@ -107,9 +116,11 @@ export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
                 onClick={handleClick}
             >
                 {load.status === 'ready' && anchor && (
-                    <group position={anchor.offset}>
-                        <group rotation={SPLAT_UP_FLIP}>
-                            <primitive object={load.handle.object} />
+                    <group scale={realScale}>
+                        <group position={anchor.offset}>
+                            <group rotation={SPLAT_UP_FLIP}>
+                                <primitive object={load.handle.object} />
+                            </group>
                         </group>
                     </group>
                 )}
