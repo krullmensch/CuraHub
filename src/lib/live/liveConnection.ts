@@ -14,8 +14,6 @@ import { LiveClient, type LiveLocation, type SocketLike } from './liveClient';
 import { editorModeOf } from './presence';
 import type { ChangedMessage, ClaimHolder, ServerMessage, VersionsMessage } from './protocol';
 import { newLiveSession } from './session';
-import { clearAvatarPoses, keepAvatarSessions, setAvatarPose } from './avatarPoses';
-import { clearCameraPose } from './cameraPose';
 import { receiveDrag, release as releasePreview, releaseAll as releaseAllPreviews, releaseSessions, syncWithClaims } from './remotePreviews';
 import { objectForKey } from './sceneObjects';
 import { startSceneSync } from './sceneSync';
@@ -50,7 +48,6 @@ function clearClaims() {
 
 /** Everything other tabs showed in this tab's scene (version switch, leaving). */
 function clearRemoteScene() {
-  clearAvatarPoses();
   releaseAllPreviews();
 }
 
@@ -187,19 +184,12 @@ function handleMessage(msg: ServerMessage) {
         members: msg.members,
         publicVisitors: msg.publicVisitors,
       });
-      // Avatars and live drags only of tabs that are still in this version.
+      // Live drags only of tabs that are still in this version.
       const versionId = useEditorStore.getState().activeVersionId;
       const here = new Set(msg.members.filter((m) => m.versionId === versionId).map((m) => m.session));
-      keepAvatarSessions((session) => here.has(session));
       releaseSessions((session) => here.has(session));
       return;
     }
-    case 'pose':
-      setAvatarPose(msg.session, { p: msg.p, yaw: msg.yaw, pitch: msg.pitch });
-      return;
-    case 'gone':
-      keepAvatarSessions((session) => session !== msg.session);
-      return;
     case 'drag':
       receiveDrag(msg.session, msg.transforms);
       return;
@@ -381,28 +371,10 @@ export function startEditorPresence(): () => void {
   });
   return () => {
     stopScene();
-    clearCameraPose();
     clearRemoteScene();
     stopClaims();
     unsubscribe();
     unsubscribeAuth();
     setLiveLocation(null);
-  };
-}
-
-/**
- * Public viewer: this visitor's position for the others' blobs (step 5). Started by ViewerPage
- * while it visits an exhibition; returns the stop function.
- */
-export function startVisitorPresence(): () => void {
-  const stop = startSceneSync({
-    send: (msg) => getClient().sendTransient(msg),
-    ownKeys: () => [],
-    lookup: () => undefined,
-  });
-  return () => {
-    stop();
-    clearCameraPose();
-    clearAvatarPoses();
   };
 }

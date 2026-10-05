@@ -61,6 +61,20 @@ export function peopleCount(n: number): string {
   return `${n} ${n === 1 ? 'Person' : 'Personen'}`;
 }
 
+/**
+ * A person's colour and display name, exactly as the server gives them out (mirror of
+ * server/src/live/protocol.ts `USER_COLORS`, `colorForUser`, `nameForEmail`), so the header can
+ * show the signed-in person's own avatar before the live channel knows them.
+ */
+export const USER_COLORS = [
+  '#f97316', '#22c55e', '#3b82f6', '#e11d48', '#a855f7',
+  '#eab308', '#06b6d4', '#ec4899', '#84cc16', '#6366f1',
+] as const;
+
+export const colorForUser = (userId: number): string => USER_COLORS[Math.abs(userId) % USER_COLORS.length];
+
+export const nameForEmail = (email: string): string => email.split('@')[0] || email;
+
 /** Location the editor reports, from its view state. */
 export function editorModeOf(plannerViewMode: string, wallEditorOpen: boolean): EditorMode {
   if (wallEditorOpen) return 'wallEditor';

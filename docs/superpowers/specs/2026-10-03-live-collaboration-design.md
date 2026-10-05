@@ -1,6 +1,7 @@
 # Live collaboration over WebSockets — Design Spec
 **Date:** 2026-10-03
 **Status:** Implemented — steps 1–5 (PRs #10, #11, #12, #14, #15; collaborator access fix #13)
+**Update 2026-10-05:** the avatars in the 3D scene (camera poses, slime blobs in editor and viewer, camera markers; parts of steps 4 and 5) were removed — too slow and not wanted. Claims, live changes, live drags and the others' selection outlines stay; the header shows the people.
 
 ---
 

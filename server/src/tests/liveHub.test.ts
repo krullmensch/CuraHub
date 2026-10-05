@@ -445,7 +445,7 @@ describe('LiveHub changes', () => {
     });
 });
 
-describe('LiveHub poses and drags', () => {
+describe('LiveHub drags', () => {
     let hub: LiveHub;
     beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); jest.useFakeTimers({ now: 1_000_000, doNotFake: ['queueMicrotask', 'nextTick', 'setImmediate'] }); });
     afterEach(() => { hub.dispose(); jest.useRealTimers(); });
@@ -455,94 +455,36 @@ describe('LiveHub poses and drags', () => {
         await tab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId, mode: 'orbit' }));
         return tab;
     }
-    const pose = { t: 'pose', p: [1, 1.6, -2], yaw: 0.5, pitch: -0.1 };
-
-    it('relays poses to the other tabs of the version and drops floods', async () => {
-        const a = await editor(SESSION_A, 1);
-        const b = await editor(SESSION_B, 2);
-        const elsewhere = await editor(SESSION_V, 3, 101);
-        await a.handle.onMessage(json(pose));
-        await a.handle.onMessage(json({ ...pose, yaw: 1 })); // < 40 ms later: dropped
-        expect(b.conn.sent.filter((m) => m.t === 'pose')).toEqual([{ t: 'pose', session: SESSION_A, p: [1, 1.6, -2], yaw: 0.5, pitch: -0.1 }]);
-        expect(a.conn.sent.some((m) => m.t === 'pose')).toBe(false);
-        expect(elsewhere.conn.sent.some((m) => m.t === 'pose')).toBe(false);
-        jest.advanceTimersByTime(50);
-        await a.handle.onMessage(json({ ...pose, yaw: 1 }));
-        expect(b.conn.last('pose')?.yaw).toBe(1);
-    });
-
-    it('tells a tab entering the version where the others are', async () => {
-        const a = await editor(SESSION_A, 1);
-        await a.handle.onMessage(json(pose));
-        const b = await editor(SESSION_B, 2);
-        expect(b.conn.last('pose')).toMatchObject({ session: SESSION_A, yaw: 0.5 });
-        // A pose belongs to its version: after a switch it is forgotten.
-        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 101, mode: 'orbit' }));
-        await a.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
-        const c = await editor('44444444-4444-4444-8444-444444444444', 1);
-        expect(c.conn.sent.some((m) => m.t === 'pose' && m.session === SESSION_A)).toBe(false);
-    });
+    const t = (k: string, y = 1) => ({ k, p: [0, y, 2], q: [0, 0, 0, 1], s: [1, 1, 1] });
 
     it('relays only drags of objects the tab holds', async () => {
         const a = await editor(SESSION_A, 1);
         const b = await editor(SESSION_B, 2);
         await a.handle.onMessage(json({ t: 'claim', seq: 1, groups: [['instance:1']] }));
-        const t = (k: string) => ({ k, p: [0, 1, 2], q: [0, 0, 0, 1], s: [1, 1, 1] });
         await a.handle.onMessage(json({ t: 'drag', transforms: [t('instance:1'), t('instance:2')] }));
         expect(b.conn.last('drag')).toEqual({ t: 'drag', session: SESSION_A, transforms: [t('instance:1')] });
         expect(a.conn.sent.some((m) => m.t === 'drag')).toBe(false);
     });
 
-    it('rejects poses out of range and visitors\' poses in the editor', async () => {
+    it('drops drag floods and keeps them inside the version', async () => {
         const a = await editor(SESSION_A, 1);
-        await a.handle.onMessage(json({ ...pose, p: [1e9, 0, 0] }));
+        const b = await editor(SESSION_B, 2);
+        const elsewhere = await editor(SESSION_V, 3, 101);
+        await a.handle.onMessage(json({ t: 'claim', seq: 1, groups: [['instance:1']] }));
+        await a.handle.onMessage(json({ t: 'drag', transforms: [t('instance:1', 1)] }));
+        await a.handle.onMessage(json({ t: 'drag', transforms: [t('instance:1', 2)] })); // < 40 ms later: dropped
+        expect(b.conn.sent.filter((m) => m.t === 'drag')).toHaveLength(1);
+        expect(elsewhere.conn.sent.some((m) => m.t === 'drag')).toBe(false);
+        jest.advanceTimersByTime(50);
+        await a.handle.onMessage(json({ t: 'drag', transforms: [t('instance:1', 2)] }));
+        expect(b.conn.last('drag')).toEqual({ t: 'drag', session: SESSION_A, transforms: [t('instance:1', 2)] });
+    });
+
+    it('no longer takes camera poses', async () => {
+        const a = await editor(SESSION_A, 1);
+        const b = await editor(SESSION_B, 2);
+        await a.handle.onMessage(json({ t: 'pose', p: [1, 1.6, -2], yaw: 0.5, pitch: -0.1 }));
         expect(a.conn.last('error')?.code).toBe('bad_message');
-    });
-});
-
-describe('LiveHub visitors (public viewer)', () => {
-    let hub: LiveHub;
-    beforeEach(() => { hub = new LiveHub(deps, { graceMs: 5000 }); });
-    afterEach(() => { hub.dispose(); jest.useRealTimers(); });
-
-    async function visitor(session: string) {
-        const tab = await connect(hub, session);
-        await tab.handle.onMessage(json({ t: 'visit', slug: 'open' }));
-        return tab;
-    }
-    const pose = { t: 'pose', p: [2, 1.62, -1], yaw: 1, pitch: 0 };
-
-    it('shares visitors\' positions with the other visitors, anonymously', async () => {
-        const a = await visitor(SESSION_A);
-        const b = await visitor(SESSION_B);
-        const editorTab = await connect(hub, SESSION_V, 'user-1');
-        await editorTab.handle.onMessage(json({ t: 'where', exhibitionId: 10, versionId: 100, mode: 'orbit' }));
-        await a.handle.onMessage(json(pose));
-        const seen = b.conn.last('pose');
-        expect(seen).toMatchObject({ p: [2, 1.62, -1], yaw: 1 });
-        expect(seen?.session).toMatch(/^[0-9a-f]{12}$/);
-        expect(seen?.session).not.toBe(SESSION_A);
-        expect(a.conn.sent.some((m) => m.t === 'pose')).toBe(false);
-        expect(editorTab.conn.sent.some((m) => m.t === 'pose')).toBe(false);
-    });
-
-    it('shows a newcomer where the others stand and says when someone leaves', async () => {
-        jest.useFakeTimers();
-        const a = await visitor(SESSION_A);
-        await a.handle.onMessage(json(pose));
-        const b = await visitor(SESSION_B);
-        const id = b.conn.last('pose')?.session;
-        expect(id).toBeDefined();
-        await a.handle.onMessage(json({ t: 'leave' }));
-        expect(b.conn.last('gone')).toEqual({ t: 'gone', session: id });
-
-        // A closed tab is gone once its grace period ends.
-        const c = await visitor('55555555-5555-4555-8555-555555555555');
-        jest.advanceTimersByTime(100);
-        await c.handle.onMessage(json(pose));
-        const cid = b.conn.last('pose')?.session;
-        c.handle.onClose();
-        jest.advanceTimersByTime(5000);
-        expect(b.conn.last('gone')).toEqual({ t: 'gone', session: cid });
+        expect(b.conn.sent.map((m) => m.t as string)).not.toContain('pose');
     });
 });

@@ -17,7 +17,7 @@ import { useBookViewerStore } from '../store/bookViewerStore';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { useArtworkLoadProgress } from '../lib/artworkLoadProgress';
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
-import { setLiveLocation, startVisitorPresence } from '../lib/live/liveConnection';
+import { setLiveLocation } from '../lib/live/liveConnection';
 import { VisitorCount } from '../components/live/PresenceAvatars';
 import { Grid } from 'ldrs/react';
 import 'ldrs/react/Grid.css';
@@ -55,8 +55,6 @@ const loadPhysicsWorld = () => import('../components/physics/PhysicsWorld');
 /** Never keep the door shut longer than this once the room itself is ready (slow or dead image). */
 const TEXTURE_WAIT_TIMEOUT_MS = 30_000;
 const PhysicsWorld = lazy(loadPhysicsWorld);
-// Other visitors as slime blobs (live channel); MarchingCubes only loads with the viewer.
-const VisitorBlobs = lazy(() => import('../components/live/VisitorBlobs').then((m) => ({ default: m.VisitorBlobs })));
 
 export const ViewerPage = () => {
     const { slug } = useParams<{ slug: string }>();
@@ -173,11 +171,7 @@ export const ViewerPage = () => {
     useEffect(() => {
         if (!visitSlug) return;
         setLiveLocation({ t: 'visit', slug: visitSlug });
-        const stopPresence = startVisitorPresence();
-        return () => {
-            stopPresence();
-            setLiveLocation(null);
-        };
+        return () => setLiveLocation(null);
     }, [visitSlug]);
 
     // Handle the transition from loading to showing the scene
@@ -260,9 +254,6 @@ export const ViewerPage = () => {
                             {/* Separate boundary: the room renders while Rapier still loads. PhysicsWorld
                                 suspends until the room collider exists, so the player never spawns early;
                                 SceneReadySignal fires after the first frame with the player in place. */}
-                            <Suspense fallback={null}>
-                                <VisitorBlobs />
-                            </Suspense>
                             <Suspense fallback={null}>
                                 <PhysicsWorld mode="viewer" viewerWalls={data.walls} viewerInstances={data.instances}>
                                     <SceneReadySignal onReady={handleSceneReady} />

@@ -2,8 +2,9 @@ import Avatar from 'boring-avatars';
 import { Eye, Footprints, Frame } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { useEditorStore } from '../../store/editorStore';
+import { useAuthStore } from '../../store/authStore';
 import { useLiveStore } from '../../store/liveStore';
-import { avatarPalette, peopleCount, personTitle, versionPresence, type PresencePerson } from '../../lib/live/presence';
+import { avatarPalette, colorForUser, nameForEmail, peopleCount, personTitle, versionPresence, type PresencePerson } from '../../lib/live/presence';
 import { claimedMessage } from '../../lib/live/claims';
 import type { ClaimHolder } from '../../lib/live/protocol';
 
@@ -31,11 +32,16 @@ export const PresenceAvatar = ({ person, size = 'md', title }: { person: Presenc
   );
 };
 
-/** The signed-in person's own avatar (header, next to the name) once the live channel knows them. */
+/**
+ * The signed-in person's own avatar (header, next to the name), from the login alone — on every
+ * page, not only once the live channel knows them (it connects with an exhibition).
+ */
 export const SelfAvatar = () => {
-  const user = useLiveStore((s) => s.self?.user ?? null);
-  if (!user) return null;
-  return <PresenceAvatar person={{ userId: user.id, name: user.name, color: user.color, mode: 'orbit', tabs: 1 }} />;
+  const id = useAuthStore((s) => s.user?.id ?? null);
+  const email = useAuthStore((s) => s.user?.email ?? null);
+  if (id === null || !email) return null;
+  const name = nameForEmail(email);
+  return <PresenceAvatar person={{ userId: id, name, color: colorForUser(id), mode: 'orbit', tabs: 1 }} title={name} />;
 };
 
 /** Small avatar of whoever holds an object, with "Wird gerade von … bearbeitet". */

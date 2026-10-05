@@ -8,7 +8,7 @@ Mitarbeiten kann, wem die Ausstellung gehört oder wer zu ihr eingeladen wurde (
 
 - **Oben in der Kopfzeile** siehst du die Avatare der Personen, die in derselben Version arbeiten wie du. Ein kleines Symbol am Avatar zeigt, ob jemand in der **Ego-Perspektive** unterwegs ist oder im **2D-Wandeditor** arbeitet. Daneben steht, wie viele Personen in **anderen Versionen** sind und wie viele Besucher*innen gerade den **öffentlichen Viewer** ansehen.
 - **Im Versionsgraph** tragen die Versionen die Avatare der Personen, die gerade in ihnen arbeiten.
-- Dein eigener Avatar steht neben deinem Namen. Jede Person hat eine feste Farbe – dieselbe in der Kopfzeile, an Umrissen und im Raum.
+- Dein eigener Avatar steht neben deinem Namen. Er ist zu sehen, sobald du angemeldet bist – auch ohne ausgewähltes Projekt. Jede Person hat eine feste Farbe – dieselbe in der Kopfzeile und an den Umrissen im Raum.
 
 ## Sperren: eine Person pro Objekt
 
@@ -28,12 +28,6 @@ Wählst du ein Werk, eine Stellwand oder eine Maßstabsfigur aus, ist es für di
 - Legt jemand eine Version an, veröffentlicht oder löscht sie, aktualisiert sich der Versionsgraph. Wird die Version gelöscht, in der du arbeitest, wechselst du automatisch in die Version davor.
 - Bricht die Verbindung kurz ab, steht oben **Offline**. Sobald sie wieder da ist, holt CuraHub nach, was du verpasst hast.
 
-## Die anderen im Raum
-
-- Wer in der **Ego-Perspektive** unterwegs ist, erscheint als Schleim-Blob in seiner Farbe – wie die Besucher*innen im öffentlichen Viewer, nur mit Namen.
-- Wer in der Orbitansicht von außen auf den Raum schaut, erscheint als kleine Kamera an der Stelle, von der aus geschaut wird. Sobald die Kamera im Raum ist, wird daraus ebenfalls ein Blob – schwebend an dieser Stelle.
-- Über beiden steht der Name; er ist auch durch Wände hindurch zu sehen, damit du die anderen schnell findest.
-
 ## Im öffentlichen Viewer
 
-Besucher*innen sehen oben, wie viele Personen gerade in der Ausstellung sind. Alle anderen erscheinen als weiche, glänzende **Schleim-Blobs** in Brusthöhe, die beim Gehen nachziehen und beim Stehenbleiben nachwippen. Im Viewer ist niemand namentlich zu sehen.
+Besucher*innen sehen oben, wie viele Personen gerade in der Ausstellung sind. Im Raum selbst werden andere Personen nicht dargestellt – weder im Viewer noch im Editor.

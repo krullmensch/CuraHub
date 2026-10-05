@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { avatarPalette, editorModeOf, mixHex, peopleCount, peopleOf, personTitle, versionPresence } from './presence';
+import { avatarPalette, colorForUser, editorModeOf, mixHex, nameForEmail, peopleCount, peopleOf, personTitle, USER_COLORS, versionPresence } from './presence';
 import type { PresenceMember } from './protocol';
 
 const member = (session: string, userId: number, versionId: number | null, mode: PresenceMember['mode'] = 'orbit'): PresenceMember => ({
@@ -46,5 +46,12 @@ describe('presence helpers', () => {
     expect(editorModeOf('orthographic', false)).toBe('orbit');
     expect(editorModeOf('firstPerson', false)).toBe('firstPerson');
     expect(editorModeOf('firstPerson', true)).toBe('wallEditor');
+  });
+
+  it('gives the signed-in person the same colour and name as the live server', () => {
+    expect(colorForUser(1)).toBe(USER_COLORS[1]);
+    expect(colorForUser(13)).toBe(USER_COLORS[3]);
+    expect(nameForEmail('mkrullmann@hsbi.de')).toBe('mkrullmann');
+    expect(nameForEmail('@x')).toBe('@x');
   });
 });

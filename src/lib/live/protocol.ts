@@ -14,7 +14,6 @@ export type ClientMessage =
   | { t: 'visit'; slug: string }
   | { t: 'leave' }
   | { t: 'claim'; seq: number; groups: string[][] }
-  | { t: 'pose'; p: Vec3; yaw: number; pitch: number }
   | { t: 'drag'; transforms: LiveTransform[] };
 
 export type Vec3 = [number, number, number];
@@ -77,13 +76,6 @@ const serverMessageSchema = z.discriminatedUnion('t', [
     by: z.string().nullable(),
   }),
   z.object({
-    t: z.literal('pose'),
-    session: z.string(),
-    p: z.tuple([z.number(), z.number(), z.number()]),
-    yaw: z.number(),
-    pitch: z.number(),
-  }),
-  z.object({
     t: z.literal('drag'),
     session: z.string(),
     transforms: z.array(z.object({
@@ -93,7 +85,6 @@ const serverMessageSchema = z.discriminatedUnion('t', [
       s: z.tuple([z.number(), z.number(), z.number()]),
     })),
   }),
-  z.object({ t: z.literal('gone'), session: z.string() }),
   z.object({ t: z.literal('error'), code: z.string(), message: z.string() }),
 ]);
 

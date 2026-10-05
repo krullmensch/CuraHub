@@ -55,13 +55,6 @@ export const clientMessageSchema = z.discriminatedUnion('t', [
         groups: z.array(z.array(claimKey).min(1).max(MAX_CLAIM_KEYS)).max(MAX_CLAIM_KEYS),
     }),
     z.object({
-        // Where this tab's camera is (editor) or where the visitor stands (viewer).
-        t: z.literal('pose'),
-        p: vec3,
-        yaw: z.number().min(-100).max(100),
-        pitch: z.number().min(-10).max(10),
-    }),
-    z.object({
         // Unsaved transforms of objects this tab holds, while it moves them.
         t: z.literal('drag'),
         transforms: z.array(transformSchema).max(MAX_DRAG_OBJECTS),
@@ -112,10 +105,6 @@ export type ServerMessage =
     | { t: 'changed'; versionId: number; seq: number; by: string | null } & LiveChange
     /** Versions of an exhibition changed (graph, publish state); to its editors. */
     | { t: 'versions'; exhibitionId: number; event: VersionEvent; versionId: number; fallbackVersionId: number | null; by: string | null }
-    /** Another tab's camera (editor) or another visitor's standing point (viewer, anonymous id). */
-    | { t: 'pose'; session: string; p: [number, number, number]; yaw: number; pitch: number }
-    /** A visitor (public viewer) left; `session` is their anonymous visitor id. */
-    | { t: 'gone'; session: string }
     /** Another tab's objects while it moves them (not saved yet). */
     | { t: 'drag'; session: string; transforms: LiveTransform[] }
     | { t: 'error'; code: string; message: string };

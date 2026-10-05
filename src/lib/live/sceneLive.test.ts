@@ -1,13 +1,10 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { DragTracker, transformOf } from './sceneSync';
-import { poseMoved } from './cameraPose';
-import { BLOB_HEIGHT, blobTarget } from './blobChain';
 import { outlineGroups, pathBounds } from './remoteOutlines';
 import {
   previewCount, receiveDrag, release, releaseAll, releaseSessions, RELEASE_GRACE_MS, stepPreviews, syncWithClaims,
 } from './remotePreviews';
-import { avatarSessions, clearAvatarPoses, keepAvatarSessions, onAvatarPose, onAvatarSessionsChanged, setAvatarPose } from './avatarPoses';
 
 describe('drag sender', () => {
   it('records an object first, then sends only what moved', () => {
@@ -70,38 +67,6 @@ describe('remote previews', () => {
     syncWithClaims((k) => (k === 'figure:5' ? 'anna' : undefined), 0);
     stepPreviews(0.1, () => new THREE.Group(), 10_000);
     expect(previewCount()).toBe(1);
-  });
-});
-
-describe('avatars', () => {
-  afterEach(() => clearAvatarPoses());
-
-  it('puts a walking person\'s blob at chest height below their eye', () => {
-    expect(blobTarget([1, 1.62, -2])).toEqual([1, BLOB_HEIGHT, -2]);
-  });
-
-  it('sends a pose only after a real move or turn', () => {
-    const a = { p: [0, 1, 0] as [number, number, number], yaw: 0, pitch: 0 };
-    expect(poseMoved(null, a)).toBe(true);
-    expect(poseMoved(a, { ...a, p: [0.01, 1, 0] })).toBe(false);
-    expect(poseMoved(a, { ...a, p: [0.05, 1, 0] })).toBe(true);
-    expect(poseMoved(a, { ...a, yaw: 0.02 })).toBe(true);
-  });
-
-  it('tracks who has a pose and tells about new ones', () => {
-    let listChanges = 0;
-    let poses = 0;
-    const off1 = onAvatarSessionsChanged(() => listChanges++);
-    const off2 = onAvatarPose(() => poses++);
-    setAvatarPose('b', { p: [0, 0, 0], yaw: 0, pitch: 0 });
-    setAvatarPose('a', { p: [0, 0, 0], yaw: 0, pitch: 0 });
-    setAvatarPose('a', { p: [1, 0, 0], yaw: 0, pitch: 0 });
-    expect(avatarSessions()).toEqual(['a', 'b']);
-    keepAvatarSessions((s) => s === 'a');
-    expect(avatarSessions()).toEqual(['a']);
-    expect([listChanges, poses]).toEqual([3, 3]);
-    off1();
-    off2();
   });
 });
 
