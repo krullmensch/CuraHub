@@ -17,6 +17,8 @@ export interface BlobSegment {
 export const BLOB_RADII = [0.3, 0.25, 0.21, 0.18, 0.15];
 /** Blobs float at chest height above the floor below the visitor's eye. */
 export const BLOB_HEIGHT = 1.05;
+/** A name label floats this far above the blob's head (editor first person). */
+export const BLOB_LABEL_LIFT = 0.55;
 
 /** Spring stiffness (1/s²) and damping (1/s): the head is tight, the tail ever looser. */
 const HEAD_STIFFNESS = 60;

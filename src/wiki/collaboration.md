@@ -30,8 +30,8 @@ Wählst du ein Werk, eine Stellwand oder eine Maßstabsfigur aus, ist es für di
 
 ## Die anderen im Raum
 
-- Wer in der **Ego-Perspektive** unterwegs ist, steht als Maßstabsfigur in seiner Farbe im Raum.
-- Wer von außen auf den Raum schaut, erscheint als kleine Kamera an der Stelle, von der aus er schaut.
+- Wer in der **Ego-Perspektive** unterwegs ist, erscheint als Schleim-Blob in seiner Farbe – wie die Besucher*innen im öffentlichen Viewer, nur mit Namen.
+- Wer in der Orbitansicht von außen auf den Raum schaut, erscheint als kleine Kamera an der Stelle, von der aus geschaut wird. Sobald die Kamera im Raum ist, wird daraus ebenfalls ein Blob – schwebend an dieser Stelle.
 - Über beiden steht der Name; er ist auch durch Wände hindurch zu sehen, damit du die anderen schnell findest.
 
 ## Im öffentlichen Viewer
