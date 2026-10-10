@@ -2,11 +2,11 @@
 # Fresh install: `docker compose up -d`, then open https://<domain>/setup (code: `docker compose logs app`).
 # See docs/deployment.md.
 #
-# Everything that has to survive lives in ./data next to this file, so backing up the stack
-# directory backs up CuraHub:
-#   data/secrets  database passwords and JWT secret (written once by `init`)
-#   data/uploads  uploaded images, videos, models, PDFs
-#   data/backups  daily database dumps (service `backup`) — restore from these, not from data/db
+# Everything that has to survive lives in ./data next to this file:
+#   data/uploads  uploaded images, videos, models, PDFs                       → back up
+#   data/backups  daily database dumps (service `backup`), restores use these → back up
+#   data/secrets  database passwords and JWT secret (written once by `init`)  → not needed: a
+#                 restore starts with new ones, the dumps hold no database users
 #   data/db       MariaDB's live files (a copy taken while it runs is not consistent)
 services:
   init:

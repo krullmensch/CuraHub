@@ -21,18 +21,18 @@ Bis der Assistent abgeschlossen ist, antwortet die API nur mit `503 setup_requir
 
 ## Daten und Backups
 
-Alles, was bleiben muss, liegt im Ordner `data/` des Stack-Verzeichnisses. Wer das Stack-Verzeichnis sichert, sichert CuraHub.
+Alles, was bleiben muss, liegt im Ordner `data/` des Stack-Verzeichnisses.
 
-| Ordner | Inhalt |
-|---|---|
-| `data/secrets` | Datenbank-Passwörter und JWT-Secret (vom `init`-Container beim ersten Start erzeugt) |
-| `data/uploads` | hochgeladene Bilder, Videos, 3D-Modelle und PDFs |
-| `data/backups` | tägliche Datenbank-Dumps (`curahub-<Datum>.sql.gz`, 14 Tage) |
-| `data/db` | die laufenden Dateien der MariaDB |
+| Ordner | Inhalt | Ins Backup? |
+|---|---|---|
+| `data/uploads` | hochgeladene Bilder, Videos, 3D-Modelle und PDFs | ja |
+| `data/backups` | tägliche Datenbank-Dumps (`curahub-<Datum>.sql.gz`, 14 Tage) | ja |
+| `data/secrets` | Datenbank-Passwörter und JWT-Secret, vom `init`-Container erzeugt | nein |
+| `data/db` | die laufenden Dateien der MariaDB | nein |
 
-Der Dienst `backup` schreibt einmal am Tag einen Dump nach `data/backups`, außerdem gleich beim Start, wenn der letzte älter als einen Tag ist. Wiederhergestellt wird aus diesen Dumps: eine Kopie von `data/db`, die bei laufender Datenbank entsteht, ist nicht in sich stimmig. `data/db` muss deshalb nicht ins Backup. Ob die Dumps laufen, zeigt der Systemcheck unter „Benutzerverwaltung" → „System".
+Der Dienst `backup` schreibt einmal am Tag einen Dump nach `data/backups`, außerdem gleich beim Start, wenn der letzte älter als einen Tag ist. Wiederhergestellt wird aus diesen Dumps: eine Kopie von `data/db`, die bei laufender Datenbank entsteht, ist nicht in sich stimmig. Ob die Dumps laufen, zeigt der Systemcheck unter „Benutzerverwaltung" → „System".
 
-`data/secrets` und `data/backups` sind nur für root lesbar; das Backup enthält Passwörter und personenbezogene Daten. Ohne `data/secrets` kommt man nicht mehr an die Datenbank, ein neues JWT-Secret meldet nur alle Nutzer:innen ab.
+`data/secrets` gehört nicht ins Backup: Die Passwörter darin braucht nur dieser Server, und bei einer Wiederherstellung erzeugt `init` neue. Die Dumps enthalten keine Datenbank-Benutzer und keine Klartext-Passwörter (Notfall-Konten nur als bcrypt-Hash), aber personenbezogene Daten wie E-Mail-Adressen; das Backup braucht entsprechenden Schutz. `data/secrets` und `data/backups` sind auf dem Server nur für root lesbar.
 
 Dump von Hand:
 
@@ -42,8 +42,8 @@ docker compose exec backup bash /db-backup.sh now
 
 ### Wiederherstellen oder auf einen neuen Server umziehen
 
-1. Stack-Verzeichnis samt `data/secrets`, `data/uploads` und `data/backups` auf den Server kopieren, `data/db` leer lassen.
-2. Nur die Datenbank starten: `docker compose up -d db`
+1. Stack-Verzeichnis mit `data/uploads` und `data/backups` auf den Server kopieren; `data/secrets` und `data/db` gibt es dort nicht (oder sie sind leer).
+2. Nur die Datenbank starten: `docker compose up -d db`. `init` erzeugt neue Passwörter, die Datenbank legt den Benutzer `curahub` damit an.
 3. Dump einspielen:
 
 ```bash
@@ -52,7 +52,7 @@ gunzip -c data/backups/curahub-<Datum>.sql.gz | docker compose exec -T db sh -c 
 
 4. Alles starten: `docker compose up -d`, dann Apache wie bei der Neuinstallation einrichten.
 
-Der Dump enthält keine Datenbank-Benutzer. Eine Neuinstallation braucht keine, die Datenbank legt `curahub` mit dem Passwort aus `data/secrets` selbst an. Steht in der `.env` eine eigene `DATABASE_URL` (ältere Installationen), muss deren Benutzer vor dem Start der App angelegt werden.
+Durch das neue JWT-Secret müssen sich alle einmal neu anmelden; Projekte, Ausstellungen, Konten und Uploads sind unverändert. Steht in der `.env` eine eigene `DATABASE_URL` (Installationen von vor dem Setup-Assistenten), muss deren Datenbank-Benutzer vor dem Start der App angelegt werden.
 
 ## Notfälle
 
