@@ -51,3 +51,6 @@ _archive/
 
 # Project website (site/)
 .astro
+
+# Stack data (docker-compose.yml: uploads, database, secrets, dumps)
+/data/

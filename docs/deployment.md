@@ -19,34 +19,40 @@ Danach mit dem HSBI-Konto anmelden, unter „Benutzerverwaltung" Kurator:innen f
 
 Bis der Assistent abgeschlossen ist, antwortet die API nur mit `503 setup_required`. Nach dem Abschluss ist `/setup` gesperrt.
 
-## Backups
+## Daten und Backups
 
-Drei Volumes gehören ins Backup: `<projekt>_secrets`, `<projekt>_db_data` und `<projekt>_backend_uploads` (`<projekt>` ist der Ordnername, z. B. `curahub`).
+Alles, was bleiben muss, liegt im Ordner `data/` des Stack-Verzeichnisses.
 
-Datenbank-Dump:
+| Ordner | Inhalt | Ins Backup? |
+|---|---|---|
+| `data/uploads` | hochgeladene Bilder, Videos, 3D-Modelle und PDFs | ja |
+| `data/backups` | tägliche Datenbank-Dumps (`curahub-<Datum>.sql.gz`, 14 Tage) | ja |
+| `data/secrets` | Datenbank-Passwörter und JWT-Secret, vom `init`-Container erzeugt | nein |
+| `data/db` | die laufenden Dateien der MariaDB | nein |
 
-```bash
-docker compose exec db sh -c 'exec mariadb-dump -uroot -p"$(cat /run/curahub-secrets/db_root_password)" --single-transaction --routines curahub' > curahub-$(date +%Y%m%d-%H%M%S).sql
-```
+Der Dienst `backup` schreibt einmal am Tag einen Dump nach `data/backups`, außerdem gleich beim Start, wenn der letzte älter als einen Tag ist. Wiederhergestellt wird aus diesen Dumps: eine Kopie von `data/db`, die bei laufender Datenbank entsteht, ist nicht in sich stimmig. Ob die Dumps laufen, zeigt der Systemcheck unter „Benutzerverwaltung" → „System".
 
-Ohne das Volume `secrets` kommt man nicht mehr an die Datenbank. Ein neues JWT-Secret meldet nur alle Nutzer:innen ab.
+`data/secrets` gehört nicht ins Backup: Die Passwörter darin braucht nur dieser Server, und bei einer Wiederherstellung erzeugt `init` neue. Die Dumps enthalten keine Datenbank-Benutzer und keine Klartext-Passwörter (Notfall-Konten nur als bcrypt-Hash), aber personenbezogene Daten wie E-Mail-Adressen; das Backup braucht entsprechenden Schutz. `data/secrets` und `data/backups` sind auf dem Server nur für root lesbar.
 
-Bei einer bestehenden Installation (Datenbank vor dieser Compose-Datei angelegt) gilt weiter das Root-Passwort aus der alten `.env` (`DB_ROOT_PASSWORD`); die erzeugte Datei ist dort unbenutzt, und der Container hat keine Variable `MARIADB_ROOT_PASSWORD` mehr. Dump dann so (Datenbankname aus `DB_NAME`):
-
-```bash
-set -a; . ./.env; set +a
-docker compose exec -e P="$DB_ROOT_PASSWORD" -e D="$DB_NAME" db sh -c 'exec mariadb-dump -uroot -p"$P" --single-transaction --routines "$D"' > curahub-$(date +%Y%m%d-%H%M%S).sql
-```
-
-## Update
+Dump von Hand:
 
 ```bash
-git pull --ff-only
-docker compose build app
-docker compose up -d
+docker compose exec backup bash /db-backup.sh now
 ```
 
-Migrationen laufen beim Start automatisch. Vorher einen Dump ziehen.
+### Wiederherstellen oder auf einen neuen Server umziehen
+
+1. Stack-Verzeichnis mit `data/uploads` und `data/backups` auf den Server kopieren; `data/secrets` und `data/db` gibt es dort nicht (oder sie sind leer).
+2. Nur die Datenbank starten: `docker compose up -d db`. `init` erzeugt neue Passwörter, die Datenbank legt den Benutzer `curahub` damit an.
+3. Dump einspielen:
+
+```bash
+gunzip -c data/backups/curahub-<Datum>.sql.gz | docker compose exec -T db sh -c 'exec mariadb -uroot -p"$(cat /run/curahub-secrets/db_root_password)"'
+```
+
+4. Alles starten: `docker compose up -d`, dann Apache wie bei der Neuinstallation einrichten.
+
+Durch das neue JWT-Secret müssen sich alle einmal neu anmelden; Projekte, Ausstellungen, Konten und Uploads sind unverändert. Steht in der `.env` eine eigene `DATABASE_URL` (Installationen von vor dem Setup-Assistenten), muss deren Datenbank-Benutzer vor dem Start der App angelegt werden.
 
 ## Notfälle
 
@@ -60,4 +66,17 @@ Eine vorhandene `.env` mit `DATABASE_URL`, `JWT_SECRET`, `APP_EXTERNAL_PORT` und
 
 - Hinter Cloudflare zusätzlich `BEHIND_CLOUDFLARE=true` setzen.
 - Eigene Apache-Konfiguration: `ProxyPass` braucht `upgrade=websocket` (siehe `deploy/apache/curahub.conf`). Ohne bleibt die Live-Anwesenheit „Offline“; Editor und Viewer funktionieren trotzdem.
-- Der Datenbank-Port wird nicht mehr auf dem Host veröffentlicht; Dumps laufen über `docker compose exec db …`.
+- Der Datenbank-Port wird nicht mehr auf dem Host veröffentlicht.
+
+### Umzug aus Docker-Volumes nach `data/`
+
+Installationen von vor Oktober 2026 haben ihre Daten in den Volumes `<projekt>_db_data`, `<projekt>_backend_uploads` und `<projekt>_secrets` (`<projekt>` ist der Ordnername). Die aktuelle Compose-Datei liest nur noch `data/`. Ein `docker compose up -d` ohne Umzug startet mit leerer Datenbank und dem Setup-Assistenten — die alten Daten sind dann nicht weg, aber nicht eingebunden. Einmalig umziehen:
+
+```bash
+docker compose down
+git pull --ff-only
+sh deploy/migrate-volumes.sh
+docker compose up -d --build
+```
+
+Das Skript bricht ab, solange der Stack läuft oder `data/db` schon Daten hat, kopiert die drei Volumes nach `data/` und übernimmt `DB_ROOT_PASSWORD` aus der Umgebung oder einer vorhandenen `.env` nach `data/secrets/db_root_password`, damit der Dienst `backup` die Datenbank lesen kann. Die Volumes bleiben unverändert; wenn alle Ausstellungen da sind, mit `docker volume rm <projekt>_db_data <projekt>_backend_uploads <projekt>_secrets` löschen.

@@ -9,6 +9,12 @@ import type { PrismaClient } from '@prisma/client';
 export type CheckStatus = 'ok' | 'warn' | 'fail';
 export interface Check { id: string; label: string; status: CheckStatus; detail: string }
 export interface CheckRequestInfo { forwarded: boolean; protocol: string }
+/** What the `backup` service left in data/backups; null when that folder is not mounted. */
+export interface BackupState {
+    count: number;
+    newest: { name: string; mtimeMs: number; size: number } | null;
+    lastError: string | null;
+}
 
 export interface CheckDeps {
     pingDb(): Promise<void>;
@@ -19,10 +25,16 @@ export interface CheckDeps {
     run(cmd: string, args: string[]): Promise<void>;
     freeBytes(dir: string): Promise<number>;
     reachHsbi(): Promise<void>;
+    backups(): Promise<BackupState | null>;
+    now?: () => number;
     timeoutMs?: number;
 }
 
 export const MIN_FREE_BYTES = 10 * 1024 ** 3;
+/** The backup service dumps once a day; a little slack for slow dumps and restarts. */
+export const MAX_BACKUP_AGE_HOURS = 26;
+export const BACKUPS_DIR = '/backups';
+const BACKUP_FILE = /^curahub-.*\.sql\.gz$/;
 const DEFAULT_TIMEOUT_MS = 6_000;
 
 class TimeoutError extends Error {}
@@ -44,6 +56,19 @@ function reason(err: unknown): string {
 }
 
 const gb = (bytes: number) => `${(bytes / 1024 ** 3).toFixed(1)} GB`;
+const mb = (bytes: number) => `${(bytes / 1024 ** 2).toFixed(1)} MB`;
+
+function backupCheck(state: BackupState | null, now: number): { status: CheckStatus; detail: string } {
+    if (!state) return { status: 'warn', detail: 'Kein Backup-Ordner eingebunden (Dienst „backup“ in docker-compose.yml fehlt).' };
+    if (state.lastError) return { status: 'warn', detail: `Letzter Dump fehlgeschlagen: ${state.lastError}` };
+    if (!state.newest) return { status: 'warn', detail: 'Noch kein Datenbank-Dump in data/backups.' };
+    const hours = Math.max(0, Math.floor((now - state.newest.mtimeMs) / 3_600_000));
+    const age = hours < 1 ? 'vor weniger als 1 Std.' : `vor ${hours} Std.`;
+    if (hours >= MAX_BACKUP_AGE_HOURS) {
+        return { status: 'warn', detail: `Letzter Dump ${age} — läuft der Dienst „backup“?` };
+    }
+    return { status: 'ok', detail: `Letzter Dump ${age} (${mb(state.newest.size)}), ${state.count} Dumps in data/backups.` };
+}
 
 export async function runSystemChecks(deps: CheckDeps, info: CheckRequestInfo): Promise<Check[]> {
     const ms = deps.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -100,6 +125,7 @@ export async function runSystemChecks(deps: CheckDeps, info: CheckRequestInfo): 
             await deps.reachHsbi();
             return { status: 'ok', detail: 'www.hsbi.de antwortet.' };
         }),
+        attempt('backup', 'Datenbank-Backup', 'warn', async () => backupCheck(await deps.backups(), (deps.now ?? Date.now)())),
     ]);
 
     return [...checks, proxy];
@@ -139,5 +165,26 @@ export function defaultCheckDeps(prisma: PrismaClient, uploadsDir: string): Chec
         reachHsbi: async () => {
             await fetch('https://www.hsbi.de/login', { method: 'HEAD', signal: AbortSignal.timeout(5_000) });
         },
+        backups: () => readBackupState(BACKUPS_DIR),
     };
+}
+
+export async function readBackupState(dir: string): Promise<BackupState | null> {
+    let names: string[];
+    try {
+        names = await fs.promises.readdir(dir);
+    } catch {
+        return null;
+    }
+    let newest: BackupState['newest'] = null;
+    let count = 0;
+    for (const name of names.filter((n) => BACKUP_FILE.test(n))) {
+        const stat = await fs.promises.stat(path.join(dir, name)).catch(() => null);
+        if (!stat?.isFile()) continue;
+        count++;
+        if (!newest || stat.mtimeMs > newest.mtimeMs) newest = { name, mtimeMs: stat.mtimeMs, size: stat.size };
+    }
+    const lastError = await fs.promises.readFile(path.join(dir, '.last-error'), 'utf8')
+        .then((t) => t.trim().slice(0, 300) || null, () => null);
+    return { count, newest, lastError };
 }
