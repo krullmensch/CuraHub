@@ -36,6 +36,8 @@ copy() { # <volume> <folder in data/>
 copy db_data db
 copy backend_uploads uploads
 copy secrets secrets
+# cp -a carries the volumes' own modes over; secrets and dumps stay root-only.
+chmod 700 data/secrets data/backups
 
 # Databases created before the init service keep the root password from the old .env (or the
 # environment); the backup service reads it from data/secrets, so it goes there.
