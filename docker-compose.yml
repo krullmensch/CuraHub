@@ -1,13 +1,20 @@
 # CuraHub — one compose file for fresh installs and updates.
 # Fresh install: `docker compose up -d`, then open https://<domain>/setup (code: `docker compose logs app`).
 # See docs/deployment.md.
+#
+# Everything that has to survive lives in ./data next to this file, so backing up the stack
+# directory backs up CuraHub:
+#   data/secrets  database passwords and JWT secret (written once by `init`)
+#   data/uploads  uploaded images, videos, models, PDFs
+#   data/backups  daily database dumps (service `backup`) — restore from these, not from data/db
+#   data/db       MariaDB's live files (a copy taken while it runs is not consistent)
 services:
   init:
     image: alpine:3.20
     restart: "no"
     command: ["sh", "/init-secrets.sh"]
     volumes:
-      - secrets:/secrets
+      - ./data:/data
       - ./deploy/init-secrets.sh:/init-secrets.sh:ro
 
   db:
@@ -23,8 +30,8 @@ services:
       # Creates the healthcheck user on older datadirs and upgrades system tables after image updates.
       MARIADB_AUTO_UPGRADE: "1"
     volumes:
-      - db_data:/var/lib/mysql
-      - secrets:/run/curahub-secrets:ro
+      - ./data/db:/var/lib/mysql
+      - ./data/secrets:/run/curahub-secrets:ro
     depends_on:
       init:
         condition: service_completed_successfully
@@ -60,8 +67,10 @@ services:
       db:
         condition: service_healthy
     volumes:
-      - backend_uploads:/app/server/uploads
-      - secrets:/run/curahub-secrets:ro
+      - ./data/uploads:/app/server/uploads
+      - ./data/secrets:/run/curahub-secrets:ro
+      # Read-only: the system check reports the age of the newest dump.
+      - ./data/backups:/backups:ro
     networks:
       - curahub-network
     healthcheck:
@@ -71,11 +80,21 @@ services:
       retries: 5
       start_period: 90s
 
+  backup:
+    image: mariadb:10.6
+    restart: always
+    # Dumps every database once a day into data/backups and keeps 14 days (deploy/db-backup.sh).
+    entrypoint: ["bash", "/db-backup.sh"]
+    volumes:
+      - ./data/backups:/backups
+      - ./data/secrets:/run/curahub-secrets:ro
+      - ./deploy/db-backup.sh:/db-backup.sh:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - curahub-network
+
 networks:
   curahub-network:
     driver: bridge
-
-volumes:
-  secrets:
-  db_data:
-  backend_uploads:

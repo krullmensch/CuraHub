@@ -25,3 +25,4 @@ server/.env
 # server <-- Das muss raus, damit Docker den Ordner sieht!
 site
 .github
+data
