@@ -6,7 +6,7 @@ import { splatRealScale } from '@/lib/splats';
 import { useEditorStore, videoRefMap, modelBBoxMap, isFloorAssetType } from '../store/editorStore';
 import type { TransformMode, MediumType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { Card } from '@/components/ui/card';
 import { SidebarTabs } from './SidebarTabs';
 import { Button } from '@/components/ui/button';
@@ -305,7 +305,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         const store = useEditorStore.getState();
         const updatedInstances = store.localInstances.filter(inst => inst.id !== selectedId);
         store.commitLocalChange(updatedInstances);
-        gooeyToast.success('Deleted', { description: 'Artwork removed from exhibition.' });
+        toast.success('Deleted', { description: 'Artwork removed from exhibition.' });
         selectInstance(null);
     };
 
@@ -836,8 +836,10 @@ const WallPropertiesContent = () => {
                 onClick={() => {
                     // Prevent unlocking if artworks are attached
                     if (wall.isLocked && hasArtworks) {
-                        gooeyToast.error("Cannot unlock", {
-                            description: `Remove all ${artworksOnWall.length} artwork(s) from this wall first.`,
+                        toast.error("Fixierung lässt sich nicht lösen", {
+                            description: artworksOnWall.length === 1
+                                ? "Erst das Werk von dieser Wand entfernen."
+                                : `Erst alle ${artworksOnWall.length} Werke von dieser Wand entfernen.`,
                         });
                         return;
                     }
@@ -846,8 +848,8 @@ const WallPropertiesContent = () => {
                 className={cn("w-full text-xs", wall.isLocked ? "bg-amber-600/20 text-amber-400" : "bg-zinc-800 text-zinc-100")}
             >
                 {wall.isLocked
-                    ? <><Lock className="h-4 w-4 mr-2" /> Locked{hasArtworks ? ` (${artworksOnWall.length} artwork${artworksOnWall.length > 1 ? 's' : ''})` : ''}</>
-                    : <><Unlock className="h-4 w-4 mr-2" /> Unlocked</>
+                    ? <><Lock className="h-4 w-4 mr-2" /> Fixiert{hasArtworks ? ` (${artworksOnWall.length} ${artworksOnWall.length === 1 ? 'Werk' : 'Werke'})` : ''}</>
+                    : <><Unlock className="h-4 w-4 mr-2" /> Nicht fixiert</>
                 }
             </Button>
         </div>

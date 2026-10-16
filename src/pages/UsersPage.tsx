@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Trash2, Layers, ArrowLeft } from 'lucide-react';
 import { UserExhibitionsModal } from '../components/UserExhibitionsModal';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { SystemCheckList } from '../components/setup/SystemCheckList';
 import type { SetupCheck } from '../lib/setup/setupApi';
 
@@ -87,7 +87,7 @@ export const UsersPage = () => {
         prev.map((u) => (u.id === userId ? { ...u, role: newRole } : u))
       );
     } catch {
-      gooeyToast.error('Fehler', { description: 'Rollenänderung fehlgeschlagen.' });
+      toast.error('Fehler', { description: 'Rollenänderung fehlgeschlagen.' });
     }
   };
 
@@ -101,7 +101,7 @@ export const UsersPage = () => {
       setUsers((prev) => prev.filter((u) => u.id !== userId));
       setConfirmDeleteId(null);
     } catch {
-      gooeyToast.error('Fehler', { description: 'Benutzer konnte nicht gelöscht werden.' });
+      toast.error('Fehler', { description: 'Benutzer konnte nicht gelöscht werden.' });
     }
   };
 

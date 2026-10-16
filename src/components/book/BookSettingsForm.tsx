@@ -1,5 +1,5 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { DialogFooter } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
@@ -91,7 +91,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
   };
 
   const invalidThickness = () =>
-    gooeyToast.error('Ungültige Dicke', { description: 'Bitte einen Wert zwischen 0,3 und 8 cm eingeben.' });
+    toast.error('Ungültige Dicke', { description: 'Bitte einen Wert zwischen 0,3 und 8 cm eingeben.' });
 
   // ---- dialog mode: one save for everything ----
 
@@ -108,10 +108,10 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
     setBusy(true);
     try {
       afterChange(await saveBookSettings(artwork.id, patch, token));
-      gooeyToast.success('Gespeichert', { description: 'Buch-Einstellungen aktualisiert.' });
+      toast.success('Gespeichert', { description: 'Buch-Einstellungen aktualisiert.' });
       onClose?.();
     } catch (err) {
-      gooeyToast.error((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setBusy(false);
     }
@@ -125,7 +125,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
     try {
       afterChange(await saveBookSettings(artwork.id, patch, token));
     } catch (err) {
-      gooeyToast.error((err as Error).message);
+      toast.error((err as Error).message);
       revert();
     } finally {
       setBusy(false);
@@ -194,9 +194,9 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
     setBusy(true);
     try {
       afterChange(await action());
-      if (!inline) gooeyToast.success(done);
+      if (!inline) toast.success(done);
     } catch (err) {
-      gooeyToast.error((err as Error).message);
+      toast.error((err as Error).message);
     } finally {
       setBusy(false);
     }

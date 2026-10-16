@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { useEditorStore, instanceRefMap } from '@/store/editorStore';
 import {
     EMPTY_GUIDES,
@@ -440,7 +440,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
         const id = useWallEditorView.getState().addGuide(face.key, axis, roundMm(wallToGuideValue(axis, wallValue, wallRect)));
         if (id === null) {
             if (rootRef.current?.hasPointerCapture(e.pointerId)) rootRef.current.releasePointerCapture(e.pointerId);
-            gooeyToast.error(`Höchstens ${MAX_GUIDES_PER_FACE} Hilfslinien pro Wandseite`);
+            toast.error(`Höchstens ${MAX_GUIDES_PER_FACE} Hilfslinien pro Wandseite`);
             return;
         }
         setInter({ kind: 'guide', pointerId: e.pointerId, id, axis, overRuler: true });
@@ -745,7 +745,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
                 }
                 if (ids.length > 0) {
                     removeInstances(ids);
-                    gooeyToast.success(ids.length === 1 ? 'Werk entfernt' : `${ids.length} Werke entfernt`, {
+                    toast.success(ids.length === 1 ? 'Werk entfernt' : `${ids.length} Werke entfernt`, {
                         description: 'Mit ⌘/Strg + Z rückgängig machen.',
                     });
                 }

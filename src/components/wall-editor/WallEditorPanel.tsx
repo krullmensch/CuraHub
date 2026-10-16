@@ -13,7 +13,7 @@ import {
     MoveVertical,
     Trash2,
 } from 'lucide-react';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -100,7 +100,7 @@ const ArrangeTab = ({ face }: { face: WallFace }) => {
     const remove = () => {
         const ids = selected.map((i) => i.id);
         removeInstances(ids);
-        gooeyToast.success(ids.length === 1 ? 'Werk entfernt' : `${ids.length} Werke entfernt`, {
+        toast.success(ids.length === 1 ? 'Werk entfernt' : `${ids.length} Werke entfernt`, {
             description: 'Mit ⌘/Strg + Z rückgängig machen.',
         });
     };

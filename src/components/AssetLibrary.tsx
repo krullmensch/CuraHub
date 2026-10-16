@@ -28,7 +28,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/popover';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus, FolderUp, Inbox, Layers, MoreHorizontal, Palette, Pencil, FolderInput, Upload, AlertCircle } from 'lucide-react';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { SplatPreviewTile } from './SplatPreviewTile';
@@ -196,7 +196,7 @@ export const AssetLibrary = () => {
         const data = await res.json();
         setAssets(data);
       } catch (err) {
-        gooeyToast.error('Fehler', {
+        toast.error('Fehler', {
           description: 'Assets konnten nicht geladen werden.',
         });
         console.error(err);
@@ -219,7 +219,7 @@ export const AssetLibrary = () => {
       setUnsortedCount(data.unsortedCount);
     } catch (err) {
       console.error(err);
-      gooeyToast.error('Fehler', {
+      toast.error('Fehler', {
         description: 'Ordner konnten nicht geladen werden.',
       });
     }
@@ -275,16 +275,16 @@ export const AssetLibrary = () => {
       fetchFolders();
 
       if (failedCount === 0) {
-        gooeyToast.success('Assets gelöscht', {
+        toast.success('Assets gelöscht', {
           description: `${successfulIds.length} Datei(en) entfernt.`,
         });
       } else {
-        gooeyToast.warning('Löschen teilweise fehlgeschlagen', {
+        toast.warning('Löschen teilweise fehlgeschlagen', {
           description: `${successfulIds.length} gelöscht, ${failedCount} fehlgeschlagen.`,
         });
       }
     } catch (err) {
-      gooeyToast.error('Fehler', {
+      toast.error('Fehler', {
         description: 'Assets konnten nicht gelöscht werden.',
       });
       console.error(err);
@@ -339,7 +339,7 @@ export const AssetLibrary = () => {
   const handlePickedFiles = async (list: FileList) => {
     const { files, skipped } = await selectUploadFiles(entriesFromFileList(list));
     if (files.length === 0) {
-      gooeyToast.error('Upload fehlgeschlagen', {
+      toast.error('Upload fehlgeschlagen', {
         description: skipped.length > 0
           ? `Keine unterstützten Dateien gefunden (${describeSkippedFiles(skipped)}). Erlaubt: ${SUPPORTED_FORMATS_HINT}`
           : 'Der Ordner ist leer.',
@@ -369,7 +369,7 @@ export const AssetLibrary = () => {
   const handleMetadataSaved = () => {
     setSelectedAsset(null);
     fetchAssets(selectedFolder);
-    gooeyToast.success('Gespeichert', {
+    toast.success('Gespeichert', {
       description: 'Artwork-Metadaten aktualisiert.',
     });
   };
@@ -389,9 +389,9 @@ export const AssetLibrary = () => {
       setCreateDialogOpen(false);
       setCreateName('');
       setCreateColor(DEFAULT_FOLDER_COLOR);
-      gooeyToast.success('Ordner erstellt', { description: folder.name });
+      toast.success('Ordner erstellt', { description: folder.name });
     } catch (err) {
-      gooeyToast.error('Fehler', {
+      toast.error('Fehler', {
         description: err instanceof Error ? err.message : 'Ordner konnte nicht erstellt werden.',
       });
     } finally {
@@ -412,7 +412,7 @@ export const AssetLibrary = () => {
       setRenameTarget(null);
       setRenameValue('');
     } catch (err) {
-      gooeyToast.error('Fehler', {
+      toast.error('Fehler', {
         description: err instanceof Error ? err.message : 'Umbenennen fehlgeschlagen.',
       });
     } finally {
@@ -425,7 +425,7 @@ export const AssetLibrary = () => {
       const updated = await updateFolder(folder.id, { color });
       setFolders((prev) => prev.map((f) => (f.id === updated.id ? { ...f, ...updated } : f)));
     } catch (err) {
-      gooeyToast.error('Fehler', {
+      toast.error('Fehler', {
         description: err instanceof Error ? err.message : 'Farbe konnte nicht gespeichert werden.',
       });
     }
@@ -446,9 +446,9 @@ export const AssetLibrary = () => {
         fetchAssets(selectedFolder);
       }
       setFolderToDelete(null);
-      gooeyToast.success('Ordner gelöscht');
+      toast.success('Ordner gelöscht');
     } catch (err) {
-      gooeyToast.error('Fehler', {
+      toast.error('Fehler', {
         description: err instanceof Error ? err.message : 'Ordner konnte nicht gelöscht werden.',
       });
     } finally {
@@ -588,14 +588,14 @@ export const AssetLibrary = () => {
           .map((id) => moveAssetToFolder(id, targetFolderId))
       );
       setSelectedIds([]);
-      gooeyToast.success('Verschoben', {
+      toast.success('Verschoben', {
         description: `${selectedIds.length} Asset(s) verschoben.`,
       });
     } catch {
       setAssets(prevAssets);
       setFolders(prevFolders);
       setUnsortedCount(prevUnsorted);
-      gooeyToast.error('Fehler', {
+      toast.error('Fehler', {
         description: 'Assets konnten nicht verschoben werden.',
       });
     }
@@ -634,7 +634,7 @@ export const AssetLibrary = () => {
       setAssets(prevAssets);
       setFolders(prevFolders);
       setUnsortedCount(prevUnsorted);
-      gooeyToast.error('Fehler', {
+      toast.error('Fehler', {
         description: 'Asset konnte nicht verschoben werden.',
       });
     }
@@ -762,7 +762,7 @@ export const AssetLibrary = () => {
       projectId={activeProjectId}
       folderId={folderForUpload}
       onFilesReady={handleFilesReady}
-      onUploadError={(msg) => gooeyToast.error('Upload fehlgeschlagen', { description: msg })}
+      onUploadError={(msg) => toast.error('Upload fehlgeschlagen', { description: msg })}
       className="h-full w-full flex flex-col bg-zinc-950"
     >
       <div data-asset-drop-zone className="h-full w-full flex min-h-0">

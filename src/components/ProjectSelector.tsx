@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation, matchPath } from 'react-router-dom';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { Plus, ChevronDown, Search, FolderOpen, Trash2, AlertTriangle } from 'lucide-react';
 
 interface Project {
@@ -180,7 +180,7 @@ export const ProjectSelector = () => {
 
     const project = projects.find((p) => p.slug === requestedSlug);
     if (!project) {
-      gooeyToast.error('Projekt nicht gefunden', {
+      toast.error('Projekt nicht gefunden', {
         description: `Das Projekt "${requestedSlug}" existiert nicht oder du hast keinen Zugriff darauf.`,
       });
       const fallback = projects[0];

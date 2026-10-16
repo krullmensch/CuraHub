@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import * as THREE from 'three';
 import { useAuthStore } from './authStore';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { readStoredRenderQualitySetting, storeRenderQualitySetting, type RenderQualitySetting } from '../lib/renderQuality';
 import type { WallSide } from '../lib/wallEditor/geometry';
 import type { WallEditorTarget } from '../lib/wallEditor/faces';
@@ -1496,7 +1496,7 @@ const syncToBackend = async () => {
         localScaleFigures: restoreRefused(current.localScaleFigures, refused.figures, nextFiguresMap),
       });
       const names = [...new Set(refusedNames)];
-      gooeyToast.error('Änderung verworfen', {
+      toast.error('Änderung verworfen', {
         description: `${names.length === 1 ? names[0] : names.join(', ')} bearbeitet ${refusedNames.length === 1 ? 'dieses Objekt' : 'diese Objekte'} gerade.`,
       });
     }
@@ -1506,11 +1506,11 @@ const syncToBackend = async () => {
     // failing (see invariant #6) must not spam a new toast each time.
     if (newSyncStatus === 'error' && lastSyncStatus !== 'error') {
       if (has401) {
-        gooeyToast.error('Sitzung abgelaufen', {
+        toast.error('Sitzung abgelaufen', {
           description: 'Bitte lade die Seite neu und melde dich erneut an, um weiter zu speichern.',
         });
       } else {
-        gooeyToast.error('Speichern fehlgeschlagen', {
+        toast.error('Speichern fehlgeschlagen', {
           description: 'Einige Änderungen konnten nicht gespeichert werden. Wir versuchen es automatisch erneut.',
         });
       }
