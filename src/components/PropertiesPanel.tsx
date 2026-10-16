@@ -6,7 +6,7 @@ import { splatRealScale } from '@/lib/splats';
 import { useEditorStore, videoRefMap, modelBBoxMap, isFloorAssetType } from '../store/editorStore';
 import type { TransformMode, MediumType } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { Card } from '@/components/ui/card';
 import { SidebarTabs } from './SidebarTabs';
 import { Button } from '@/components/ui/button';
@@ -305,7 +305,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         const store = useEditorStore.getState();
         const updatedInstances = store.localInstances.filter(inst => inst.id !== selectedId);
         store.commitLocalChange(updatedInstances);
-        gooeyToast.success('Deleted', { description: 'Artwork removed from exhibition.' });
+        toast.success('Deleted', { description: 'Artwork removed from exhibition.' });
         selectInstance(null);
     };
 
@@ -836,7 +836,7 @@ const WallPropertiesContent = () => {
                 onClick={() => {
                     // Prevent unlocking if artworks are attached
                     if (wall.isLocked && hasArtworks) {
-                        gooeyToast.error("Cannot unlock", {
+                        toast.error("Cannot unlock", {
                             description: `Remove all ${artworksOnWall.length} artwork(s) from this wall first.`,
                         });
                         return;

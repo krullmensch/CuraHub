@@ -19,7 +19,7 @@ import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { BookViewerHost } from '../components/book/BookViewerHost';
 import { useBookViewerStore } from '../store/bookViewerStore';
 import { useEditorStore, nextTempId, isFloorAssetType, isFixedSizeMedium, type MediumType } from '../store/editorStore';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
 import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings, PersonStanding } from 'lucide-react';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
@@ -406,7 +406,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
       if (isDragging && validPlacement && draggedAsset) {
         if (!useEditorStore.getState().activeVersionId) {
-          gooeyToast.error('Kein Projekt ausgewählt', {
+          toast.error('Kein Projekt ausgewählt', {
             description: 'Bitte zuerst ein Projekt auswählen oder anlegen.',
           });
         } else {
@@ -426,19 +426,19 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
               const placedId = placeInstanceRef.current(medium, snapshot);
               if (useEditorStore.getState().wallEditor) useEditorStore.getState().setWallEditorSelection([placedId]);
               const label = assetType === 'model3d' ? '3D-Modell' : assetType === 'splat' ? 'Splat' : assetType === 'book' ? 'Buch' : 'Werk';
-              gooeyToast.success(`${label} platziert`, {
+              toast.success(`${label} platziert`, {
                 description: draggedAsset.url.split('/').pop(),
               });
             }
           } catch (err) {
             console.error('Placement error:', err);
-            gooeyToast.error('Platzieren fehlgeschlagen', {
+            toast.error('Platzieren fehlgeschlagen', {
               description: 'Das Werk konnte nicht platziert werden.',
             });
           }
         }
       } else if (isDragging && !validPlacement) {
-        gooeyToast.error('Platzieren nicht möglich', {
+        toast.error('Platzieren nicht möglich', {
           description: placementIssueText(draggedAsset?.assetType, placementFeedback.issue),
         });
       }
@@ -461,7 +461,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     const store = useEditorStore.getState();
     // The server refuses more; a POST it rejects would be retried forever by the auto-sync.
     if (store.localScaleFigures.length >= MAX_SCALE_FIGURES_PER_VERSION) {
-      gooeyToast.error(`Maximal ${MAX_SCALE_FIGURES_PER_VERSION} Maßstabsfiguren pro Version`);
+      toast.error(`Maximal ${MAX_SCALE_FIGURES_PER_VERSION} Maßstabsfiguren pro Version`);
       return;
     }
     const pose = scaleFigureBridge.spawnPose();
@@ -790,7 +790,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           if (!pendingVideoDrop) return;
           const id = placeInstance(medium, pendingVideoDrop);
           selectPlaced(id);
-          gooeyToast.success('Video platziert', {
+          toast.success('Video platziert', {
             description: medium === 'monitor' ? 'Monitor' : 'Beamer',
           });
           setPendingVideoDrop(null);

@@ -1,8 +1,7 @@
-"use client"
-
-import { useToast } from "@/hooks/use-toast"
+import { dismissToast, useToastTop, useToasts } from "@/hooks/use-toast"
 import {
   Toast,
+  ToastAction,
   ToastClose,
   ToastDescription,
   ToastProvider,
@@ -10,26 +9,34 @@ import {
   ToastViewport,
 } from "@/components/ui/toast"
 
+/** Top-centre notifications below the page header, mounted once in App. */
 export function Toaster() {
-  const { toasts } = useToast()
+  const { toasts } = useToasts()
+  const top = useToastTop()
 
   return (
-    <ToastProvider duration={3000}>
-      {toasts.map(function ({ id, title, description, action, ...props }) {
-        return (
-          <Toast key={id} {...props}>
-            <div className="grid gap-1">
-              {title && <ToastTitle>{title}</ToastTitle>}
-              {description && (
-                <ToastDescription>{description}</ToastDescription>
-              )}
-            </div>
-            {action}
-            <ToastClose />
-          </Toast>
-        )
-      })}
-      <ToastViewport className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-[100] flex max-h-screen w-full flex-col gap-2 p-4 md:max-w-[420px]" />
+    <ToastProvider swipeDirection="up" label="Benachrichtigungen">
+      {toasts.map((t) => (
+        <Toast
+          key={t.id}
+          kind={t.kind}
+          open={t.open}
+          duration={t.duration}
+          onOpenChange={(open) => { if (!open) dismissToast(t.id) }}
+        >
+          <div className="min-w-0 flex-1">
+            <ToastTitle>{t.title}</ToastTitle>
+            {t.description && <ToastDescription>{t.description}</ToastDescription>}
+          </div>
+          {t.action && (
+            <ToastAction altText={t.action.label} onClick={t.action.onClick}>
+              {t.action.label}
+            </ToastAction>
+          )}
+          <ToastClose />
+        </Toast>
+      ))}
+      <ToastViewport style={{ top }} />
     </ToastProvider>
   )
 }

@@ -1,6 +1,6 @@
 import { useMemo, useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import {
     AlignCenterVertical,
     AlignEndVertical,
@@ -112,7 +112,7 @@ export const MultiSelectionPanel = () => {
     const handleDelete = () => {
         const count = ids.length;
         useEditorStore.getState().deleteSelectedInstance();
-        gooeyToast.success('Gelöscht', { description: `${count} Werke entfernt.` });
+        toast.success('Gelöscht', { description: `${count} Werke entfernt.` });
     };
 
     return (

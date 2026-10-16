@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import {
     ArrowDownToLine,
     ArrowLeft,
@@ -20,7 +20,7 @@ import {
     TriangleAlert,
     Unlock,
 } from 'lucide-react';
-import { gooeyToast } from 'goey-toast';
+import { setToastTopInset, toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useEditorStore } from '@/store/editorStore';
 import { useWallEditorView, type WallEditorTool } from '@/store/wallEditorViewStore';
@@ -167,8 +167,25 @@ const WallEditorTopBar = ({ face }: { face: WallFace }) => {
         else setName(wall?.label ?? '');
     };
 
+    // Toasts sit top-centre — move them below this bar while it is shown.
+    const barRef = useRef<HTMLDivElement>(null);
+    useLayoutEffect(() => {
+        const el = barRef.current;
+        if (!el) return;
+        const update = () => setToastTopInset(Math.round(el.getBoundingClientRect().bottom) + 12);
+        update();
+        const observer = new ResizeObserver(update);
+        observer.observe(el);
+        window.addEventListener('resize', update);
+        return () => {
+            observer.disconnect();
+            window.removeEventListener('resize', update);
+            setToastTopInset(null);
+        };
+    }, []);
+
     return (
-        <div className="absolute top-8 left-1/2 -translate-x-1/2 z-[16] flex items-center gap-2 pointer-events-none">
+        <div ref={barRef} className="absolute top-8 left-1/2 -translate-x-1/2 z-[16] flex items-center gap-2 pointer-events-none">
             <div className={cn(barClass, 'pointer-events-auto')}>
                 <ChromeButton icon={<ArrowLeft className="h-4 w-4" />} label="3D-Ansicht" shortcut="Esc" onClick={closeWallEditor} showLabel />
                 <Separator />
@@ -238,7 +255,7 @@ const WallEditorTopBar = ({ face }: { face: WallFace }) => {
                                 type="button"
                                 onClick={() => {
                                     toggleWallLock(wall.id);
-                                    gooeyToast.success('Wand gesperrt', { description: 'Jetzt kannst du Werke aus der Bibliothek auf die Wand ziehen.' });
+                                    toast.success('Wand gesperrt', { description: 'Jetzt kannst du Werke aus der Bibliothek auf die Wand ziehen.' });
                                 }}
                                 className="px-2 h-7 flex items-center gap-1 rounded-md text-[11px] text-orange-300 hover:bg-orange-400/15 whitespace-nowrap"
                                 title="Nur gesperrte Wände nehmen Werke auf"

@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useMemo, useState } from 'react';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import * as THREE from 'three';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { useEditorStore, modelBBoxMap, type ArtworkInstanceData } from '../store/editorStore';
 import { SPLAT_UP_FLIP, loadSplat, splatAnchor, splatRealScale, type SplatHandle } from '../lib/splats';
 import { BoxHitProxy } from '../lib/boxHitProxy';
@@ -64,7 +64,7 @@ export const SplatInstance = forwardRef<THREE.Group, SplatInstanceProps>(
                     if (cancelled) return;
                     console.error('Splat konnte nicht geladen werden:', url, err);
                     if (isEditor) {
-                        gooeyToast.error('Splat konnte nicht geladen werden', {
+                        toast.error('Splat konnte nicht geladen werden', {
                             description: url.split('/').pop(),
                         });
                     }

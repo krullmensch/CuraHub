@@ -4,7 +4,7 @@ import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { SetupGate } from './components/setup/SetupGate';
-import { GooeyToaster } from 'goey-toast';
+import { Toaster } from './components/ui/toaster';
 import './App.css';
 
 const ViewerPage = lazy(() => import('./pages/ViewerPage').then((m) => ({ default: m.ViewerPage })));
@@ -62,7 +62,7 @@ function App() {
         </Routes>
         </SetupGate>
       </Suspense>
-      <GooeyToaster position="bottom-right" theme="dark" preset="smooth" />
+      <Toaster />
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ArrowLeftRight, Eye, EyeOff, Lock, Plus, Trash2, Unlock } from 'lucide-react';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { useEditorStore } from '@/store/editorStore';
@@ -51,7 +51,7 @@ export const WallEditorGuidesTab = ({ face }: { face: WallFace }) => {
     const wall = face.wallRect;
     const store = useWallEditorView.getState;
 
-    const guideLimitToast = () => gooeyToast.error(`Höchstens ${MAX_GUIDES_PER_FACE} Hilfslinien pro Wandseite`);
+    const guideLimitToast = () => toast.error(`Höchstens ${MAX_GUIDES_PER_FACE} Hilfslinien pro Wandseite`);
 
     const add = (axis: GuideAxis) => {
         const s = store();
@@ -68,7 +68,7 @@ export const WallEditorGuidesTab = ({ face }: { face: WallFace }) => {
         const removed = guides;
         const versionId = useEditorStore.getState().activeVersionId;
         store().setFaceGuides(face.key, []);
-        gooeyToast.success(removed.length === 1 ? 'Hilfslinie gelöscht' : `${removed.length} Hilfslinien gelöscht`, {
+        toast.success(removed.length === 1 ? 'Hilfslinie gelöscht' : `${removed.length} Hilfslinien gelöscht`, {
             action: {
                 label: 'Rückgängig',
                 onClick: () => {

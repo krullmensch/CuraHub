@@ -14,7 +14,7 @@ import { Separator } from "@/components/ui/separator";
 import { DateRangePicker } from "@/components/ui/date-picker";
 import type { DateRange } from "react-day-picker";
 import { Loader2, Upload, Trash2, UserPlus, X, Image, Search } from 'lucide-react';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 
 interface Collaborator {
   id: number;
@@ -84,7 +84,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       setCollaborators(collabs);
       setEligibleUsers(eligible);
     }).catch(() => {
-      gooeyToast.error('Fehler', { description: 'Daten konnten nicht geladen werden.' });
+      toast.error('Fehler', { description: 'Daten konnten nicht geladen werden.' });
     }).finally(() => setLoading(false));
   }, [open, activeExhibitionId, token]);
 
@@ -112,9 +112,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       if (title) {
         useEditorStore.setState({ activeProjectName: title });
       }
-      gooeyToast.success('Gespeichert', { description: 'Einstellungen wurden aktualisiert.' });
+      toast.success('Gespeichert', { description: 'Einstellungen wurden aktualisiert.' });
     } catch (err) {
-      gooeyToast.error('Fehler', { description: (err as Error).message });
+      toast.error('Fehler', { description: (err as Error).message });
     } finally {
       setSaving(false);
     }
@@ -134,9 +134,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       if (!res.ok) throw new Error('Upload fehlgeschlagen');
       const data = await res.json();
       setPosterPath(data.poster_path);
-      gooeyToast.success('Poster hochgeladen', { description: 'Das Poster wurde gespeichert.' });
+      toast.success('Poster hochgeladen', { description: 'Das Poster wurde gespeichert.' });
     } catch {
-      gooeyToast.error('Fehler', { description: 'Poster konnte nicht hochgeladen werden.' });
+      toast.error('Fehler', { description: 'Poster konnte nicht hochgeladen werden.' });
     } finally {
       setUploadingPoster(false);
       if (posterInputRef.current) posterInputRef.current.value = '';
@@ -166,9 +166,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       });
       if (!res.ok) throw new Error();
       setPosterPath(null);
-      gooeyToast.success('Poster entfernt');
+      toast.success('Poster entfernt');
     } catch {
-      gooeyToast.error('Fehler', { description: 'Poster konnte nicht entfernt werden.' });
+      toast.error('Fehler', { description: 'Poster konnte nicht entfernt werden.' });
     }
   };
 
@@ -186,14 +186,14 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       });
       const data = await res.json();
       if (!res.ok) {
-        gooeyToast.error('Fehler', { description: data.error || 'Fehler beim Einladen' });
+        toast.error('Fehler', { description: data.error || 'Fehler beim Einladen' });
         return;
       }
       setCollaborators(prev => [...prev, data]);
       setEligibleUsers(prev => prev.filter(u => u.id !== user.id));
-      gooeyToast.success('Eingeladen', { description: `${user.email} wurde hinzugefügt.` });
+      toast.success('Eingeladen', { description: `${user.email} wurde hinzugefügt.` });
     } catch {
-      gooeyToast.error('Netzwerkfehler');
+      toast.error('Netzwerkfehler');
     } finally {
       setInviting(null);
     }
@@ -212,9 +212,9 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       if (collaborator.user.role === 'curator' || collaborator.user.role === 'prof') {
         setEligibleUsers(prev => [...prev, collaborator.user].sort((a, b) => a.email.localeCompare(b.email)));
       }
-      gooeyToast.success('Entfernt', { description: 'Kollaborateur wurde entfernt.' });
+      toast.success('Entfernt', { description: 'Kollaborateur wurde entfernt.' });
     } catch {
-      gooeyToast.error('Fehler', { description: 'Konnte nicht entfernt werden.' });
+      toast.error('Fehler', { description: 'Konnte nicht entfernt werden.' });
     }
   };
 

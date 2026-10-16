@@ -1,5 +1,5 @@
 import { useId, useState } from 'react';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -42,7 +42,7 @@ export function SplatHeightControl({ instanceId }: { instanceId: number }) {
       // Every placed copy of this capture rescales; a refetch would drop selection and undo history.
       useEditorStore.getState().applyArtworkUpdate(artworkId, { height: json.height ?? null });
     } catch (err) {
-      gooeyToast.error((err as Error).message);
+      toast.error((err as Error).message);
       setField(splatHeightToField(storedHeight));
     } finally {
       setBusy(false);
@@ -52,7 +52,7 @@ export function SplatHeightControl({ instanceId }: { instanceId: number }) {
   const commit = () => {
     const next = parseSplatHeight(field);
     if (next === 'invalid') {
-      gooeyToast.error('Ungültige Höhe', { description: 'Bitte einen Wert zwischen 0,01 und 1000 m eingeben.' });
+      toast.error('Ungültige Höhe', { description: 'Bitte einen Wert zwischen 0,01 und 1000 m eingeben.' });
       setField(splatHeightToField(storedHeight));
       return;
     }

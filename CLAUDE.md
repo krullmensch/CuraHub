@@ -428,7 +428,7 @@ Public German site on GitHub Pages (`https://krullmensch.github.io/CuraHub/`): l
 
 - Layout: full-screen `<Canvas>` behind DOM overlay panels
 - Panels use Radix UI `Dialog`, `DropdownMenu`, and custom sidebar components
-- Toasts via `@radix-ui/react-toast` for save confirmations, errors, asset load feedback
+- Toasts via `@radix-ui/react-toast`: call `toast.success|error|warning(title, { description?, action? })` from `@/hooks/use-toast` (queue logic pure in `lib/toastQueue.ts`: max 3, identical messages replace each other, 3/5/6 s by kind). `<Toaster />` (App) shows them top-centre below the page header; chrome that sits there (the wall editor's top bar) moves them down with `setToastTopInset`.
 - Inspector / PropertiesPanel shows position XYZ, scale, and material settings for the selected artwork or light
 - Toolbar: mode switcher (Edit / First Person / Preview), light add button, export button
 - VersionPanel as a center overlay for browsing and restoring versions

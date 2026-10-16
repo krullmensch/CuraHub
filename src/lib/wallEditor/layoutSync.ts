@@ -1,4 +1,4 @@
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '@/store/authStore';
 import { useEditorStore } from '@/store/editorStore';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
@@ -60,7 +60,7 @@ export function startWallLayoutSync(): () => void {
         const now = Date.now();
         if (now - lastErrorToast > ERROR_TOAST_INTERVAL_MS) {
             lastErrorToast = now;
-            gooeyToast.error(title, { description });
+            toast.error(title, { description });
         }
     };
 

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useAuthStore } from '../store/authStore';
 import { X, Trash2, UserMinus } from 'lucide-react';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 
 interface ExhibitionEntry {
   id: number;
@@ -55,7 +55,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
       if (!res.ok) throw new Error();
       setOwned((prev) => prev.filter((e) => e.id !== id));
     } catch {
-      gooeyToast.error('Fehler', { description: 'Ausstellung konnte nicht gelöscht werden.' });
+      toast.error('Fehler', { description: 'Ausstellung konnte nicht gelöscht werden.' });
     }
   };
 
@@ -68,7 +68,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
       if (!res.ok) throw new Error();
       setCollaborating((prev) => prev.filter((e) => e.id !== exhibitionId));
     } catch {
-      gooeyToast.error('Fehler', { description: 'Zugang konnte nicht entzogen werden.' });
+      toast.error('Fehler', { description: 'Zugang konnte nicht entzogen werden.' });
     }
   };
 

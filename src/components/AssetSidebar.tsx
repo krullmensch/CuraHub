@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play, AlertCircle } from 'lucide-react';
 import { SidebarTabs } from './SidebarTabs';
 import { ModelPreviewCard } from './ModelPreviewCard';
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { useEditorStore, type AssetType } from '@/store/editorStore';
 import { SplatPreviewTile } from './SplatPreviewTile';
@@ -121,7 +121,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
             setAssets(data);
         } catch (err) {
             console.error(err);
-            gooeyToast.error("Fehler", {
+            toast.error("Fehler", {
                 description: "Assets konnten nicht geladen werden.",
             });
         } finally {
@@ -230,11 +230,11 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
         try {
             await Promise.all(ids.map(id => moveAssetToFolder(id, targetFolderId)));
             const label = ids.length === 1 ? '1 Asset' : `${ids.length} Assets`;
-            gooeyToast.success(`${label} verschoben`);
+            toast.success(`${label} verschoben`);
             setSelectedIds(new Set());
             fetchAssets(activeFilter);
         } catch {
-            gooeyToast.error("Fehler", { description: "Assets konnten nicht verschoben werden." });
+            toast.error("Fehler", { description: "Assets konnten nicht verschoben werden." });
         }
     };
 

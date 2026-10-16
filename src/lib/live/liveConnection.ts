@@ -1,4 +1,4 @@
-import { gooeyToast } from 'goey-toast';
+import { toast } from '@/hooks/use-toast';
 import { useAuthStore } from '../../store/authStore';
 import {
   applyRemoteChange, clearInstanceSelection, mergeRemoteState, useEditorStore,
@@ -38,7 +38,7 @@ function hintHeld(holders: ClaimHolder[]) {
   const now = Date.now();
   if (text === lastHint.text && now - lastHint.at < HINT_REPEAT_MS) return;
   lastHint = { text, at: now };
-  gooeyToast.warning(text);
+  toast.warning(text);
 }
 
 function clearClaims() {
@@ -111,7 +111,7 @@ function applyChanged(msg: ChangedMessage) {
       if (msg.op === 'delete') {
         const wasSelected = applyRemoteChange({ kind: msg.kind, op: 'delete', id: data.id });
         if (wasSelected) {
-          gooeyToast.warning(`${nameOfSession(msg.by)} hat ein ausgewähltes Objekt gelöscht`);
+          toast.warning(`${nameOfSession(msg.by)} hat ein ausgewähltes Objekt gelöscht`);
         }
         return;
       }
@@ -167,7 +167,7 @@ function handleVersions(msg: VersionsMessage) {
   if (msg.event !== 'deleted' || msg.by === self || msg.versionId !== editor.activeVersionId) return;
   editor.setActiveVersion(msg.fallbackVersionId);
   editor.triggerInstancesRefresh();
-  gooeyToast.warning('Version gelöscht', {
+  toast.warning('Version gelöscht', {
     description: `${nameOfSession(msg.by)} hat die Version gelöscht, in der du gearbeitet hast.${msg.fallbackVersionId ? ' Du bist jetzt in der Version davor.' : ''}`,
   });
 }
@@ -312,7 +312,7 @@ function startEditorClaims(): () => void {
       || s.selectedWallId !== null || s.selectedFigureId !== null;
     if (!selected || s.isTransforming) return;
     useEditorStore.setState({ ...clearInstanceSelection, wallEditorSelection: [], selectedWallId: null, selectedFigureId: null });
-    gooeyToast.warning('Auswahl aufgehoben', {
+    toast.warning('Auswahl aufgehoben', {
       description: 'Nach 5 Minuten ohne Eingabe sind deine Objekte wieder für andere frei.',
     });
   }, IDLE_CHECK_MS);
