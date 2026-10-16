@@ -836,8 +836,10 @@ const WallPropertiesContent = () => {
                 onClick={() => {
                     // Prevent unlocking if artworks are attached
                     if (wall.isLocked && hasArtworks) {
-                        toast.error("Cannot unlock", {
-                            description: `Remove all ${artworksOnWall.length} artwork(s) from this wall first.`,
+                        toast.error("Fixierung lässt sich nicht lösen", {
+                            description: artworksOnWall.length === 1
+                                ? "Erst das Werk von dieser Wand entfernen."
+                                : `Erst alle ${artworksOnWall.length} Werke von dieser Wand entfernen.`,
                         });
                         return;
                     }
@@ -846,8 +848,8 @@ const WallPropertiesContent = () => {
                 className={cn("w-full text-xs", wall.isLocked ? "bg-amber-600/20 text-amber-400" : "bg-zinc-800 text-zinc-100")}
             >
                 {wall.isLocked
-                    ? <><Lock className="h-4 w-4 mr-2" /> Locked{hasArtworks ? ` (${artworksOnWall.length} artwork${artworksOnWall.length > 1 ? 's' : ''})` : ''}</>
-                    : <><Unlock className="h-4 w-4 mr-2" /> Unlocked</>
+                    ? <><Lock className="h-4 w-4 mr-2" /> Fixiert{hasArtworks ? ` (${artworksOnWall.length} ${artworksOnWall.length === 1 ? 'Werk' : 'Werke'})` : ''}</>
+                    : <><Unlock className="h-4 w-4 mr-2" /> Nicht fixiert</>
                 }
             </Button>
         </div>
