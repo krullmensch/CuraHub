@@ -63,6 +63,9 @@ function onRoomFace(inst: ArtworkInstanceData, room: RoomFace, frame: WallFrame)
     return f.x * frame.normal.x + f.z * frame.normal.z > 0.7;
 }
 
+/** Whether an artwork hangs on the given room wall. */
+export const instanceOnRoomFace = (inst: ArtworkInstanceData, room: RoomFace) => onRoomFace(inst, room, roomFaceFrame(room));
+
 /** Whether an artwork hangs on the given face. */
 export function instanceOnFace(inst: ArtworkInstanceData, face: ResolvedFace): boolean {
     if (face.wall) return inst.wallId === face.wall.id && sideOfInstance(face.wall, inst) === face.side;

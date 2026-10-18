@@ -3,6 +3,7 @@ import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useEditorStore } from '@/store/editorStore';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
+import { useRoomCutaway } from '@/store/roomCutawayStore';
 import { collectMeasuredFaces, faceAnnotations, type AnnotationKind } from '@/lib/wallEditor/annotations';
 import { wallToWorld, type WallFrame } from '@/lib/wallEditor/geometry';
 import { getLabelTexture, onLabelTexturesChanged, type LabelStyle } from '@/lib/measureLabelTextures';
@@ -78,6 +79,7 @@ export const WallMeasurements3D = () => {
     const showFloorDistances = useWallEditorView((s) => s.showFloorDistances);
     const showGaps = useWallEditorView((s) => s.showGaps);
     const hangingHeight = useWallEditorView((s) => s.hangingHeight);
+    const cutAwayFaceIds = useRoomCutaway((s) => s.hiddenFaceIds);
 
     const visible = viewMode === 'perspective' && phase === 'idle' && (showHangingLine || showFloorDistances || showGaps);
 
@@ -87,6 +89,7 @@ export const WallMeasurements3D = () => {
         const positions: Record<AnnotationKind, number[]> = { hanging: [], floor: [], gap: [] };
         const labels: PlacedLabel[] = [];
         for (const face of collectMeasuredFaces(instances, walls, roomFaces)) {
+            if (cutAwayFaceIds.includes(face.key)) continue;
             const { segments, labels: faceLabels } = faceAnnotations(face, toggles, hangingHeight);
             for (const s of segments) pushQuad(positions[s.kind], face.frame, s.u1, s.v1, s.u2, s.v2);
             faceLabels.forEach((l, i) => {
@@ -109,7 +112,7 @@ export const WallMeasurements3D = () => {
             geometries[kind] = geometry;
         }
         return { geometries, labels };
-    }, [visible, instances, walls, roomFaces, showHangingLine, showFloorDistances, showGaps, hangingHeight]);
+    }, [visible, instances, walls, roomFaces, showHangingLine, showFloorDistances, showGaps, hangingHeight, cutAwayFaceIds]);
 
     useEffect(() => () => {
         if (built) for (const kind of KINDS) built.geometries[kind]?.dispose();
