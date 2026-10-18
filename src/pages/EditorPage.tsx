@@ -1,4 +1,5 @@
-import { Canvas } from '@react-three/fiber';
+import * as THREE from 'three';
+import { Canvas, events as pointerEvents } from '@react-three/fiber';
 import { useGLTF } from '@react-three/drei';
 import { Scene } from '../components/Scene';
 // Player + colliders: components/physics/PhysicsWorld (lazy, first person only — RND-08)
@@ -21,7 +22,8 @@ import { useBookViewerStore } from '../store/bookViewerStore';
 import { useEditorStore, nextTempId, isFloorAssetType, isFixedSizeMedium, type MediumType } from '../store/editorStore';
 import { toast } from '@/hooks/use-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
-import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings, PersonStanding } from 'lucide-react';
+import { Eye, EyeOff, Move, RotateCw, Maximize2, Footprints, PanelsTopLeft, Settings, PersonStanding, BoxSelect } from 'lucide-react';
+import { useRoomCutaway } from '../store/roomCutawayStore';
 import { ArtworkInfoOverlay } from '../components/ArtworkInfoOverlay';
 import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
@@ -184,6 +186,20 @@ function handleCanvasDoubleClick(e: MouseEvent) {
   if (room) store.openWallEditor({ kind: 'room', faceId: room.id });
 }
 
+/**
+ * Pointer events skip hidden objects (artworks on room walls cut away in the orbit view, or
+ * hidden by the 2D wall editor) — three's raycaster does not, so they would swallow clicks.
+ */
+function editorPointerEvents(store: Parameters<typeof pointerEvents>[0]) {
+  return {
+    ...pointerEvents(store),
+    filter: (hits: THREE.Intersection[]) => hits.filter((hit) => {
+      for (let o: THREE.Object3D | null = hit.object; o; o = o.parent) if (!o.visible) return false;
+      return true;
+    }),
+  };
+}
+
 // RND-08: Rapier (~2.3 MB chunk + WASM) is only needed for the first-person preview.
 const PhysicsWorld = lazy(() => import('../components/physics/PhysicsWorld'));
 
@@ -207,6 +223,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const setTransformMode = useEditorStore((state) => state.setTransformMode);
   const setTransformAxisLock = useEditorStore((state) => state.setTransformAxisLock);
   const showTraverses = useEditorStore((state) => state.showTraverses);
+  const roomCutaway = useRoomCutaway((state) => state.enabled);
+  const toggleRoomCutaway = useRoomCutaway((state) => state.toggle);
   const toggleTraverses = useEditorStore((state) => state.toggleTraverses);
   const hasInstanceSelection = useEditorStore((state) => state.selectedInstanceIds.length > 0);
   const selectedFigureId = useEditorStore((state) => state.selectedFigureId);
@@ -681,6 +699,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           // Camera is managed by PlannerCameraSystem in Scene
           style={{ width: '100%', height: '100%' }}
           gl={glConfig}
+          events={editorPointerEvents}
           shadows={CANVAS_SHADOWS}
           onPointerMissed={() => {
             // The pointer-up of a ⇧-drag marquee is no click into the void.
@@ -761,6 +780,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
           {/* Traverses */}
           <ToolButton icon={showTraverses ? <Eye size={16} /> : <EyeOff size={16} />} tooltip={showTraverses ? 'Traverses ausblenden' : 'Traverses einblenden'} active={showTraverses} onClick={toggleTraverses} />
+
+          {/* Cutaway: room walls on the camera side hidden */}
+          <ToolButton icon={<BoxSelect size={16} />} tooltip={roomCutaway ? 'Vordere Raumwände einblenden' : 'Vordere Raumwände ausblenden'} active={roomCutaway} onClick={toggleRoomCutaway} />
 
           <ToolSeparator />
 

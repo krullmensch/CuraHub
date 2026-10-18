@@ -15,6 +15,9 @@ import { getWebGPUSupport, isWebGPURenderer } from '../lib/rendererBackend'
 import { hideSplats } from '../lib/splats'
 import { extractRoomFaces, geometryTriangles } from '../lib/wallEditor/roomFaces'
 import { useWallEditorView } from '../store/wallEditorViewStore'
+import { useRoomCutaway } from '../store/roomCutawayStore'
+import { splitByRoomFace } from '../lib/roomCutaway'
+import type { RoomFace } from '../lib/wallEditor/roomFaces'
 
 // Required once for RectAreaLight to work with MeshStandardMaterial on WebGLRenderer
 // (WebGPU: RectAreaLightNode.setLTC in webgpuSupport.createWebGPURenderer).
@@ -109,6 +112,45 @@ function createClearGlassMaterial(modelledGlass: THREE.MeshStandardMaterial) {
   return { material, reflection };
 }
 
+type RoomPartProps = Omit<React.JSX.IntrinsicElements['mesh'], 'geometry' | 'position'> & {
+  geometry: THREE.BufferGeometry;
+  position?: [number, number, number];
+  /** Cutaway: the room faces to split the mesh by (null = one mesh, always shown). */
+  faces: RoomFace[] | null;
+  hiddenFaceIds: string[];
+}
+
+/**
+ * A mesh of the room model that disappears wall by wall in the cutaway view: split into one
+ * mesh per room face, those of hidden faces are invisible (raycasts skip invisible objects).
+ */
+function RoomPart({ geometry, position, faces, hiddenFaceIds, ...props }: RoomPartProps) {
+  const pieces = useMemo(() => {
+    if (!faces || faces.length === 0) return null;
+    const matrix = position ? new THREE.Matrix4().makeTranslation(...position) : undefined;
+    return splitByRoomFace(geometry, faces, matrix);
+  }, [geometry, faces, position]);
+  useEffect(() => () => pieces?.forEach((piece) => piece.geometry.dispose()), [pieces]);
+
+  if (!pieces) return <mesh geometry={geometry} position={position} {...props} />;
+  return (
+    <>
+      {pieces.map((piece) => (
+        <mesh
+          key={piece.faceId ?? 'rest'}
+          geometry={piece.geometry}
+          position={position}
+          visible={!piece.faceId || !hiddenFaceIds.includes(piece.faceId)}
+          {...props}
+        />
+      ))}
+    </>
+  );
+}
+
+const TUER1_POSITION: [number, number, number] = [-6.33, 1, 2.372]
+const TUER2_POSITION: [number, number, number] = [6.33, 1, 0.12]
+
 export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clearGlass = false, hideGeometry = false, publishWallFaces = false, ...props }: SatellitProps) {
   const { nodes, materials } = useGLTF(SATELLIT_MODEL_URL) as unknown as GLTFResult
   const showTraverses = useEditorStore((state) => state.showTraverses);
@@ -116,6 +158,12 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
   const scene = useThree((state) => state.scene);
   const invalidate = useThree((state) => state.invalidate);
   const groupRef = useRef<THREE.Group>(null);
+  // Cutaway (editor orbit view): the room is split by wall faces (published by this component
+  // at the origin, so world space = model space) and the walls facing the camera disappear.
+  const cutawayEnabled = useRoomCutaway((state) => state.enabled);
+  const hiddenFaceIds = useRoomCutaway((state) => state.hiddenFaceIds);
+  const roomFaces = useWallEditorView((state) => state.roomFaces);
+  const cutawayFaces = publishWallFaces && cutawayEnabled ? roomFaces : null;
   const glassRef = useRef<THREE.Mesh>(null);
 
   const clearGlassMaterial = useMemo(() => {
@@ -205,13 +253,16 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
       <mesh geometry={nodes.Decke001.geometry} material={materials['Material.005']} visible={viewMode === 'firstPerson'} />
       <group visible={!hideGeometry}>
         {/* material-side: wall paint must be visible from both sides (inside the room in first-person) */}
-        <mesh name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} material-side={THREE.DoubleSide} />
+        <RoomPart name="Wall" geometry={nodes.Grundriss002.geometry} material={materials['Wall Paint (White Wall Paint)']} material-side={THREE.DoubleSide} faces={cutawayFaces} hiddenFaceIds={hiddenFaceIds} />
         <mesh geometry={nodes.Boden001.geometry} material={materials['Material.005']} />
-        <mesh ref={glassRef} geometry={nodes.Fenster001.geometry} material={clearGlassMaterial?.material ?? materials.Glass} />
+        {/* The glass keeps its single mesh: the reflection capture hides it through glassRef, and it is never cut away while the street view is on (first person). */}
+        {clearGlassMaterial
+          ? <mesh ref={glassRef} geometry={nodes.Fenster001.geometry} material={clearGlassMaterial.material} />
+          : <RoomPart geometry={nodes.Fenster001.geometry} material={materials.Glass} faces={cutawayFaces} hiddenFaceIds={hiddenFaceIds} />}
         <mesh geometry={nodes.Traversen.geometry} material={materials['Material.004']} position={[-3.051, 3.453, -1.501]} rotation={[0, Math.PI / 2, 0]} visible={showTraverses} />
-        <mesh geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={[6.33, 1, 0.12]} />
-        <mesh geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={[-6.33, 1, 2.372]} />
-        <mesh geometry={nodes.Fensterbank.geometry} material={materials['Black marble.001']} />
+        <RoomPart geometry={nodes.Tür2001.geometry} material={materials['Material.006']} position={TUER2_POSITION} faces={cutawayFaces} hiddenFaceIds={hiddenFaceIds} />
+        <RoomPart geometry={nodes.Tür1001.geometry} material={materials['Material.006']} position={TUER1_POSITION} faces={cutawayFaces} hiddenFaceIds={hiddenFaceIds} />
+        <RoomPart geometry={nodes.Fensterbank.geometry} material={materials['Black marble.001']} faces={cutawayFaces} hiddenFaceIds={hiddenFaceIds} />
       </group>
     </group>
   )

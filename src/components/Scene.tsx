@@ -12,6 +12,7 @@ import { EditorGrid } from './EditorGrid';
 import { WallEditorRoomFace } from './wall-editor/WallEditorRoomFace';
 import { ScaleFigures } from './ScaleFigures';
 import { WallMeasurements3D } from './WallMeasurements3D';
+import { RoomCutawayTracker } from './RoomCutawayTracker';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData, type ScaleFigureData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 
@@ -86,6 +87,9 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                     hideGeometry={wallEditorOpen}
                     publishWallFaces={isEditor}
                 />
+
+                {/* Orbit view: room walls on the camera side cut away (toolbar toggle) */}
+                {isEditor && <RoomCutawayTracker />}
 
                 {/* 2D wall editor: the open room wall, drawn on its own */}
                 {isEditor && <WallEditorRoomFace />}

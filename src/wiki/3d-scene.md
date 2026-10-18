@@ -19,6 +19,8 @@ Ein Werk nimmt eine Stellwand nur auf, wenn sie **gesperrt** ist (Schloss-Symbol
 
 Über die Werkzeugleiste stellst du eine **Maßstabsfigur** (1,73 m) in den Raum, um Größen besser einzuschätzen. Im Properties-Panel legst du fest, ob Besucher sie im öffentlichen Rundgang sehen.
 
+Der Knopf **Vordere Raumwände ausblenden** in der Werkzeugleiste macht den Raum zum Puppenhaus: Raumwände zwischen dir und dem Rauminneren verschwinden, sobald du von außen auf sie schaust, die gegenüberliegenden bleiben stehen. Werke an diesen Wänden werden mit ausgeblendet, ausgewählte Werke bleiben sichtbar. Stellwände, Skulpturen, Splats und Bücher im Raum bleiben immer stehen. Die Einstellung gilt nur in der Orbit-Ansicht und bleibt in deinem Browser gespeichert.
+
 ## Mehrere Werke auswählen
 - **Klick** wählt ein Werk, **⇧ + Klick** nimmt weitere dazu oder wieder heraus.
 - **⇧ + Ziehen** zieht einen Auswahlrahmen auf.

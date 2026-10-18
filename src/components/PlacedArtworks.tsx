@@ -9,7 +9,9 @@ import { SplatInstance } from './SplatInstance';
 import { BookInstance } from './book/BookInstance';
 import { InstanceTransformControls } from './InstanceTransformControls';
 import { SelectionBridge } from './SelectionBridge';
-import { instanceOnFace, openFaceOf } from '../lib/wallEditor/faces';
+import { instanceOnFace, instanceOnRoomFace, openFaceOf } from '../lib/wallEditor/faces';
+import { useRoomCutaway } from '../store/roomCutawayStore';
+import { useWallEditorView } from '../store/wallEditorViewStore';
 import { displayArtworkTitle } from '../lib/artworkTitle';
 
 interface PlacedArtworksProps {
@@ -45,6 +47,16 @@ const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProp
         const face = openFaceOf(state);
         return !face || !instanceOnFace(instance, face);
     });
+    // Cutaway: artworks on a hidden room wall go with it (floor works and modular walls stay);
+    // a selected one stays so its gizmo and outline don't hang in the air.
+    const cutAway = useRoomCutaway((state) => {
+        if (!isEditor || selected || state.hiddenFaceIds.length === 0) return false;
+        const rooms = useWallEditorView.getState().roomFaces;
+        return state.hiddenFaceIds.some((id) => {
+            const room = rooms.find((f) => f.id === id);
+            return !!room && instanceOnRoomFace(instance, room);
+        });
+    });
     const refCallback = useCallback((el: THREE.Group | null) => registerRef(instance.id, el), [registerRef, instance.id]);
     const assetType = instance.artwork?.asset?.type || 'image';
     const Component =
@@ -55,7 +67,7 @@ const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProp
         SelectableInstance;
 
     return (
-        <group visible={!hidden}>
+        <group visible={!hidden && !cutAway}>
             <Suspense fallback={null}>
                 <Component ref={refCallback} instance={instance} selected={selected} isEditor={isEditor} />
             </Suspense>
