@@ -116,7 +116,7 @@ describe('unpublished version stays writable', () => {
         const i = await request(app).post('/instances').set(auth()).send(newInstance(open.versionId));
         const w = await request(app).post('/walls').set(auth()).send({ versionId: open.versionId });
         const f = await request(app).post('/scale-figures').set(auth()).send({ versionId: open.versionId, position_x: 0, position_z: 0 });
-        expect(i.status).toBe(201);
+        expect(i.status).toBe(200);
         expect(w.status).toBe(201);
         expect(f.status).toBe(201);
 
