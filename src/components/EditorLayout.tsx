@@ -9,6 +9,8 @@ import { LogOut, BookOpen, ExternalLink, Globe, Settings } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { VersionPanel } from './VersionPanel';
+import { PublishedVersionBadge } from './versions/PublishedVersionBadge';
+import { PublishedVersionDialog } from './versions/PublishedVersionDialog';
 
 import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
@@ -157,6 +159,7 @@ export const EditorLayout = () => {
         <div className="flex items-center gap-4">
             <h1 className="text-lg font-bold tracking-tight text-white">CuraHub <span className="text-blue-500">Dashboard</span></h1>
             <ProjectSelector />
+            <PublishedVersionBadge />
             <nav className="flex gap-4 ml-2 text-sm font-medium">
                 <Link 
                     to={activeProjectSlug ? `/exhibition/${activeProjectSlug}/edit` : "/project"} 
@@ -335,6 +338,8 @@ export const EditorLayout = () => {
              </div>
          )}
       </div>
+
+      <PublishedVersionDialog />
 
       {/* Wiki Modal */}
       {wikiOpen && (

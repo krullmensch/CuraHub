@@ -24,6 +24,11 @@ export const publishedEditGate = {
     if (state.phase !== 'asking') return;
     set({ ...state, phase: 'resolving' });
   },
+  /** A failed resolve: back to asking (same undoDepth) so the dialog stays open. */
+  cancelResolve(): void {
+    if (state.phase !== 'resolving') return;
+    set({ ...state, phase: 'asking' });
+  },
   finish(): void {
     if (state.phase === 'idle') return;
     set({ phase: 'idle', undoDepth: 0 });

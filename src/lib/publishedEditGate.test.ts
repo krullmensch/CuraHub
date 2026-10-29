@@ -43,4 +43,16 @@ describe('publishedEditGate', () => {
     gate.request(4);
     expect(gate.getState().undoDepth).toBe(4);
   });
+
+  it('cancelResolve goes resolving -> asking, keeps undoDepth and notifies once', () => {
+    gate.request(3);
+    gate.beginResolve();
+    const fn = vi.fn();
+    gate.subscribe(fn);
+    gate.cancelResolve();
+    expect(gate.getState()).toEqual({ phase: 'asking', undoDepth: 3 });
+    expect(fn).toHaveBeenCalledTimes(1);
+    gate.cancelResolve();
+    expect(fn).toHaveBeenCalledTimes(1);
+  });
 });

@@ -20,4 +20,6 @@ Damit Besucher deine Ausstellung sehen können, muss sie veröffentlicht werden.
 2. Klicke auf **Veröffentlichen**. Es ist immer genau eine Version veröffentlicht; die vorherige wird dabei abgelöst.
 3. Besucher können nun über den Ausstellungs-Link (`/exhibition/:slug`) darauf zugreifen. **Viewer testen** im Editor öffnet ihn.
 
+Veröffentlichte Versionen sind **schreibgeschützt**, damit Besucher nie halbfertige Änderungen sehen. Sobald du in einer veröffentlichten Version etwas änderst, fragt der Editor nach: **Arbeitskopie anlegen** übernimmt deine Änderung in eine neue Version auf demselben Branch, die Öffentlichkeit sieht weiter den alten Stand. Oben in der Kopfzeile steht dann „Arbeitskopie von v…“; mit **Neu veröffentlichen** machst du die Arbeitskopie zur öffentlichen Version. Alternativ legst du einen neuen Branch an (ab Rolle Kurator) oder verwirfst die Änderung.
+
 *Tipp: Admins können besonders gelungene, veröffentlichte Ausstellungen auf der Startseite hervorheben (Featured Exhibitions).*
