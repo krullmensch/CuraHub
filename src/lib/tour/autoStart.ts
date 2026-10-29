@@ -10,6 +10,11 @@ export interface AutoStartInput {
   tourActive: boolean;
 }
 
+/** The tour only runs in the orbit views: first person and the 2D wall editor have keys it doesn't guard. */
+export function tourModeAllowed(s: { plannerViewMode: string; wallEditorOpen: boolean }): boolean {
+  return s.plannerViewMode !== 'firstPerson' && !s.wallEditorOpen;
+}
+
 /** Whether the dashboard tour should start on its own right now. */
 export function shouldAutoStartTour(s: AutoStartInput): boolean {
   return (
@@ -17,8 +22,7 @@ export function shouldAutoStartTour(s: AutoStartInput): boolean {
     s.isCurator &&
     s.onboardingCompletedAt === null &&
     !s.pathname.includes('/assets') &&
-    s.plannerViewMode !== 'firstPerson' &&
-    !s.wallEditorOpen &&
+    tourModeAllowed(s) &&
     !s.dialogOpen &&
     !s.tourActive
   );

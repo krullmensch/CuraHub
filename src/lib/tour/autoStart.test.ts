@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { shouldAutoStartTour } from './autoStart';
+import { shouldAutoStartTour, tourModeAllowed } from './autoStart';
 
 const ok = {
   meLoaded: true,
@@ -31,5 +31,15 @@ describe('shouldAutoStartTour', () => {
     ['while a tour runs', { tourActive: true }],
   ])('does not start %s', (_name, patch) => {
     expect(shouldAutoStartTour({ ...ok, ...patch })).toBe(false);
+  });
+});
+
+describe('tourModeAllowed', () => {
+  it('allows the orbit views', () => {
+    expect(tourModeAllowed({ plannerViewMode: 'perspective', wallEditorOpen: false })).toBe(true);
+  });
+  it('refuses first person and the wall editor, whose keys the tour does not guard', () => {
+    expect(tourModeAllowed({ plannerViewMode: 'firstPerson', wallEditorOpen: false })).toBe(false);
+    expect(tourModeAllowed({ plannerViewMode: 'perspective', wallEditorOpen: true })).toBe(false);
   });
 });

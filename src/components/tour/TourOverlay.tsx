@@ -6,9 +6,6 @@ import { TourBody } from './TourBody';
 
 const POPOVER_WIDTH = 320;
 
-/** Measured target of one step; `key` ties it to the step so a stale rect is never shown. */
-interface Measured { key: string; rect: Rect | null }
-
 function measureTarget(target: string | undefined): Rect | null {
   if (!target) return null;
   const el = document.querySelector(`[data-tour="${target}"]`);
@@ -28,9 +25,10 @@ export function TourOverlay() {
   const stepIndex = useTourStore((s) => s.stepIndex);
   const steps = useTourStore((s) => s.steps);
   const step = active ? steps[stepIndex] : undefined;
-  const stepKey = step ? `${stepIndex}:${step.id}` : '';
 
-  const [measured, setMeasured] = useState<Measured>({ key: '', rect: null });
+  // The previous step's rect stays until the new one is measured (before paint), so the
+  // spotlight and the popover transition from there instead of jumping through „no target".
+  const [target, setTarget] = useState<Rect | null>(null);
   const [popSize, setPopSize] = useState({ width: POPOVER_WIDTH, height: 180 });
   const [viewport, setViewport] = useState({ width: window.innerWidth, height: window.innerHeight });
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -39,16 +37,16 @@ export function TourOverlay() {
   // A logout (or any unmount of the editor) must not leave the controls locked by a running tour.
   useEffect(() => () => useTourStore.getState().reset(), []);
 
-  // Find and follow the target. ResizeObserver reports once on observe, so the first measure
-  // happens in its callback.
+  // Find and follow the target: measured synchronously before paint, then on every layout change.
   useLayoutEffect(() => {
     if (!step) return;
     const el = step.target ? document.querySelector(`[data-tour="${step.target}"]`) : null;
     el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const measure = () => {
-      setMeasured({ key: stepKey, rect: measureTarget(step.target) });
+      setTarget(measureTarget(step.target));
       setViewport({ width: window.innerWidth, height: window.innerHeight });
     };
+    measure();
     const ro = new ResizeObserver(measure);
     ro.observe(document.body);
     if (el) ro.observe(el);
@@ -59,19 +57,21 @@ export function TourOverlay() {
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
     };
-  }, [step, stepKey]);
+  }, [step]);
 
-  // Popover size for the placement.
+  // Popover size for the placement: measured before paint on every step, then on resize.
   useLayoutEffect(() => {
     const el = popoverRef.current;
     if (!active || !el) return;
-    const ro = new ResizeObserver(() => {
+    const measure = () => {
       const r = el.getBoundingClientRect();
       setPopSize((prev) => (prev.width === r.width && prev.height === r.height ? prev : { width: r.width, height: r.height }));
-    });
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [active]);
+  }, [active, stepIndex]);
 
   useEffect(() => {
     if (active) primaryRef.current?.focus();
@@ -102,8 +102,10 @@ export function TourOverlay() {
   const { next, back, skip } = useTourStore.getState();
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === steps.length - 1;
-  const target = measured.key === stepKey ? measured.rect : null;
-  const hole = target ? spotlightRect(target) : null;
+  // Always mounted, so it can transition; without a target it shrinks to the screen centre.
+  const hole = target
+    ? spotlightRect(target)
+    : { x: viewport.width / 2, y: viewport.height / 2, width: 0, height: 0 };
   const placement = popoverPosition(target, popSize, viewport, step.placement ?? 'bottom');
 
   const trapTab = (e: React.KeyboardEvent) => {
@@ -116,12 +118,11 @@ export function TourOverlay() {
     else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
   };
 
+  // Anchored and centred differ only in the transform, so moving between them animates.
   const popoverStyle: React.CSSProperties =
-    placement.mode === 'anchored'
-      ? { left: 0, top: 0, width: POPOVER_WIDTH, transform: `translate(${placement.x}px, ${placement.y}px)` }
-      : placement.mode === 'centered'
-        ? { left: '50%', top: '50%', width: POPOVER_WIDTH, transform: 'translate(-50%, -50%)' }
-        : {};
+    placement.mode === 'sheet'
+      ? {}
+      : { left: 0, top: 0, width: POPOVER_WIDTH, transform: `translate(${placement.x}px, ${placement.y}px)` };
 
   return createPortal(
     <div className="fixed inset-0 z-[10000]">
@@ -133,22 +134,18 @@ export function TourOverlay() {
         <defs>
           <mask id="tour-mask">
             <rect width="100%" height="100%" fill="white" />
-            {hole && (
-              <rect
-                className="transition-all duration-200 motion-reduce:transition-none"
-                x={hole.x} y={hole.y} width={hole.width} height={hole.height} rx={8} fill="black"
-              />
-            )}
+            <rect
+              className="transition-all duration-200 motion-reduce:transition-none"
+              x={hole.x} y={hole.y} width={hole.width} height={hole.height} rx={8} fill="black"
+            />
           </mask>
         </defs>
         <rect width="100%" height="100%" fill="rgba(0,0,0,0.6)" mask="url(#tour-mask)" />
-        {hole && (
-          <rect
-            className="transition-all duration-200 motion-reduce:transition-none"
-            x={hole.x} y={hole.y} width={hole.width} height={hole.height} rx={8}
-            fill="none" stroke="rgb(59 130 246 / 0.6)" strokeWidth={2}
-          />
-        )}
+        <rect
+          className="transition-all duration-200 motion-reduce:transition-none"
+          x={hole.x} y={hole.y} width={hole.width} height={hole.height} rx={8}
+          fill="none" stroke="rgb(59 130 246 / 0.6)" strokeWidth={target ? 2 : 0}
+        />
       </svg>
 
       <div

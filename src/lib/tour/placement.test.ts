@@ -27,11 +27,11 @@ describe('popoverPosition', () => {
     expect(popoverPosition({ x: 1200, y: 300, width: 60, height: 200 }, popover, viewport, 'right'))
       .toMatchObject({ mode: 'anchored', side: 'left', x: 1200 - 12 - 320 });
   });
-  it('centres when no side fits', () => {
-    expect(popoverPosition({ x: 0, y: 0, width: 1280, height: 800 }, popover, viewport, 'bottom')).toEqual({ mode: 'centered' });
+  it('centres when no side fits, as a position so only the transform changes between steps', () => {
+    expect(popoverPosition({ x: 0, y: 0, width: 1280, height: 800 }, popover, viewport, 'bottom')).toEqual({ mode: 'centered', x: 480, y: 320 });
   });
   it('centres without a target', () => {
-    expect(popoverPosition(null, popover, viewport, 'bottom')).toEqual({ mode: 'centered' });
+    expect(popoverPosition(null, popover, viewport, 'bottom')).toEqual({ mode: 'centered', x: 480, y: 320 });
   });
   it('uses a bottom sheet below 640 px, with or without a target', () => {
     const narrow = { width: 639, height: 800 };

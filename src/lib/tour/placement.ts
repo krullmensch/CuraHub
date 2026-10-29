@@ -10,7 +10,7 @@ export const SHEET_BREAKPOINT = 640;
 
 export type PopoverPlacement =
   | { mode: 'anchored'; x: number; y: number; side: TourSide }
-  | { mode: 'centered' }
+  | { mode: 'centered'; x: number; y: number }
   | { mode: 'sheet' };
 
 const SIDES: TourSide[] = ['top', 'bottom', 'left', 'right'];
@@ -30,7 +30,12 @@ const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min)
 /** Where the tour popover goes: next to the target (preferred side first), centred, or as a bottom sheet. */
 export function popoverPosition(target: Rect | null, popover: Size, viewport: Size, preferred: TourSide): PopoverPlacement {
   if (viewport.width < SHEET_BREAKPOINT) return { mode: 'sheet' };
-  if (!target) return { mode: 'centered' };
+  const centered = {
+    mode: 'centered' as const,
+    x: (viewport.width - popover.width) / 2,
+    y: (viewport.height - popover.height) / 2,
+  };
+  if (!target) return centered;
 
   const order = [preferred, OPPOSITE[preferred], ...SIDES.filter((s) => s !== preferred && s !== OPPOSITE[preferred])];
   const maxX = viewport.width - VIEWPORT_MARGIN;
@@ -53,5 +58,5 @@ export function popoverPosition(target: Rect | null, popover: Size, viewport: Si
       if (x >= VIEWPORT_MARGIN) return { mode: 'anchored', side, x, y: crossY };
     }
   }
-  return { mode: 'centered' };
+  return centered;
 }
