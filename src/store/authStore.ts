@@ -29,7 +29,7 @@ const ROLE_HIERARCHY: Record<AppRole, number> = {
   admin: 3,
 };
 
-function roleAtLeast(role: AppRole, min: AppRole): boolean {
+export function roleAtLeast(role: AppRole, min: AppRole): boolean {
   return ROLE_HIERARCHY[role] >= ROLE_HIERARCHY[min];
 }
 
