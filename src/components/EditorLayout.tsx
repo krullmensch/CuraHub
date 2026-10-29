@@ -14,6 +14,7 @@ import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LivePresenceBar, SelfAvatar } from './live/PresenceAvatars';
 import { startEditorPresence } from '../lib/live/liveConnection';
+import { startVersionStatus } from '../lib/versions/versionStatus';
 import { TourAutoStart } from './tour/TourAutoStart';
 import { TourOverlay } from './tour/TourOverlay';
 
@@ -68,6 +69,9 @@ export const EditorLayout = () => {
 
   // Live presence: report exhibition, version and mode while the editor is mounted.
   useEffect(() => startEditorPresence(), []);
+
+  // Whether the active version is published / a working copy of one.
+  useEffect(() => startVersionStatus(), []);
 
   // Check if a published version exists when popover opens
   useEffect(() => {

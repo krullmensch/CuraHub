@@ -280,6 +280,8 @@ interface EditorState {
   activeExhibitionId: number | null;
   activeExhibitionSlug: string | null;
   activeVersionId: number | null;
+  /** The active version is published (read-only on the server). Set by lib/versions/versionStatus. */
+  activeVersionPublished: boolean;
 
   // Phase 6: Local State & Undo/Redo
   localInstances: ArtworkInstanceData[];
@@ -353,6 +355,7 @@ interface EditorState {
   // Phase 5 actions
   setActiveProject: (id: number | null, name: string | null, slug: string | null, exhibitionId: number | null, versionId: number | null, exhibitionSlug?: string | null) => void;
   setActiveVersion: (id: number | null) => void;
+  setActiveVersionPublished: (published: boolean) => void;
 
   // Phase 6 Actions
   setLocalInstances: (instances: ArtworkInstanceData[]) => void;
@@ -485,6 +488,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   activeExhibitionId: null,
   activeExhibitionSlug: null,
   activeVersionId: null,
+  activeVersionPublished: false,
 
   // Phase 6 defaults
   localInstances: [],
@@ -698,11 +702,13 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     activeExhibitionId: exhibitionId,
     activeExhibitionSlug: exhibitionSlug,
     activeVersionId: versionId,
+    ...(versionId !== state.activeVersionId ? { activeVersionPublished: false } : {}),
     ...clearInstanceSelection, // Clear selection on project switch
     // The 2D wall editor only survives a re-activation of the same version.
     ...(versionId !== state.activeVersionId ? { wallEditor: null, wallEditorSelection: [] } : {}),
   })),
-  setActiveVersion: (id) => set({ activeVersionId: id, ...clearInstanceSelection, selectedFigureId: null, wallEditor: null, wallEditorSelection: [] }),
+  setActiveVersionPublished: (published) => set({ activeVersionPublished: published }),
+  setActiveVersion: (id) => set((state) => ({ activeVersionId: id, ...(id !== state.activeVersionId ? { activeVersionPublished: false } : {}), ...clearInstanceSelection, selectedFigureId: null, wallEditor: null, wallEditorSelection: [] })),
 
   // Phase 6 actions
   setLocalInstances: (instances) => {
