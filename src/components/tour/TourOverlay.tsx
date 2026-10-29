@@ -5,7 +5,7 @@ import { isOnScreen, popoverPosition, spotlightRect, type Rect } from '@/lib/tou
 import { tourKeyAction } from '@/lib/tour/keys';
 import { TourBody } from './TourBody';
 
-const POPOVER_WIDTH = 320;
+const POPOVER_WIDTH = 380;
 
 function measureTarget(target: string | undefined): Rect | null {
   if (!target) return null;
@@ -170,30 +170,41 @@ export function TourOverlay() {
           placement.mode === 'sheet' ? 'inset-x-0 bottom-0 rounded-t-lg' : 'rounded-lg'
         }`}
       >
+        <div className="mb-3 flex items-center gap-3">
+          <div
+            className="h-1 flex-1 overflow-hidden rounded-full bg-zinc-800"
+            role="progressbar"
+            aria-valuemin={1}
+            aria-valuemax={steps.length}
+            aria-valuenow={stepIndex + 1}
+            aria-label="Fortschritt der Tour"
+          >
+            <div
+              className="h-full rounded-full bg-blue-500 transition-[width] duration-200 motion-reduce:transition-none"
+              style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
+            />
+          </div>
+          <span className="shrink-0 text-xs tabular-nums text-zinc-500">Schritt {stepIndex + 1} von {steps.length}</span>
+        </div>
+
         <h2 id="tour-title" className="mb-2 font-display text-base font-semibold text-white">{step.title}</h2>
         <p className="font-body text-sm leading-relaxed text-zinc-300"><TourBody body={step.body} /></p>
 
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
           {!isLast && (
-            <button onClick={skip} className="text-xs text-zinc-500 transition-colors hover:text-zinc-300">
+            <button onClick={skip} className="mr-auto text-xs text-zinc-500 transition-colors hover:text-zinc-300">
               Überspringen
             </button>
           )}
-          <div className="ml-auto flex items-center gap-1.5" aria-hidden="true">
-            {steps.map((s, i) => (
-              <span key={s.id} className={`h-1.5 w-1.5 rounded-full ${i === stepIndex ? 'bg-blue-500' : 'bg-zinc-700'}`} />
-            ))}
-          </div>
-          <span className="text-xs tabular-nums text-zinc-500">{stepIndex + 1} / {steps.length}</span>
           {!isFirst && (
-            <button onClick={back} className="rounded px-2.5 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800">
+            <button onClick={back} className="rounded px-3 py-1.5 text-xs text-zinc-300 transition-colors hover:bg-zinc-800">
               Zurück
             </button>
           )}
           <button
             ref={primaryRef}
             onClick={next}
-            className="rounded bg-blue-600 px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
+            className="rounded bg-blue-600 px-4 py-1.5 text-xs font-medium text-white transition-colors hover:bg-blue-500"
           >
             {isFirst ? "Los geht's" : isLast ? 'Fertig' : 'Weiter'}
           </button>

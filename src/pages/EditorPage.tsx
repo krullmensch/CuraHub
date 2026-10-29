@@ -131,6 +131,9 @@ const ToolSeparator = () => (
   <div style={{ width: 1, height: 20, background: 'rgba(255,255,255,0.12)', margin: '0 4px' }} />
 );
 
+/** One group of tool bar buttons; the onboarding tour spotlights each group (data-tour). */
+const TOOL_GROUP_STYLE: React.CSSProperties = { display: 'flex', alignItems: 'center', gap: 2 };
+
 /**
  * Opens the 2D wall editor for the selected wall (on the face the camera looks at), or for the wall
  * and face the selected artwork hangs on (with that artwork selected). Returns false if neither applies.
@@ -751,7 +754,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
       {/* ── Tool Bar — bottom center ── */}
       {viewMode !== 'firstPerson' && !wallEditorOpen && (
-        <div data-tour="editor-toolbar" style={{
+        <div style={{
           position: 'absolute',
           bottom: 20,
           left: '50%',
@@ -766,43 +769,49 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           background: 'rgba(0,0,0,0.6)',
           backdropFilter: 'blur(12px)',
         }}>
-          {/* Transform modes */}
-          <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!hasInstanceSelection && selectedFigureId === null && !isMovableWallSelected} />
-          <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!hasInstanceSelection && selectedFigureId === null && !isMovableWallSelected} />
-          <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!hasInstanceSelection || isFixedSizeSelected} />
-
+          <div data-tour="toolbar-transform" style={TOOL_GROUP_STYLE}>
+            {/* Transform modes */}
+            <ToolButton icon={<Move size={16} />} tooltip="Grab (G)" active={transformMode === 'translate'} onClick={() => setTransformMode('translate')} disabled={!hasInstanceSelection && selectedFigureId === null && !isMovableWallSelected} />
+            <ToolButton icon={<RotateCw size={16} />} tooltip="Rotate (R)" active={transformMode === 'rotate'} onClick={() => setTransformMode('rotate')} disabled={!hasInstanceSelection && selectedFigureId === null && !isMovableWallSelected} />
+            <ToolButton icon={<Maximize2 size={16} />} tooltip="Scale (S)" active={transformMode === 'scale'} onClick={() => setTransformMode('scale')} disabled={!hasInstanceSelection || isFixedSizeSelected} />
+          </div>
           <ToolSeparator />
+          <div data-tour="toolbar-axes" style={TOOL_GROUP_STYLE}>
 
-          {/* Axis lock */}
-          <ToolButton icon="X" tooltip="Lock X (X)" active={transformAxisLock === 'x'} activeColor="rgba(239,68,68,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'x' ? 'none' : 'x')} disabled={!hasInstanceSelection} />
-          <ToolButton icon="Y" tooltip="Lock Y (Y)" active={transformAxisLock === 'y'} activeColor="rgba(34,197,94,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'y' ? 'none' : 'y')} disabled={!hasInstanceSelection} />
-          <ToolButton icon="Z" tooltip="Lock Z (Z)" active={transformAxisLock === 'z'} activeColor="rgba(59,130,246,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'z' ? 'none' : 'z')} disabled={!hasInstanceSelection} />
-
+            {/* Axis lock */}
+            <ToolButton icon="X" tooltip="Lock X (X)" active={transformAxisLock === 'x'} activeColor="rgba(239,68,68,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'x' ? 'none' : 'x')} disabled={!hasInstanceSelection} />
+            <ToolButton icon="Y" tooltip="Lock Y (Y)" active={transformAxisLock === 'y'} activeColor="rgba(34,197,94,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'y' ? 'none' : 'y')} disabled={!hasInstanceSelection} />
+            <ToolButton icon="Z" tooltip="Lock Z (Z)" active={transformAxisLock === 'z'} activeColor="rgba(59,130,246,0.7)" onClick={() => setTransformAxisLock(transformAxisLock === 'z' ? 'none' : 'z')} disabled={!hasInstanceSelection} />
+          </div>
           <ToolSeparator />
+          <div data-tour="toolbar-view" style={TOOL_GROUP_STYLE}>
 
-          {/* Traverses */}
-          <ToolButton icon={showTraverses ? <Eye size={16} /> : <EyeOff size={16} />} tooltip={showTraverses ? 'Traverses ausblenden' : 'Traverses einblenden'} active={showTraverses} onClick={toggleTraverses} />
+            {/* Traverses */}
+            <ToolButton icon={showTraverses ? <Eye size={16} /> : <EyeOff size={16} />} tooltip={showTraverses ? 'Traverses ausblenden' : 'Traverses einblenden'} active={showTraverses} onClick={toggleTraverses} />
 
-          {/* Cutaway: room walls on the camera side hidden */}
-          <ToolButton icon={<BoxSelect size={16} />} tooltip={roomCutaway ? 'Vordere Raumwände einblenden' : 'Vordere Raumwände ausblenden'} active={roomCutaway} onClick={toggleRoomCutaway} />
-
+            {/* Cutaway: room walls on the camera side hidden */}
+            <ToolButton icon={<BoxSelect size={16} />} tooltip={roomCutaway ? 'Vordere Raumwände einblenden' : 'Vordere Raumwände ausblenden'} active={roomCutaway} onClick={toggleRoomCutaway} />
+          </div>
           <ToolSeparator />
+          <div data-tour="toolbar-tools" style={TOOL_GROUP_STYLE}>
 
-          {/* 2D wall editor */}
-          <ToolButton icon={<PanelsTopLeft size={16} />} tooltip="2D-Wandeditor (E)" onClick={openWallEditorForSelection} disabled={!canOpenWallEditor} />
+            {/* 2D wall editor */}
+            <ToolButton icon={<PanelsTopLeft size={16} />} tooltip="2D-Wandeditor (E)" onClick={openWallEditorForSelection} disabled={!canOpenWallEditor} />
 
-          {/* First-person preview */}
-          <ToolButton icon={<Footprints size={16} />} tooltip="Ego-Perspektive (V)" onClick={() => setPlannerViewMode('firstPerson')} />
+            {/* First-person preview */}
+            <ToolButton icon={<Footprints size={16} />} tooltip="Ego-Perspektive (V)" onClick={() => setPlannerViewMode('firstPerson')} />
 
-          {/* Scale figure (1.73 m) */}
-          <ToolButton icon={<PersonStanding size={16} />} tooltip="Maßstabsfigur hinzufügen (1,73 m)" onClick={placeScaleFigure} />
-
+            {/* Scale figure (1.73 m) */}
+            <ToolButton icon={<PersonStanding size={16} />} tooltip="Maßstabsfigur hinzufügen (1,73 m)" onClick={placeScaleFigure} />
+          </div>
           <ToolSeparator />
+          <div data-tour="toolbar-display" style={TOOL_GROUP_STYLE}>
 
-          <MeasurementsControl />
-          <ToolbarPopoverButton icon={<Settings size={16} />} tooltip="Darstellung">
-            <RenderQualityControl className="flex-col items-stretch gap-3" />
-          </ToolbarPopoverButton>
+            <MeasurementsControl />
+            <ToolbarPopoverButton icon={<Settings size={16} />} tooltip="Darstellung">
+              <RenderQualityControl className="flex-col items-stretch gap-3" />
+            </ToolbarPopoverButton>
+          </div>
         </div>
       )}
 

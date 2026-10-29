@@ -4,6 +4,7 @@ import { PerspectiveCamera, OrbitControls, PointerLockControls } from '@react-th
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import * as THREE from 'three';
 import { cameraInfoBridge } from '@/lib/cameraInfoBridge';
+import { cameraHomePose } from '../lib/cameraHome';
 import { useEditorStore } from '../store/editorStore';
 import { isControlsLocked, useControlsLocked } from '../lib/controlsLock';
 import { firstPersonTransition } from '../lib/cameraTransition';
@@ -326,6 +327,12 @@ export const PlannerCameraSystem = () => {
         return () => { cameraInfoBridge.get = null; };
     }, [viewSize.width, viewSize.height]);
 
+    // A focus set from outside React's camera code (e.g. opening another project) must start the
+    // animation below even under frameloop="demand".
+    useEffect(() => {
+        if (focusTarget) invalidate();
+    }, [focusTarget, invalidate]);
+
     // Listen for 'H' key to center room
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -333,7 +340,8 @@ export const PlannerCameraSystem = () => {
                 if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
                 if (useEditorStore.getState().wallEditor) return; // H = hand tool in the 2D wall editor
                 if (isControlsLocked()) return; // dialog, book viewer or onboarding tour open
-                setFocusTarget({ target: [0, 0, 0], isHoming: true });
+                const home = cameraHomePose();
+                setFocusTarget({ target: home.target, position: home.position, isHoming: true });
                 // RND-02: the store change alone doesn't touch any r3f-managed prop, so under
                 // frameloop="demand" nothing would kick off the homing animation below.
                 invalidate();
@@ -400,13 +408,19 @@ export const PlannerCameraSystem = () => {
 
                 t.lerp(targetV, dampFactor);
                 
-                const distance = focusTarget.distance ?? (isHoming ? 15 : 3.5);
-                const dir = new THREE.Vector3().subVectors(p, targetV);
-                if (dir.lengthSq() === 0) dir.set(0, 0, 1);
-                else dir.normalize();
-                
-                const desiredPos = new THREE.Vector3().copy(targetV).add(dir.multiplyScalar(distance));
-                if (isHoming) desiredPos.y = Math.max(desiredPos.y, 10);
+                let desiredPos: THREE.Vector3;
+                if (focusTarget.position) {
+                    // Fixed pose (home view): same view regardless of where the camera was.
+                    desiredPos = new THREE.Vector3(...focusTarget.position);
+                } else {
+                    const distance = focusTarget.distance ?? (isHoming ? 15 : 3.5);
+                    const dir = new THREE.Vector3().subVectors(p, targetV);
+                    if (dir.lengthSq() === 0) dir.set(0, 0, 1);
+                    else dir.normalize();
+
+                    desiredPos = new THREE.Vector3().copy(targetV).add(dir.multiplyScalar(distance));
+                    if (isHoming) desiredPos.y = Math.max(desiredPos.y, 10);
+                }
 
                 p.lerp(desiredPos, dampFactor);
                 

@@ -7,6 +7,7 @@ import type { WallSide } from '../lib/wallEditor/geometry';
 import type { WallEditorTarget } from '../lib/wallEditor/faces';
 import { DEFAULT_FRAME_STYLE, frameStyleOf, type FrameStyleId, type PassepartoutPlacement } from '../lib/frameStyles';
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
+import { cameraHomePose } from '../lib/cameraHome';
 import { sanitiseFigurePose } from '../lib/scaleFigure';
 import { emitWallEvent } from '../lib/wallEvents';
 import { heldBy, reportHeld } from '../lib/live/claimGate';
@@ -193,6 +194,17 @@ export interface ScaleFigureData {
   clientKey?: string;
 }
 
+/**
+ * Where the orbit camera flies to. Without `position` it keeps its direction from the target and
+ * moves to `distance` (F). With `position` it flies to exactly that spot (H, project switch).
+ */
+export interface FocusTarget {
+  target: [number, number, number];
+  isHoming: boolean;
+  distance?: number;
+  position?: [number, number, number];
+}
+
 interface OrbitCameraState {
   position: [number, number, number];
   target: [number, number, number];
@@ -241,7 +253,7 @@ interface EditorState {
   transformMode: TransformMode;
   isTransforming: boolean;
   liveTransform: { position: { x: number; y: number; z: number }; rotation: { x: number; y: number; z: number }; scale: { x: number; y: number; z: number } } | null;
-  focusTarget: { target: [number, number, number]; isHoming: boolean; distance?: number } | null;
+  focusTarget: FocusTarget | null;
 
   // Blender-style modal transform
   modalTransformActive: boolean;
@@ -330,7 +342,7 @@ interface EditorState {
   setIsTransforming: (v: boolean) => void;
   setLiveTransform: (t: EditorState['liveTransform']) => void;
   toggleRightSidebar: () => void;
-  setFocusTarget: (focus: { target: [number, number, number]; isHoming: boolean; distance?: number } | null) => void;
+  setFocusTarget: (focus: FocusTarget | null) => void;
   // Blender-style actions
   setTransformAxisLock: (axis: TransformAxisLock) => void;
   setShiftHeld: (held: boolean) => void;
@@ -409,6 +421,17 @@ function instanceSelection(ids: number[], instances: ArtworkInstanceData[], prim
 export const remapSelection = (ids: number[], from: number, to: number) =>
   ids.includes(from) ? ids.map(id => (id === from ? to : id)) : ids;
 
+/** Store patch that sends the orbit camera to the home pose (see lib/cameraHome). */
+function homeCameraPatch(viewMode: PlannerViewMode): Pick<EditorState, 'orbitCameraState'> & Partial<Pick<EditorState, 'focusTarget'>> {
+  const home = cameraHomePose();
+  const patch: Pick<EditorState, 'orbitCameraState'> & Partial<Pick<EditorState, 'focusTarget'>> = {
+    orbitCameraState: { ...home, zoom: 40 },
+  };
+  // Only the perspective camera consumes focusTarget; elsewhere it would linger and jump later.
+  if (viewMode === 'perspective') patch.focusTarget = { target: home.target, position: home.position, isHoming: true };
+  return patch;
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   isPlacing: false,
   pendingArtwork: null,
@@ -417,8 +440,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   // Initial Camera State
   plannerViewMode: 'perspective',
   orbitCameraState: {
-    position: [20, 20, 20], // High angle view
-    target: [0, 0, 0],
+    ...cameraHomePose(), // front of the room, windows in view (lib/cameraHome)
     zoom: 40
   },
   // Updated when leaving the first-person preview; the player respawns here on the next entry.
@@ -667,6 +689,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
 
   // Phase 5 actions
   setActiveProject: (id, name, slug, exhibitionId, versionId, exhibitionSlug = null) => set((state) => ({
+    // Opening another project lands in the home view, like pressing H (re-activating the same
+    // project keeps the camera). First person and the 2D editor return to orbitCameraState.
+    ...(id !== null && id !== state.activeProjectId ? homeCameraPatch(state.plannerViewMode) : {}),
     activeProjectId: id,
     activeProjectName: name,
     activeProjectSlug: slug,

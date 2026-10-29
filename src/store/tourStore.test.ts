@@ -17,12 +17,12 @@ describe('tourStore', () => {
     tour().start('curator');
     expect(tour().active).toBe(true);
     expect(tour().stepIndex).toBe(0);
-    expect(tour().steps).toHaveLength(9);
+    expect(tour().steps).toHaveLength(13);
   });
 
-  it('gives admins all eleven steps', () => {
+  it('gives admins all fifteen steps', () => {
     tour().start('admin');
-    expect(tour().steps).toHaveLength(11);
+    expect(tour().steps).toHaveLength(15);
   });
 
   it('does not go back before the first step', () => {
@@ -48,7 +48,7 @@ describe('tourStore', () => {
 
   it('finishes on next from the last step', () => {
     tour().start('curator');
-    for (let i = 0; i < 8; i++) tour().next();
+    for (let i = 0; i < 12; i++) tour().next();
     tour().next();
     expect(tour().active).toBe(false);
     expect(completeOnboarding).toHaveBeenCalledTimes(1);
