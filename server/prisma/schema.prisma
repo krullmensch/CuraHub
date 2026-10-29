@@ -13,6 +13,7 @@ model User {
   password_hash String?                       // null for HSBI-authenticated users
   role          String   @default("user")     // "user" | "curator" | "prof" | "admin"
   createdAt     DateTime @default(now())
+  onboarding_completed_at DateTime?        // null = tour not finished or skipped yet
 
   exhibitions      ExhibitionVersion[]
   projects         Project[]
