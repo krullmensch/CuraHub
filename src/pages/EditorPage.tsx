@@ -18,7 +18,7 @@ import { RemoteSelectionSvg } from '../components/live/RemoteSelections';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { BookViewerHost } from '../components/book/BookViewerHost';
-import { useBookViewerStore } from '../store/bookViewerStore';
+import { isControlsLocked } from '../lib/controlsLock';
 import { useEditorStore, nextTempId, isFloorAssetType, isFixedSizeMedium, type MediumType } from '../store/editorStore';
 import { toast } from '@/hooks/use-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
@@ -29,7 +29,6 @@ import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
 import { framedArtworkLayout } from '../lib/frameStyles';
 import { WallEditor } from '../components/wall-editor/WallEditorChrome';
-import { useTourStore } from '../store/tourStore';
 import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
@@ -501,8 +500,9 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       // Delete/Backspace after a click on a panel button or control must not remove the selection
       if ((e.key === 'Delete' || e.key === 'Backspace') && isFormControlTarget(e.target)) return;
-      if (useBookViewerStore.getState().book) return; // the book viewer handles its own keys
-      if (useTourStore.getState().active) return; // the onboarding tour handles its own keys
+      // A dialog (e.g. the published-version question), the book viewer or the onboarding tour is
+      // open: they handle their own keys, nothing may change the scene behind them.
+      if (isControlsLocked()) return;
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;

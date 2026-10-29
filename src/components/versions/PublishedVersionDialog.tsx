@@ -11,8 +11,6 @@ import { resolvePublishedEdit } from '../../lib/versions/resolvePublishedEdit';
 import { useVersionStatus } from '../../lib/versions/versionStatus';
 import { openWorkingCopyOf } from '../../lib/versions/workingCopy';
 
-const WORKING_COPY_ERROR = 'Arbeitskopie konnte nicht angelegt werden.';
-
 function PublishedVersionChoices({ resolving }: { resolving: boolean }) {
   const activeVersionId = useEditorStore((s) => s.activeVersionId);
   const isCurator = useAuthStore((s) => s.isCurator);
@@ -26,9 +24,10 @@ function PublishedVersionChoices({ resolving }: { resolving: boolean }) {
   const run = async (choice: Parameters<typeof resolvePublishedEdit>[0], isBranch = false) => {
     setBranchError(null);
     const result = await resolvePublishedEdit(choice);
-    if (result.ok) return;
-    if (isBranch) setBranchError(result.error ?? WORKING_COPY_ERROR);
-    else toast.error(result.error ?? WORKING_COPY_ERROR);
+    // No error: nothing was asked any more (a second click while the first one resolves).
+    if (result.ok || !result.error) return;
+    if (isBranch) setBranchError(result.error);
+    else toast.error(result.error);
   };
 
   const submitBranch = () => {

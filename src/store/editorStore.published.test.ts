@@ -12,7 +12,7 @@ vi.hoisted(() => {
     },
   });
 });
-import { useEditorStore, type ArtworkInstanceData, type ModularWallData, type ScaleFigureData } from './editorStore';
+import { flushAutoSync, isAutoSyncSettled, useEditorStore, type ArtworkInstanceData, type ModularWallData, type ScaleFigureData } from './editorStore';
 import { useAuthStore } from './authStore';
 import { publishedEditGate } from '../lib/publishedEditGate';
 import { toast } from '@/hooks/use-toast';
@@ -254,5 +254,109 @@ describe('default walls on a published version', () => {
     state().setActiveVersionPublished(false);
     await settle();
     expect(fetchMock.mock.calls.filter(([url, init]) => url === '/api/walls' && init.method === 'POST')).toHaveLength(2);
+  });
+});
+
+describe('auto-sync across version switches (C1)', () => {
+  const posts = () => fetchMock.mock.calls.filter(([, init]) => init.method === 'POST');
+
+  it('discarding and joining a working copy does not POST the previous version\'s rows into it', async () => {
+    state().setActiveVersionPublished(true);
+    move(1, 5);
+    await settle();
+    expect(publishedEditGate.getState().phase).toBe('asking');
+    state().discardUnsyncedChanges(publishedEditGate.getState().undoDepth, 12);
+    expect(state().activeVersionId).toBe(12);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    // The join version's data arrives: still nothing to send.
+    state().setLocalInstances([inst(20)]);
+    state().setLocalWalls([wall(21, 'Wall A')]);
+    state().setLocalScaleFigures([]);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a new working copy whose walls load before its instances does not duplicate the artworks', async () => {
+    state().setActiveVersion(9);
+    state().setLocalWalls([wall(30, 'Wall A')]);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    state().setLocalScaleFigures([figure(31)]);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    state().setLocalInstances([inst(32), inst(33)]);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    // Edits are synced again once everything is loaded, into the new version.
+    move(32, 4);
+    await settle();
+    expect(fetchMock.mock.calls.map(([url, init]) => `${init.method} ${url}`)).toEqual(['PATCH /api/instances/32']);
+  });
+
+  it('a version without walls or figures counts as loaded (empty lists, default walls)', async () => {
+    handler = (url, init) => (url === '/api/walls' && init.method === 'POST'
+      ? json({ ...JSON.parse(String(init.body)), id: 200 + fetchMock.mock.calls.length })
+      : json({}));
+    state().setActiveVersion(13);
+    state().setLocalInstances([]);
+    state().setLocalScaleFigures([]);
+    state().setLocalWalls([wall(-1, 'Wall A', 0, true)]);
+    await settle();
+    // Only the default wall, POSTed into version 13.
+    expect(posts()).toHaveLength(1);
+    expect(JSON.parse(String(posts()[0][1].body)).versionId).toBe(13);
+  });
+
+  it('cancels the pending debounce of the previous version on a switch', async () => {
+    move(1, 5);
+    state().setActiveVersion(14);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('a batch that finishes after a switch leaves the new version\'s snapshots alone', async () => {
+    let release!: () => void;
+    fetchMock.mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(json({ id: 1 })); }));
+    move(1, 5);
+    await settle(); // PATCH of instance 1 (version 42) is in flight
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    state().setActiveVersion(15);
+    state().setLocalInstances([inst(40)]);
+    state().setLocalWalls([wall(41, 'Wall A')]);
+    state().setLocalScaleFigures([]);
+    release();
+    await settle();
+    await settle();
+    // Only the old version's PATCH: no DELETE of its rows, no POST of version 15's rows.
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    fetchMock.mockClear();
+    // Any change triggers a diff: version 15's snapshots must still be its loaded data.
+    state().commitLocalChange([...state().localInstances]);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('flushAutoSync / isAutoSyncSettled (I2)', () => {
+  it('sends a pending change at once and reports settled afterwards', async () => {
+    move(1, 5);
+    expect(isAutoSyncSettled()).toBe(false);
+    await flushAutoSync();
+    expect(fetchMock.mock.calls.map(([url, init]) => `${init.method} ${url}`)).toEqual(['PATCH /api/instances/1']);
+    expect(isAutoSyncSettled()).toBe(true);
+  });
+
+  it('reports not settled when the sync ends in error', async () => {
+    vi.spyOn(toast, 'error');
+    handler = () => json({}, 400); // not retried by fetchWithRetry
+    move(1, 5);
+    await flushAutoSync();
+    expect(state().syncStatus).toBe('error');
+    expect(isAutoSyncSettled()).toBe(false);
+    // Recover, which also cancels the automatic retry.
+    handler = () => json({});
+    await flushAutoSync();
+    expect(isAutoSyncSettled()).toBe(true);
   });
 });

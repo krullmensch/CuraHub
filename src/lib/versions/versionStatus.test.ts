@@ -59,6 +59,22 @@ describe('versionStatus', () => {
     expect(useEditorStore.getState().activeVersionPublished).toBe(false);
   });
 
+  it('applies only the latest of overlapping fetches for the same version (T4)', async () => {
+    const pub = { is_published: true, published_at: '2026-01-02T00:00:00Z' };
+    let resolveFirst!: (x: unknown) => void;
+    fetchMock.mockReturnValueOnce(new Promise((r) => { resolveFirst = r; }));
+    fetchMock.mockResolvedValueOnce({ ok: true, json: async () => [v(1)] });
+    stop = startVersionStatus();
+    useEditorStore.setState({ activeExhibitionId: 5, activeVersionId: 1 });
+    useLiveStore.setState({ versionsRevision: useLiveStore.getState().versionsRevision + 1 });
+    await flush();
+    expect(useEditorStore.getState().activeVersionPublished).toBe(false);
+    // The older response (still published) arrives last.
+    resolveFirst({ ok: true, json: async () => [v(1, pub)] });
+    await flush();
+    expect(useEditorStore.getState().activeVersionPublished).toBe(false);
+  });
+
   it('resets the gate when the active version changes', () => {
     respond([]);
     stop = startVersionStatus();

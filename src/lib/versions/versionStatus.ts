@@ -16,8 +16,12 @@ export const useVersionStatus = create<VersionStatusState>()(() => ({
   workingCopyOf: null,
 }));
 
+/** Counts requests: overlapping fetches can resolve out of order, only the latest one applies. */
+let latestRequest = 0;
+
 /** Fetches the active exhibition's versions and derives "published" / "working copy of". */
 export async function refreshVersionStatus(): Promise<void> {
+  const request = ++latestRequest;
   const { activeExhibitionId, activeVersionId } = useEditorStore.getState();
   if (activeExhibitionId == null || activeVersionId == null) {
     useVersionStatus.setState({ versions: [], workingCopyOf: null });
@@ -30,6 +34,7 @@ export async function refreshVersionStatus(): Promise<void> {
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const versions = (await res.json()) as VersionSummary[];
+    if (request !== latestRequest) return;
     const now = useEditorStore.getState();
     if (now.activeExhibitionId !== activeExhibitionId || now.activeVersionId !== activeVersionId) return;
     const published = versions.find((x) => x.id === activeVersionId)?.is_published ?? false;

@@ -17,7 +17,7 @@ import { useAuthStore } from '@/store/authStore';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
 import { publishedEditGate } from '@/lib/publishedEditGate';
 import { toast } from '@/hooks/use-toast';
-import { revertWallLayout, startWallLayoutSync } from './layoutSync';
+import { flushWallLayout, revertWallLayout, startWallLayoutSync } from './layoutSync';
 
 const EXHIBITION = 5;
 const VERSION = 77;
@@ -116,5 +116,26 @@ describe('wall layout sync on a published version', () => {
     expect(patches()).toHaveLength(1);
     expect(JSON.parse(String(patches()[0][1]?.body)).hangingHeight).toBe(1.8);
     expect(patches()[0][0]).toBe(URL);
+  });
+});
+
+describe('flushWallLayout (I2)', () => {
+  it('sends a waiting change at once and reports it saved', async () => {
+    useWallEditorView.getState().setHangingHeight(1.9);
+    expect(await flushWallLayout()).toBe(true);
+    expect(patches()).toHaveLength(1);
+    expect(JSON.parse(String(patches()[0][1]?.body)).hangingHeight).toBe(1.9);
+  });
+
+  it('reports false when the save failed', async () => {
+    vi.spyOn(toast, 'error');
+    patchResponse = () => json({}, 500);
+    useWallEditorView.getState().setHangingHeight(1.9);
+    expect(await flushWallLayout()).toBe(false);
+  });
+
+  it('is true with nothing to send', async () => {
+    expect(await flushWallLayout()).toBe(true);
+    expect(patches()).toHaveLength(0);
   });
 });

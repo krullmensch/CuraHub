@@ -41,6 +41,17 @@ let remoteApply: ((versionId: number, raw: unknown) => void) | null = null;
 /** Set while a sync runs: puts the last layout the server has back into the view store. */
 let revertApply: (() => void) | null = null;
 
+/** Set while a sync runs: sends a waiting change now; true once the server has the current layout. */
+let flushApply: (() => Promise<boolean>) | null = null;
+
+/**
+ * Sends a waiting hanging height / guide change now and resolves when it has landed: true when
+ * the server has what the view store holds (or no layout is loaded, so nothing can be saved).
+ */
+export function flushWallLayout(): Promise<boolean> {
+    return flushApply ? flushApply() : Promise.resolve(true);
+}
+
 /**
  * Drops the hanging height / guide changes that were held back (published version): re-applies
  * the layout last loaded from (or saved to) the server for the active version.
@@ -233,6 +244,13 @@ export function startWallLayoutSync(): () => void {
         apply(parseWallLayout(JSON.parse(serverLayout.body)));
     };
 
+    flushApply = async () => {
+        flush();
+        await queue;
+        if (stopped || loadedVersionId == null) return true;
+        return pending === null && serverLayout?.versionId === loadedVersionId && serverLayout.body === currentBody();
+    };
+
     // Best-effort save when the tab is being hidden/closed/navigated away from.
     const onPageHide = () => flush(true);
     window.addEventListener('pagehide', onPageHide);
@@ -246,6 +264,7 @@ export function startWallLayoutSync(): () => void {
         loadedVersionId = null;
         remoteApply = null;
         revertApply = null;
+        flushApply = null;
         unsubscribeView();
         unsubscribePublished();
         unsubscribeEditor();

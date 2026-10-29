@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { openWorkingCopyOf, workingCopyParent, type VersionSummary } from './workingCopy';
+import { openWorkingCopyOf, workingCopyComment, workingCopyParent, type VersionSummary } from './workingCopy';
 
 let nextId = 1;
 function v(over: Partial<VersionSummary>): VersionSummary {
@@ -59,5 +59,20 @@ describe('workingCopyParent', () => {
     expect(workingCopyParent([p, c, older], 102)).toBeNull();
     expect(workingCopyParent([p, c], 100)).toBeNull();
     expect(workingCopyParent([p, c], 555)).toBeNull();
+  });
+});
+
+describe('workingCopyComment', () => {
+  it('names the published version', () => {
+    expect(workingCopyComment('Eröffnung')).toBe('Arbeitskopie von „Eröffnung“');
+  });
+  it('falls back without a comment', () => {
+    expect(workingCopyComment(null)).toBe('Arbeitskopie');
+    expect(workingCopyComment('  ')).toBe('Arbeitskopie');
+  });
+  it('stays within the server limit of 500 characters', () => {
+    const comment = workingCopyComment('x'.repeat(500));
+    expect(comment.length).toBe(500);
+    expect(comment.endsWith('…“')).toBe(true);
   });
 });

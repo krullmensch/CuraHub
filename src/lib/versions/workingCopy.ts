@@ -1,5 +1,6 @@
 export interface VersionSummary {
   id: number;
+  comment?: string | null;
   branch_name: string;
   parent_version_id: number | null;
   is_published: boolean;
@@ -47,4 +48,16 @@ export function workingCopyParent(
   const parent = versions.find((v) => v.id === self.parent_version_id);
   if (!parent) return null;
   return openWorkingCopyOf(versions, parent.id)?.id === versionId ? parent : null;
+}
+
+/** Version comments are at most this long (server: `comment` max 500). */
+const MAX_COMMENT_LENGTH = 500;
+
+/** Comment of a new working copy: „Arbeitskopie von „<comment>"“, or „Arbeitskopie“ without one. */
+export function workingCopyComment(publishedComment: string | null | undefined): string {
+  const source = publishedComment?.trim();
+  if (!source) return 'Arbeitskopie';
+  const wrap = (text: string) => `Arbeitskopie von „${text}“`;
+  const room = MAX_COMMENT_LENGTH - wrap('').length;
+  return wrap(source.length > room ? `${source.slice(0, room - 1)}…` : source);
 }
