@@ -52,14 +52,14 @@ export const CmInput = ({ label, ariaLabel, value, placeholder, onCommit, disabl
                 }}
                 className="w-full h-8 rounded-md bg-zinc-900 border border-zinc-700 pl-2 pr-7 text-xs text-zinc-100 tabular-nums outline-none focus:border-blue-500 disabled:opacity-40"
             />
-            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-500 pointer-events-none">cm</span>
+            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-zinc-400 pointer-events-none">cm</span>
         </div>
     );
 
     if (!label) return <div title={title}>{field}</div>;
     return (
         <label className="block space-y-1" title={title}>
-            <span className="block text-[10px] text-zinc-500">{label}</span>
+            <span className="block text-[10px] text-zinc-400">{label}</span>
             {field}
         </label>
     );

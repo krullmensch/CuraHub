@@ -386,7 +386,7 @@ export const UploadPreviewModal = ({
         <DialogHeader>
           <DialogTitle className="text-zinc-100">{dialogTitle}</DialogTitle>
           {phase === 'preview' && (
-            <p className="text-xs text-zinc-500 mt-1">
+            <p className="text-xs text-zinc-400 mt-1">
               Namen bearbeiten: auf den Namen unter dem Vorschaubild klicken.
             </p>
           )}
@@ -419,7 +419,7 @@ export const UploadPreviewModal = ({
                     ? 'Datei bereits vorhanden'
                     : `${duplicateItems.length} Dateien bereits vorhanden`}
                 </span>
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-zinc-400">
                   — Diese Dateien wurden in diesem Projekt bereits hochgeladen.
                 </span>
               </div>
@@ -537,11 +537,11 @@ function SkippedFilesNotice({ skipped }: { skipped: SkippedFile[] }) {
         {skipped.map((s) => (
           <li key={s.path} className="text-[11px] text-zinc-400 flex gap-2 min-w-0">
             <span className="truncate text-zinc-300" title={s.path}>{s.path}</span>
-            <span className="shrink-0 text-zinc-500">— {s.reason}</span>
+            <span className="shrink-0 text-zinc-400">— {s.reason}</span>
           </li>
         ))}
       </ul>
-      <p className="mt-2 ml-6 text-[10px] text-zinc-500">Unterstützt: {SUPPORTED_FORMATS_HINT}</p>
+      <p className="mt-2 ml-6 text-[10px] text-zinc-400">Unterstützt: {SUPPORTED_FORMATS_HINT}</p>
     </details>
   );
 }
@@ -573,12 +573,12 @@ function FileCard({
         {isImage ? (
           <img src={item.preview!} alt={item.name} className="w-full h-full object-cover" />
         ) : isVideo ? (
-          <div className="flex flex-col items-center gap-1.5 text-zinc-500">
+          <div className="flex flex-col items-center gap-1.5 text-zinc-400">
             <Play className="h-9 w-9" />
             <span className="text-[11px] uppercase tracking-wide">Video</span>
           </div>
         ) : (
-          <div className="flex flex-col items-center gap-1.5 text-zinc-500">
+          <div className="flex flex-col items-center gap-1.5 text-zinc-400">
             <Box className="h-9 w-9" />
             <span className="text-[11px] uppercase tracking-wide">
               {item.ext ? item.ext.slice(1) : '3D'}
@@ -645,12 +645,12 @@ function FileCard({
       )}
 
       {/* Size / status line */}
-      <div className="text-[10px] text-zinc-500 px-0.5 leading-tight min-h-[14px]">
+      <div className="text-[10px] text-zinc-400 px-0.5 leading-tight min-h-[14px]">
         {item.status === 'done' && item.backgroundProcessing ? (
           <span className="text-blue-400">Wird im Hintergrund verarbeitet …</span>
         ) : item.status === 'done' && item.compressedSize !== undefined ? (
           <span className="flex items-center gap-1">
-            <span className="line-through text-zinc-600">{formatBytes(item.originalSize)}</span>
+            <span className="line-through text-zinc-400">{formatBytes(item.originalSize)}</span>
             <span className="text-green-400">{formatBytes(item.compressedSize)}</span>
             {saving && (
               <span className="text-green-500 font-medium">−{savingPct}%</span>
@@ -699,17 +699,17 @@ function DuplicateRow({
     <div className="rounded-lg border border-amber-800/50 bg-amber-950/20 p-3 flex gap-3 items-start">
       {/* New file thumbnail */}
       <div className="shrink-0 flex flex-col items-center gap-1">
-        <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-medium">Neu</span>
+        <span className="text-[11px] text-zinc-400 uppercase tracking-wider font-medium">Neu</span>
         <div className="w-16 h-16 rounded-md overflow-hidden bg-zinc-900 border border-zinc-700 flex items-center justify-center">
           {item.preview ? (
             <img src={item.preview} alt={item.name} className="w-full h-full object-cover" />
           ) : isVideoFile(item.file) ? (
-            <Play className="h-6 w-6 text-zinc-500" />
+            <Play className="h-6 w-6 text-zinc-400" />
           ) : (
-            <Box className="h-6 w-6 text-zinc-500" />
+            <Box className="h-6 w-6 text-zinc-400" />
           )}
         </div>
-        <span className="text-[9px] text-zinc-500">{formatBytes(item.originalSize)}</span>
+        <span className="text-[11px] text-zinc-400">{formatBytes(item.originalSize)}</span>
       </div>
 
       {/* Arrow */}
@@ -719,18 +719,18 @@ function DuplicateRow({
 
       {/* Existing file thumbnail */}
       <div className="shrink-0 flex flex-col items-center gap-1">
-        <span className="text-[9px] text-amber-500 uppercase tracking-wider font-medium">Vorhanden</span>
+        <span className="text-[11px] text-amber-500 uppercase tracking-wider font-medium">Vorhanden</span>
         <div className="w-16 h-16 rounded-md overflow-hidden bg-zinc-900 border border-amber-800/60 flex items-center justify-center relative">
           {existingThumb ? (
             <img src={existingThumb} alt={existingName} className="w-full h-full object-cover" />
           ) : (
-            <Box className="h-6 w-6 text-zinc-500" />
+            <Box className="h-6 w-6 text-zinc-400" />
           )}
           {/* Amber tint overlay to visually mark it as the "existing" one */}
           <div className="absolute inset-0 bg-amber-500/10 rounded-md" />
         </div>
         {existingSize !== undefined && (
-          <span className="text-[9px] text-zinc-500">{formatBytes(existingSize)}</span>
+          <span className="text-[11px] text-zinc-400">{formatBytes(existingSize)}</span>
         )}
       </div>
 
@@ -740,12 +740,12 @@ function DuplicateRow({
           {item.name}{item.ext}
         </p>
         {existingName && existingName !== item.name + item.ext && (
-          <p className="text-[10px] text-zinc-500 truncate">
+          <p className="text-[10px] text-zinc-400 truncate">
             Gespeichert als <span className="text-zinc-400">{existingName}</span>
           </p>
         )}
         {uploadedAgo && (
-          <p className="text-[10px] text-zinc-500">Hochgeladen am {uploadedAgo}</p>
+          <p className="text-[10px] text-zinc-400">Hochgeladen am {uploadedAgo}</p>
         )}
 
         <div className="flex gap-1.5 mt-auto pt-1">

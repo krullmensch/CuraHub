@@ -36,7 +36,7 @@ export function VideoMediumPickerDialog({ open, onOpenChange, onSelect }: VideoM
                     >
                         <Monitor className="h-10 w-10 text-zinc-300" />
                         <span className="text-sm font-medium">Monitor</span>
-                        <span className="text-[10px] text-zinc-500 text-center leading-tight">
+                        <span className="text-[10px] text-zinc-400 text-center leading-tight">
                             65" Bildschirm,<br />feste Größe
                         </span>
                     </button>
@@ -47,7 +47,7 @@ export function VideoMediumPickerDialog({ open, onOpenChange, onSelect }: VideoM
                     >
                         <Projector className="h-10 w-10 text-zinc-300" />
                         <span className="text-sm font-medium">Beamer</span>
-                        <span className="text-[10px] text-zinc-500 text-center leading-tight">
+                        <span className="text-[10px] text-zinc-400 text-center leading-tight">
                             Projektion,<br />Größe einstellbar
                         </span>
                     </button>

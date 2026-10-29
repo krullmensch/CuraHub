@@ -334,12 +334,12 @@ export const ViewerPage = () => {
                                                     style={{ width: `${loadingPercent}%` }}
                                                 />
                                             </div>
-                                            <p className="text-white/40 text-[10px] uppercase tracking-[0.2em] font-medium">
+                                            <p className="text-white/60 text-[10px] uppercase tracking-[0.2em] font-medium">
                                                 {Math.round(loadingPercent)}%
                                             </p>
                                         </div>
                                     )}
-                                    <p className="text-white/40 text-[11px] uppercase tracking-[0.3em] font-medium animate-pulse">
+                                    <p className="text-white/60 text-[11px] uppercase tracking-[0.3em] font-medium animate-pulse">
                                         {apiLoading ? 'Initialisierung' : roomReady && !texturesReady ? 'Bilder werden geladen' : 'Asset-Synchronisation'}
                                     </p>
                                 </>

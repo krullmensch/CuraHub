@@ -172,7 +172,7 @@ export const HomePage = () => {
           </div>
         ) : error ? (
           <div className="text-center">
-            <p className="text-zinc-500 mb-4">{error}</p>
+            <p className="text-zinc-400 mb-4">{error}</p>
             <button
               onClick={fetchData}
               className="text-sm text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-5 py-2 rounded-full transition-all"
@@ -183,7 +183,7 @@ export const HomePage = () => {
         ) : featured ? (
           <div className="text-center max-w-3xl">
             <p
-              className="text-xs tracking-[0.35em] uppercase text-zinc-500 mb-8 homepage-fade-up"
+              className="text-xs tracking-[0.35em] uppercase text-zinc-400 mb-8 homepage-fade-up"
               style={{ animationDelay: '0.1s' }}
             >
               Aktuelle Ausstellung
@@ -203,7 +203,7 @@ export const HomePage = () => {
               </p>
             )}
             <div
-              className="flex items-center justify-center gap-6 text-xs text-zinc-600 mb-10 homepage-fade-up"
+              className="flex items-center justify-center gap-6 text-xs text-zinc-400 mb-10 homepage-fade-up"
               style={{ animationDelay: '0.5s' }}
             >
               {featured.version.published_at && (
@@ -236,7 +236,7 @@ export const HomePage = () => {
               Cura<span className="font-semibold">Hub</span>
             </h1>
             <p
-              className="text-zinc-500 text-lg font-light homepage-fade-up"
+              className="text-zinc-400 text-lg font-light homepage-fade-up"
               style={{ animationDelay: '0.4s' }}
             >
               Digitale Ausstellungsraume der HSBI
@@ -251,7 +251,7 @@ export const HomePage = () => {
           <div className="max-w-5xl mx-auto">
             <div className="flex items-center gap-4 mb-12 homepage-fade-up" style={{ animationDelay: '0.7s' }}>
               <div className="h-px flex-1 bg-zinc-800" />
-              <h2 className="text-xs tracking-[0.3em] uppercase text-zinc-500 font-medium">
+              <h2 className="text-xs tracking-[0.3em] uppercase text-zinc-400 font-medium">
                 Vergangene Ausstellungen
               </h2>
               <div className="h-px flex-1 bg-zinc-800" />
@@ -270,11 +270,11 @@ export const HomePage = () => {
                       {entry.exhibition.title}
                     </h3>
                     {entry.version.comment && (
-                      <p className="text-sm text-zinc-600 mb-4 line-clamp-2">
+                      <p className="text-sm text-zinc-400 mb-4 line-clamp-2">
                         {entry.version.comment}
                       </p>
                     )}
-                    <div className="flex items-center justify-between text-xs text-zinc-600">
+                    <div className="flex items-center justify-between text-xs text-zinc-400">
                       <span className="flex items-center gap-1.5">
                         <Layers className="w-3 h-3" />
                         {entry.version.artworkCount} {entry.version.artworkCount === 1 ? 'Objekt' : 'Objekte'}
@@ -293,14 +293,14 @@ export const HomePage = () => {
 
       {/* ── Footer ── */}
       <footer className="relative z-10 border-t border-zinc-900 px-8 py-12 homepage-fade-up" style={{ animationDelay: '1s' }}>
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-600">
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-400">
           <p>
             CuraHub ist ein digitales Ausstellungstool der{' '}
-            <span className="text-zinc-500">HSBI</span>.
+            <span className="text-zinc-400">HSBI</span>.
           </p>
           <p>
             Kuratieren erfordert einen{' '}
-            <span className="text-zinc-500">HSBI</span>-Account.{' '}
+            <span className="text-zinc-400">HSBI</span>-Account.{' '}
             <Link to="/login" className="text-zinc-400 hover:text-white transition-colors underline underline-offset-2">
               Anmelden
             </Link>

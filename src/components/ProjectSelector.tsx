@@ -346,7 +346,7 @@ export const ProjectSelector = () => {
                       e.stopPropagation();
                       setProjectToDelete(project);
                     }}
-                    className="absolute right-2 p-1.5 text-zinc-500 hover:text-red-400 hover:bg-zinc-700/50 rounded opacity-0 group-hover:opacity-100 transition-all"
+                    className="absolute right-2 p-1.5 text-zinc-400 hover:text-red-400 hover:bg-zinc-700/50 rounded opacity-0 group-hover:opacity-100 transition-all"
                     title="Delete Project"
                   >
                     <Trash2 className="h-4 w-4" />

@@ -435,7 +435,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
                         />
                     ) : (
                         <div className="flex-1 flex items-center justify-center p-4">
-                            <p className="text-zinc-500 text-xs text-center italic">Select an artwork or wall to view its properties.</p>
+                            <p className="text-zinc-400 text-xs text-center italic">Select an artwork or wall to view its properties.</p>
                         </div>
                     )
                 )}
@@ -443,7 +443,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
             </Card>
 
             <div className={cn("absolute right-0 top-[2.625rem] -translate-y-1/2 z-10 transition-transform duration-300 ease-in-out", isOpen && "translate-x-full")}>
-                <Button variant="secondary" size="sm" className="h-12 w-6 rounded-l-lg rounded-r-none bg-blue-600 border-y border-l border-blue-700 shadow-md p-0 flex items-center justify-center hover:bg-blue-500" onClick={onToggle}>
+                <Button variant="secondary" size="sm" className="h-12 w-6 rounded-l-lg rounded-r-none bg-blue-600 border-y border-l border-blue-700 shadow-md p-0 flex items-center justify-center hover:bg-blue-500" onClick={onToggle} aria-label="Eigenschaften einblenden">
                     <ChevronLeft className="h-4 w-4 text-white" />
                 </Button>
             </div>
@@ -478,7 +478,7 @@ const ControlsTabContent = () => {
                         <Separator className="bg-zinc-800" />
                         <div className="space-y-1.5">
                             <Label className="text-xs text-zinc-400 uppercase tracking-wider">2D-Wandeditor</Label>
-                            <p className="text-[11px] text-zinc-500">Wand frontal öffnen – auch per Doppelklick auf eine Wand.</p>
+                            <p className="text-[11px] text-zinc-400">Wand frontal öffnen – auch per Doppelklick auf eine Wand.</p>
                             {faces.map((face) => (
                                 <button
                                     key={face.key}
@@ -487,9 +487,9 @@ const ControlsTabContent = () => {
                                     className="w-full flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-zinc-200 hover:bg-zinc-800 transition-colors"
                                     title={`${face.label} im 2D-Wandeditor öffnen`}
                                 >
-                                    <PanelsTopLeft className="h-3.5 w-3.5 shrink-0 text-zinc-500" />
+                                    <PanelsTopLeft className="h-3.5 w-3.5 shrink-0 text-zinc-400" />
                                     <span className="flex-1 truncate">{face.label}</span>
-                                    <span className="text-[10px] text-zinc-500">{face.group === 'room' ? 'Raum' : 'Stellwand'}</span>
+                                    <span className="text-[10px] text-zinc-400">{face.group === 'room' ? 'Raum' : 'Stellwand'}</span>
                                     <span className="w-4 text-right text-[10px] tabular-nums text-zinc-400">{face.count}</span>
                                 </button>
                             ))}
@@ -604,7 +604,7 @@ const ArtworkPropertiesContent = ({
                 <div className="grid grid-cols-3 gap-2">
                     {(['x', 'y', 'z'] as const).map((axis) => (
                         <div key={axis} className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">{axis}</Label>
+                            <Label className="text-[10px] text-zinc-400 uppercase">{axis}</Label>
                             <NumericInput step="0.01" value={toFixed(transform.position[axis])} onChange={(raw) => handleInputChange('position', axis, raw)} disabled={isBook && axis === 'y'} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
                         </div>
                     ))}
@@ -615,7 +615,7 @@ const ArtworkPropertiesContent = ({
                 <div className="grid grid-cols-3 gap-2">
                     {(['x', 'y', 'z'] as const).map((axis) => (
                         <div key={axis} className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">{axis}</Label>
+                            <Label className="text-[10px] text-zinc-400 uppercase">{axis}</Label>
                             <NumericInput step="1" value={toDeg(transform.rotation[axis])} onChange={(raw) => handleInputChange('rotation', axis, raw)} disabled={isBook && axis !== 'y'} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" />
                         </div>
                     ))}
@@ -664,13 +664,13 @@ const ArtworkPropertiesContent = ({
                             : [['x', 'W'], ['y', 'H']] as [string, string][]
                         ).map(([axis, label]) => (
                             <div key={axis} className="space-y-1">
-                                <Label className="text-[10px] text-zinc-500 uppercase">{label}</Label>
+                                <Label className="text-[10px] text-zinc-400 uppercase">{label}</Label>
                                 <NumericInput step={isModel ? "0.01" : "0.1"} min="0.001" value={toFixed(baseCm[axis as 'x' | 'y' | 'z'] * transform.scale[axis as 'x' | 'y' | 'z'], isModel ? 3 : 1)} onChange={(raw) => handleScaleChange(axis as 'x' | 'y' | 'z', raw)} className="h-8 text-xs bg-zinc-900 border-zinc-700 text-zinc-100" disabled={sizeLocked} />
                             </div>
                         ))}
                     </div>
                     {sizeLocked && (
-                        <p className="text-[10px] text-zinc-500 italic">Größe durch Modell vorgegeben</p>
+                        <p className="text-[10px] text-zinc-400 italic">Größe durch Modell vorgegeben</p>
                     )}
                 </div>
             )}
@@ -769,7 +769,7 @@ const WallPropertiesContent = () => {
     const countOn = (side: WallSide) => artworksOnWall.filter(i => sideOfInstance(wall, i) === side).length;
     return (
         <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
-            <div className="text-xs text-zinc-500 italic">{wall.label || 'Modular Wall'} — {wall.width}m × {wall.height}m</div>
+            <div className="text-xs text-zinc-400 italic">{wall.label || 'Modular Wall'} — {wall.width}m × {wall.height}m</div>
             <div className="flex gap-1">
                 {wallModeButtons.map(({ mode, icon: Icon, label, title }) => (
                     <Button
@@ -813,7 +813,7 @@ const WallPropertiesContent = () => {
                 <div className="grid grid-cols-2 gap-2">
                     {(['x', 'z'] as const).map((axis) => (
                         <div key={axis} className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">{axis}</Label>
+                            <Label className="text-[10px] text-zinc-400 uppercase">{axis}</Label>
                             <NumericInput step="0.01" value={toFixed(wall[`position_${axis}`])} onChange={(raw) => {
                                 const v = parseFloat(raw);
                                 if (!isNaN(v)) updateWall(wall.id, { [`position_${axis}`]: v });
@@ -864,7 +864,7 @@ const ScaleFigurePropertiesContent = () => {
     const toDeg = (rad: number) => ((rad * 180) / Math.PI).toFixed(1);
     return (
         <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar">
-            <div className="text-xs text-zinc-500 italic">
+            <div className="text-xs text-zinc-400 italic">
                 Maßstabsfigur — {SCALE_FIGURE_HEIGHT.toFixed(2).replace('.', ',')} m
             </div>
             <div className="space-y-2">
@@ -872,7 +872,7 @@ const ScaleFigurePropertiesContent = () => {
                 <div className="grid grid-cols-2 gap-2">
                     {(['x', 'z'] as const).map((axis) => (
                         <div key={axis} className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">{axis}</Label>
+                            <Label className="text-[10px] text-zinc-400 uppercase">{axis}</Label>
                             <NumericInput step="0.01" value={figure[`position_${axis}`].toFixed(3)} onChange={(raw) => {
                                 const v = parseFloat(raw);
                                 if (!isNaN(v)) updateScaleFigure(figure.id, axis === 'x' ? { position_x: v } : { position_z: v });

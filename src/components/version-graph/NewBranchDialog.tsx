@@ -39,14 +39,14 @@ export const NewBranchDialog = ({ sourceVersion, existingBranchNames, onConfirm,
             <GitBranch className="h-4 w-4 text-indigo-400" />
             <h2 className="text-base font-semibold text-white">Neuer Branch</h2>
           </div>
-          <button onClick={onCancel} className="p-1 hover:bg-zinc-800 rounded transition-colors">
+          <button onClick={onCancel} className="p-1 hover:bg-zinc-800 rounded transition-colors" aria-label="Schließen">
             <X className="h-4 w-4 text-gray-400" />
           </button>
         </div>
 
         <div className="px-5 py-4 space-y-4">
           <div>
-            <p className="text-xs text-zinc-500 mb-1">Basiert auf</p>
+            <p className="text-xs text-zinc-400 mb-1">Basiert auf</p>
             <p className="text-sm text-white bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2 truncate">
               <span className="text-zinc-400 mr-1.5">[{sourceVersion.branch_name}]</span>
               {sourceVersion.comment || 'Kein Kommentar'}

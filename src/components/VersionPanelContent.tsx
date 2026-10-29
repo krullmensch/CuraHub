@@ -361,10 +361,10 @@ export const VersionPanelContent = ({
         <div className="flex-1 relative overflow-hidden">
           {loading ? (
             <div className="flex h-full items-center justify-center">
-              <div className="text-sm text-zinc-500">Lade Versionen…</div>
+              <div className="text-sm text-zinc-400">Lade Versionen…</div>
             </div>
           ) : versions.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center text-zinc-500">
+            <div className="flex h-full flex-col items-center justify-center text-zinc-400">
               <Layers className="h-8 w-8 mb-2 opacity-40" />
               <p className="text-sm">Noch keine Versionen</p>
               <p className="text-xs mt-1">Projekt auswählen, um zu beginnen</p>

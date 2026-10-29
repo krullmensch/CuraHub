@@ -239,7 +239,7 @@ export const EditorLayout = () => {
                     </div>
 
                     {publishedVersionExists === null && (
-                      <p className="text-xs text-zinc-500">Wird geprüft…</p>
+                      <p className="text-xs text-zinc-400">Wird geprüft…</p>
                     )}
                     {publishedVersionExists === false && (
                       <>

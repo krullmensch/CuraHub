@@ -174,9 +174,9 @@ export function SummaryStep({ publicUrl, localUsername, hsbiEmail, onFinish, err
     <div className="grid gap-4">
       {error && <ErrorBox>{error}</ErrorBox>}
       <dl className="grid gap-2 text-sm">
-        <div><dt className="text-white/40 text-xs">Öffentliche Adresse</dt><dd className="text-white/85">{publicUrl}</dd></div>
-        <div><dt className="text-white/40 text-xs">Notfall-Admin</dt><dd className="text-white/85">{localUsername}</dd></div>
-        <div><dt className="text-white/40 text-xs">HSBI-Admin</dt><dd className="text-white/85">{hsbiEmail ?? 'übersprungen'}</dd></div>
+        <div><dt className="text-white/60 text-xs">Öffentliche Adresse</dt><dd className="text-white/85">{publicUrl}</dd></div>
+        <div><dt className="text-white/60 text-xs">Notfall-Admin</dt><dd className="text-white/85">{localUsername}</dd></div>
+        <div><dt className="text-white/60 text-xs">HSBI-Admin</dt><dd className="text-white/85">{hsbiEmail ?? 'übersprungen'}</dd></div>
       </dl>
       <PrimaryButton type="button" onClick={onFinish} busy={busy}>Setup abschließen</PrimaryButton>
     </div>

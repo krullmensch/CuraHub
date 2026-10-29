@@ -275,7 +275,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
               onChange={(e) => (inline ? commitPublic(e.target.checked) : setPublicReadable(e.target.checked))} />
             <span>
               Im öffentlichen Viewer lesbar
-              <span className="block text-xs text-zinc-500">Wer das Buch öffnen kann, kann das PDF auch herunterladen.</span>
+              <span className="block text-xs text-zinc-400">Wer das Buch öffnen kann, kann das PDF auch herunterladen.</span>
             </span>
           </label>
         </div>

@@ -687,7 +687,7 @@ export const AssetLibrary = () => {
           )}
         </div>
         <span className="flex-1 truncate">{label}</span>
-        <span className="text-xs text-zinc-500 tabular-nums shrink-0">{count}</span>
+        <span className="text-xs text-zinc-400 tabular-nums shrink-0">{count}</span>
         {folder && (
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -769,7 +769,7 @@ export const AssetLibrary = () => {
         {/* Left rail — folders */}
         <aside className="w-64 shrink-0 border-r border-zinc-800 bg-zinc-950 flex flex-col min-h-0">
           <div className="p-4 border-b border-zinc-800">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-zinc-400">
               Ordner
             </h3>
           </div>
@@ -942,7 +942,7 @@ export const AssetLibrary = () => {
 
           {loading ? (
             <div className="flex h-64 items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+              <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
             </div>
           ) : assets.length === 0 ? (
             <div className="text-center py-20 text-gray-500 border-2 border-dashed border-zinc-800 rounded-xl">
@@ -1114,7 +1114,7 @@ export const AssetLibrary = () => {
                 {folders.length > 0 && (
                   <>
                     <div className="my-1 h-px bg-zinc-800" />
-                    <div className="px-2 py-1 text-[11px] font-medium text-zinc-500 uppercase tracking-wider">
+                    <div className="px-2 py-1 text-[11px] font-medium text-zinc-400 uppercase tracking-wider">
                       Verschieben nach
                     </div>
                     <button

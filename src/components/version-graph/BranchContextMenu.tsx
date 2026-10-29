@@ -59,7 +59,7 @@ export const BranchContextMenu = ({
       style={{ left: adjustedX, top: adjustedY }}
     >
       <div className="px-3 py-1.5 border-b border-zinc-800 mb-1">
-        <p className="text-[10px] text-zinc-500 uppercase tracking-wider font-medium truncate">
+        <p className="text-[10px] text-zinc-400 uppercase tracking-wider font-medium truncate">
           {version.branch_name}
         </p>
         <p className="text-xs text-white truncate">{version.comment || 'Kein Kommentar'}</p>

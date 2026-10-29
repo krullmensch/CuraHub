@@ -159,7 +159,7 @@ export const MultiSelectionPanel = () => {
                 </div>
                 <div className="flex items-end gap-2">
                     <div className="flex-1 space-y-1">
-                        <Label className="text-[10px] text-zinc-500 uppercase">Mittelhöhe (cm)</Label>
+                        <Label className="text-[10px] text-zinc-400 uppercase">Mittelhöhe (cm)</Label>
                         <NumericInput
                             step="1"
                             min="0"
@@ -201,7 +201,7 @@ export const MultiSelectionPanel = () => {
                         </IconButton>
                     </div>
                 ))}
-                <p className="text-[10px] text-zinc-500">Ziel ist das zuletzt gewählte Werk. Werke an einer Wand richtest du im 2D-Editor genauer aus.</p>
+                <p className="text-[10px] text-zinc-400">Ziel ist das zuletzt gewählte Werk. Werke an einer Wand richtest du im 2D-Editor genauer aus.</p>
             </div>
 
             {framable.length > 0 && (
@@ -225,7 +225,7 @@ export const MultiSelectionPanel = () => {
                         pictureCm={framePictureCm}
                     />
                     {framable.length < selected.length && (
-                        <p className="text-[10px] text-zinc-500">Gilt für die {framable.length} Bilder der Auswahl.</p>
+                        <p className="text-[10px] text-zinc-400">Gilt für die {framable.length} Bilder der Auswahl.</p>
                     )}
                 </>
             )}
@@ -238,7 +238,7 @@ export const MultiSelectionPanel = () => {
                     <Button size="sm" variant="secondary" onClick={() => applyScale(1 - SCALE_STEP)} className="h-8 text-xs bg-zinc-800 text-zinc-100 hover:bg-zinc-700">−10 %</Button>
                     <Button size="sm" variant="secondary" onClick={() => applyScale(1 + SCALE_STEP)} className="h-8 text-xs bg-zinc-800 text-zinc-100 hover:bg-zinc-700">+10 %</Button>
                     <div className="flex-1 space-y-1">
-                        <Label className="text-[10px] text-zinc-500 uppercase">Faktor (%)</Label>
+                        <Label className="text-[10px] text-zinc-400 uppercase">Faktor (%)</Label>
                         <NumericInput
                             key={scaleInputKey}
                             step="1"
@@ -254,7 +254,7 @@ export const MultiSelectionPanel = () => {
                         />
                     </div>
                 </div>
-                {hasMonitor && <p className="text-[10px] text-zinc-500 italic">Monitore behalten ihre Größe.</p>}
+                {hasMonitor && <p className="text-[10px] text-zinc-400 italic">Monitore behalten ihre Größe.</p>}
             </div>
 
             <Separator className="bg-zinc-800" />

@@ -125,7 +125,7 @@ const FaceSwitcher = ({ face }: { face: WallFace }) => {
                     return (
                         <div key={group}>
                             {gi > 0 && <DropdownMenuSeparator className="bg-zinc-800" />}
-                            <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-zinc-500">{groupTitle}</DropdownMenuLabel>
+                            <DropdownMenuLabel className="text-[10px] uppercase tracking-wider text-zinc-400">{groupTitle}</DropdownMenuLabel>
                             {list.map((entry) => (
                                 <DropdownMenuItem
                                     key={entry.key}
@@ -133,7 +133,7 @@ const FaceSwitcher = ({ face }: { face: WallFace }) => {
                                     className={cn('flex items-center gap-2 text-xs cursor-pointer focus:bg-zinc-800 focus:text-white', entry.key === currentKey && 'bg-zinc-800/60')}
                                 >
                                     <span className="flex-1 truncate">{entry.label}</span>
-                                    <span className="text-[10px] text-zinc-500 whitespace-nowrap">{entry.detail}</span>
+                                    <span className="text-[10px] text-zinc-400 whitespace-nowrap">{entry.detail}</span>
                                     <span className="w-5 text-right text-[10px] tabular-nums text-zinc-400">{entry.count}</span>
                                 </DropdownMenuItem>
                             ))}
@@ -208,7 +208,7 @@ const WallEditorTopBar = ({ face }: { face: WallFace }) => {
                     {wall && !editingName && (
                         <button
                             type="button"
-                            className="h-6 w-6 flex items-center justify-center rounded text-white/40 hover:text-white hover:bg-white/10"
+                            className="h-6 w-6 flex items-center justify-center rounded text-white/60 hover:text-white hover:bg-white/10"
                             title="Wand umbenennen"
                             aria-label="Wand umbenennen"
                             onClick={() => { setName(wall.label ?? ''); setEditingName(true); }}
@@ -239,7 +239,7 @@ const WallEditorTopBar = ({ face }: { face: WallFace }) => {
                                     )}
                                 >
                                     {short}
-                                    <span className={cn('ml-1 tabular-nums', face.side === side ? 'text-zinc-500' : 'text-white/40')}>
+                                    <span className={cn('ml-1 tabular-nums', face.side === side ? 'text-zinc-400' : 'text-white/60')}>
                                         {face.sideCounts![side]}
                                     </span>
                                 </button>

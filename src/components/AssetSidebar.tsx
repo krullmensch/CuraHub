@@ -304,10 +304,10 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     {loading ? (
                          <div className="flex h-full items-center justify-center">
-                            <Loader2 className="h-5 w-5 animate-spin text-zinc-500" />
+                            <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
                          </div>
                     ) : assets.length === 0 ? (
-                        <div className="text-center py-8 text-zinc-500 text-xs">
+                        <div className="text-center py-8 text-zinc-400 text-xs">
                             {!activeProjectId
                                 ? 'Kein Projekt ausgewählt.'
                                 : 'Keine Assets gefunden. Lade welche in der Asset-Bibliothek hoch.'}
@@ -405,6 +405,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                     size="sm"
                     className="h-12 w-6 rounded-r-lg rounded-l-none bg-blue-600 border-y border-r border-blue-700 shadow-md p-0 flex items-center justify-center hover:bg-blue-500"
                     onClick={onToggle}
+                    aria-label="Bibliothek einblenden"
                 >
                     <ChevronRight className="h-4 w-4 text-white" />
                 </Button>

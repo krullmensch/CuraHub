@@ -287,7 +287,7 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
                             onChange={handleChange}
                             className="bg-zinc-900 border-zinc-700 focus:border-zinc-500 pr-8 no-spinner"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-zinc-500 pointer-events-none">cm</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-zinc-400 pointer-events-none">cm</span>
                     </div>
                     <div className="relative">
                         <Input
@@ -299,7 +299,7 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
                             onChange={handleChange}
                             className="bg-zinc-900 border-zinc-700 focus:border-zinc-500 pr-8 no-spinner"
                         />
-                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-zinc-500 pointer-events-none">cm</span>
+                        <span className="absolute right-3 top-1/2 -translate-y-1/2 text-sm text-zinc-400 pointer-events-none">cm</span>
                     </div>
                 </>
              )}

@@ -75,8 +75,8 @@ export const VersionNode = memo(({ data }: NodeProps<Node<VersionNodeData>>) => 
 
         {/* Meta */}
         <div className="flex items-center justify-between">
-          <span className="text-[10px] text-zinc-500 truncate">{date}</span>
-          <span className="text-[10px] text-zinc-600 shrink-0 ml-1">{version._count.instances}×</span>
+          <span className="text-[10px] text-zinc-400 truncate">{date}</span>
+          <span className="text-[10px] text-zinc-400 shrink-0 ml-1">{version._count.instances}×</span>
         </div>
       </div>
     </div>

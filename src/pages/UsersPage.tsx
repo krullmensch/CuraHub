@@ -120,14 +120,14 @@ export const UsersPage = () => {
       <div className="pt-24 px-8 pb-16 max-w-5xl mx-auto">
         <h1 className="font-display text-3xl font-light text-white mb-2">Benutzerverwaltung</h1>
         {!loading && (
-          <p className="text-zinc-500 text-sm mb-10">{users.length} registrierte Benutzer</p>
+          <p className="text-zinc-400 text-sm mb-10">{users.length} registrierte Benutzer</p>
         )}
 
         {system && (
           <section className="border border-zinc-800 rounded-xl p-5 mb-8">
             <div className="flex items-baseline justify-between gap-4 mb-4">
               <h2 className="font-display text-lg font-light">System</h2>
-              <span className="text-xs text-zinc-500 text-right">
+              <span className="text-xs text-zinc-400 text-right">
                 {system.publicUrl ?? 'keine öffentliche Adresse gesetzt'} · Version {system.version}
               </span>
             </div>
@@ -136,7 +136,7 @@ export const UsersPage = () => {
         )}
 
         {loading && (
-          <div className="text-zinc-500 text-sm">Wird geladen…</div>
+          <div className="text-zinc-400 text-sm">Wird geladen…</div>
         )}
 
         {error && (
@@ -148,10 +148,10 @@ export const UsersPage = () => {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-900/50">
-                  <th className="text-left px-5 py-3 text-zinc-500 font-medium text-xs tracking-wide uppercase">E-Mail</th>
-                  <th className="text-left px-5 py-3 text-zinc-500 font-medium text-xs tracking-wide uppercase">Rolle</th>
-                  <th className="text-left px-5 py-3 text-zinc-500 font-medium text-xs tracking-wide uppercase">Registriert</th>
-                  <th className="text-left px-5 py-3 text-zinc-500 font-medium text-xs tracking-wide uppercase">Projekte</th>
+                  <th className="text-left px-5 py-3 text-zinc-400 font-medium text-xs tracking-wide uppercase">E-Mail</th>
+                  <th className="text-left px-5 py-3 text-zinc-400 font-medium text-xs tracking-wide uppercase">Rolle</th>
+                  <th className="text-left px-5 py-3 text-zinc-400 font-medium text-xs tracking-wide uppercase">Registriert</th>
+                  <th className="text-left px-5 py-3 text-zinc-400 font-medium text-xs tracking-wide uppercase">Projekte</th>
                   <th className="px-5 py-3" />
                 </tr>
               </thead>
@@ -210,7 +210,7 @@ export const UsersPage = () => {
                                 </button>
                                 <button
                                   onClick={() => setConfirmDeleteId(null)}
-                                  className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1.5 rounded transition-colors"
+                                  className="text-xs text-zinc-400 hover:text-zinc-300 px-2 py-1.5 rounded transition-colors"
                                 >
                                   Abbrechen
                                 </button>
@@ -218,7 +218,7 @@ export const UsersPage = () => {
                             ) : (
                               <button
                                 onClick={() => setConfirmDeleteId(u.id)}
-                                className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded transition-all"
+                                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded transition-all"
                               >
                                 <Trash2 className="w-3 h-3" />
                                 Löschen

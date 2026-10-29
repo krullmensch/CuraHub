@@ -102,7 +102,7 @@ export const FrameControls = ({
                 {style ? (
                     <>
                         <div className="space-y-1">
-                            <Label className="text-[10px] text-zinc-500 uppercase">Profil</Label>
+                            <Label className="text-[10px] text-zinc-400 uppercase">Profil</Label>
                             <select
                                 value={style.profile.id}
                                 onChange={(e) => pickProfile(e.target.value as FrameProfileId)}
@@ -121,7 +121,7 @@ export const FrameControls = ({
                         </div>
                         <div className="space-y-1">
                             <div className="flex items-baseline justify-between">
-                                <Label className="text-[10px] text-zinc-500 uppercase">Farbe</Label>
+                                <Label className="text-[10px] text-zinc-400 uppercase">Farbe</Label>
                                 <span className="text-[11px] text-zinc-300">{style.finish.label}</span>
                             </div>
                             <div className="flex flex-wrap gap-1.5">
@@ -142,7 +142,7 @@ export const FrameControls = ({
                                 ))}
                             </div>
                         </div>
-                        <p className="text-[10px] text-zinc-500">
+                        <p className="text-[10px] text-zinc-400">
                             Aufsichtsmaß {formatMm(style.profile.width)} mm, Profiltiefe {formatMm(style.profile.depth)} mm
                             {style.profile.objectDepth
                                 ? `, ${formatMm(style.profile.objectDepth)} mm Raum zwischen Glas und Rückwand mit weißer Innenleiste`
@@ -157,7 +157,7 @@ export const FrameControls = ({
                         )}
                     </>
                 ) : (
-                    <p className="text-[10px] text-zinc-500 italic">Werk hängt ungerahmt an der Wand.</p>
+                    <p className="text-[10px] text-zinc-400 italic">Werk hängt ungerahmt an der Wand.</p>
                 )}
             </div>
             {style && (
@@ -171,7 +171,7 @@ export const FrameControls = ({
                         <>
                             <div className="grid grid-cols-2 gap-2">
                                 <div className="space-y-1">
-                                    <Label className="text-[10px] text-zinc-500 uppercase">Breite (cm)</Label>
+                                    <Label className="text-[10px] text-zinc-400 uppercase">Breite (cm)</Label>
                                     <NumericInput
                                         step="0.5"
                                         min="0.5"
@@ -185,7 +185,7 @@ export const FrameControls = ({
                                     />
                                 </div>
                                 <div className="space-y-1">
-                                    <Label className="text-[10px] text-zinc-500 uppercase">Platzierung</Label>
+                                    <Label className="text-[10px] text-zinc-400 uppercase">Platzierung</Label>
                                     <select
                                         value={passepartout.placement}
                                         onChange={(e) => onPassepartoutChange({ ...passepartout, placement: e.target.value as PassepartoutPlacement })}
@@ -197,7 +197,7 @@ export const FrameControls = ({
                                     </select>
                                 </div>
                             </div>
-                            <p className="text-[10px] text-zinc-500">
+                            <p className="text-[10px] text-zinc-400">
                                 Weiß, 1,5 mm Museumskarton mit Schrägschnitt. Ränder oben {formatCm((layout.passepartout?.top ?? 0) * 100)} cm, unten {formatCm((layout.passepartout?.bottom ?? 0) * 100)} cm.
                             </p>
                         </>
