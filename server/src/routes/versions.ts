@@ -13,6 +13,7 @@ import {
     type WallGuides,
 } from '../lib/wallGuides';
 import { publishChange, publishVersionEvent } from '../live/broadcast';
+import { ensureVersionWritable } from '../lib/versionWritable';
 
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
@@ -111,6 +112,7 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (r
                 parent_version_id: true,
                 branch_name: true,
                 is_published: true,
+                published_at: true,
                 is_featured: true,
                 creator: {
                     select: { id: true, email: true }
@@ -180,7 +182,7 @@ function findVersionLayout(req: Request, exhibitionId: number, versionId: number
             exhibition_id: exhibitionId,
             exhibition: exhibitionAccessFilter(req.user!.userId, isAdmin),
         },
-        select: { id: true, hanging_height: true, wall_guides: true },
+        select: { id: true, is_published: true, hanging_height: true, wall_guides: true },
     });
 }
 
@@ -210,6 +212,7 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/wall-layout
         const data = wallLayoutPatchSchema.parse(req.body);
         const version = await findVersionLayout(req, exhibitionId, versionId);
         if (!version) return res.status(404).json({ error: 'Version not found' });
+        if (!ensureVersionWritable(res, version)) return;
 
         const updated = await prisma.exhibitionVersion.update({
             where: { id: versionId },
