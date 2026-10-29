@@ -7,6 +7,8 @@ interface User {
   id: number;
   email: string;
   role: AppRole;
+  /** When the dashboard tour was finished or skipped; null = not yet. Missing on users persisted before the field existed. */
+  onboardingCompletedAt?: string | null;
 }
 
 interface AuthState {
@@ -16,10 +18,13 @@ interface AuthState {
   isCurator: boolean;
   isProf: boolean;
   isAdmin: boolean;
+  /** True once /auth/me answered in this session (not persisted), so a stale persisted user decides nothing. */
+  meLoaded: boolean;
   login: (token: string, user: User) => void;
   logout: () => void;
   /** Fetches /auth/me, updates token + role from the DB without re-login. */
   refreshAuth: () => Promise<void>;
+  markOnboardingCompleted: (at: string) => void;
 }
 
 const ROLE_HIERARCHY: Record<AppRole, number> = {
@@ -42,6 +47,7 @@ export const useAuthStore = create<AuthState>()(
       isCurator: false,
       isProf: false,
       isAdmin: false,
+      meLoaded: false,
       login: (token, user) => set({
         token,
         user,
@@ -50,7 +56,7 @@ export const useAuthStore = create<AuthState>()(
         isProf: roleAtLeast(user.role, 'prof'),
         isAdmin: user.role === 'admin',
       }),
-      logout: () => set({ token: null, user: null, isAuthenticated: false, isCurator: false, isProf: false, isAdmin: false }),
+      logout: () => set({ token: null, user: null, isAuthenticated: false, isCurator: false, isProf: false, isAdmin: false, meLoaded: false }),
 
       refreshAuth: async () => {
         const currentToken = get().token;
@@ -69,6 +75,7 @@ export const useAuthStore = create<AuthState>()(
               isCurator: roleAtLeast(user.role, 'curator'),
               isProf: roleAtLeast(user.role, 'prof'),
               isAdmin: user.role === 'admin',
+              meLoaded: true,
             });
           } else if (res.status === 401) {
             get().logout();
@@ -77,9 +84,22 @@ export const useAuthStore = create<AuthState>()(
           // Network error — silently skip, will retry on next trigger
         }
       },
+
+      markOnboardingCompleted: (at) => {
+        const user = get().user;
+        if (user) set({ user: { ...user, onboardingCompletedAt: at } });
+      },
     }),
     {
       name: 'curahub-auth',
+      partialize: (s) => ({
+        token: s.token,
+        user: s.user,
+        isAuthenticated: s.isAuthenticated,
+        isCurator: s.isCurator,
+        isProf: s.isProf,
+        isAdmin: s.isAdmin,
+      }),
     }
   )
 );
