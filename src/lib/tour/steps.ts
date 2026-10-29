@@ -105,13 +105,24 @@ export type TourBodyPart = { kind: 'text' | 'kbd' | 'em'; text: string };
 /** Splits a step body into text, `<kbd>` and `*emphasis*` parts. Unclosed markers stay text. */
 export function parseTourBody(body: string): TourBodyPart[] {
   const parts: TourBodyPart[] = [];
-  const pattern = /<kbd>(.+?)<\/kbd>|\*(.+?)\*/g;
   let last = 0;
-  for (const m of body.matchAll(pattern)) {
-    if (m.index > last) parts.push({ kind: 'text', text: body.slice(last, m.index) });
-    parts.push(m[1] !== undefined ? { kind: 'kbd', text: m[1] } : { kind: 'em', text: m[2] });
+  for (const m of body.matchAll(/\*(.+?)\*/g)) {
+    parts.push(...splitKeys(body.slice(last, m.index), 'text'), ...splitKeys(m[1], 'em'));
     last = m.index + m[0].length;
   }
-  if (last < body.length) parts.push({ kind: 'text', text: body.slice(last) });
+  parts.push(...splitKeys(body.slice(last), 'text'));
+  return parts;
+}
+
+/** `<kbd>` keys inside a run of text or emphasis; empty runs are dropped. */
+function splitKeys(text: string, kind: 'text' | 'em'): TourBodyPart[] {
+  const parts: TourBodyPart[] = [];
+  let last = 0;
+  for (const m of text.matchAll(/<kbd>(.+?)<\/kbd>/g)) {
+    if (m.index > last) parts.push({ kind, text: text.slice(last, m.index) });
+    parts.push({ kind: 'kbd', text: m[1] });
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) parts.push({ kind, text: text.slice(last) });
   return parts;
 }

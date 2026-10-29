@@ -20,6 +20,8 @@ interface AuthState {
   isAdmin: boolean;
   /** True once /auth/me answered in this session (not persisted), so a stale persisted user decides nothing. */
   meLoaded: boolean;
+  /** Local completion of the tour in this session (not persisted): wins over a server null, e.g. when the POST failed. */
+  onboardingDoneThisSession: string | null;
   login: (token: string, user: User) => void;
   logout: () => void;
   /** Fetches /auth/me, updates token + role from the DB without re-login. */
@@ -48,7 +50,9 @@ export const useAuthStore = create<AuthState>()(
       isProf: false,
       isAdmin: false,
       meLoaded: false,
+      onboardingDoneThisSession: null,
       login: (token, user) => set({
+        onboardingDoneThisSession: null,
         token,
         user,
         isAuthenticated: true,
@@ -56,7 +60,7 @@ export const useAuthStore = create<AuthState>()(
         isProf: roleAtLeast(user.role, 'prof'),
         isAdmin: user.role === 'admin',
       }),
-      logout: () => set({ token: null, user: null, isAuthenticated: false, isCurator: false, isProf: false, isAdmin: false, meLoaded: false }),
+      logout: () => set({ token: null, user: null, isAuthenticated: false, isCurator: false, isProf: false, isAdmin: false, meLoaded: false, onboardingDoneThisSession: null }),
 
       refreshAuth: async () => {
         const currentToken = get().token;
@@ -67,7 +71,11 @@ export const useAuthStore = create<AuthState>()(
           });
           if (res.ok) {
             const data = await res.json();
-            const user: User = data.user;
+            const fresh: User = data.user;
+            const doneLocally = get().onboardingDoneThisSession;
+            const user: User = fresh.onboardingCompletedAt == null && doneLocally
+              ? { ...fresh, onboardingCompletedAt: doneLocally }
+              : fresh;
             set({
               token: data.token,
               user,
@@ -87,7 +95,7 @@ export const useAuthStore = create<AuthState>()(
 
       markOnboardingCompleted: (at) => {
         const user = get().user;
-        if (user) set({ user: { ...user, onboardingCompletedAt: at } });
+        if (user) set({ user: { ...user, onboardingCompletedAt: at }, onboardingDoneThisSession: at });
       },
     }),
     {

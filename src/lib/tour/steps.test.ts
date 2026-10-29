@@ -26,6 +26,11 @@ describe('parseTourBody', () => {
       { kind: 'text', text: ' drück ' }, { kind: 'kbd', text: 'G' }, { kind: 'text', text: '.' },
     ]);
   });
+  it('parses keys inside an emphasis', () => {
+    expect(parseTourBody('*Taste <kbd>G</kbd> drücken*')).toEqual([
+      { kind: 'em', text: 'Taste ' }, { kind: 'kbd', text: 'G' }, { kind: 'em', text: ' drücken' },
+    ]);
+  });
   it('keeps unclosed markers as plain text', () => {
     expect(parseTourBody('a *b <kbd>c')).toEqual([{ kind: 'text', text: 'a *b <kbd>c' }]);
   });

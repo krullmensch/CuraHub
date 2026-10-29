@@ -44,6 +44,22 @@ describe('authStore onboarding state', () => {
     expect(useAuthStore.getState().user).toBeNull();
   });
 
+  it('keeps the local completion when /auth/me still says null in the same session', async () => {
+    useAuthStore.getState().markOnboardingCompleted('2026-10-29T10:00:00.000Z');
+    vi.stubGlobal('fetch', answer(200, { token: 't2', user: { id: 1, email: 'a', role: 'curator', onboardingCompletedAt: null } }));
+    await useAuthStore.getState().refreshAuth();
+    expect(useAuthStore.getState().user?.onboardingCompletedAt).toBe('2026-10-29T10:00:00.000Z');
+  });
+
+  it('takes the server value again after a logout', async () => {
+    useAuthStore.getState().markOnboardingCompleted('2026-10-29T10:00:00.000Z');
+    useAuthStore.getState().logout();
+    useAuthStore.getState().login('t1', { id: 1, email: 'a', role: 'curator', onboardingCompletedAt: null });
+    vi.stubGlobal('fetch', answer(200, { token: 't2', user: { id: 1, email: 'a', role: 'curator', onboardingCompletedAt: null } }));
+    await useAuthStore.getState().refreshAuth();
+    expect(useAuthStore.getState().user?.onboardingCompletedAt).toBeNull();
+  });
+
   it('marks the onboarding as completed locally', () => {
     useAuthStore.getState().markOnboardingCompleted('2026-10-29T10:00:00.000Z');
     expect(useAuthStore.getState().user?.onboardingCompletedAt).toBe('2026-10-29T10:00:00.000Z');

@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTourStore } from '@/store/tourStore';
 import { isOnScreen, popoverPosition, spotlightRect, type Rect } from '@/lib/tour/placement';
+import { tourKeyAction } from '@/lib/tour/keys';
 import { TourBody } from './TourBody';
 
 const POPOVER_WIDTH = 320;
@@ -15,6 +16,9 @@ function measureTarget(target: string | undefined): Rect | null {
   if (rect.width === 0 || rect.height === 0) return null;
   return isOnScreen(rect, { width: window.innerWidth, height: window.innerHeight }) ? rect : null;
 }
+
+const sameRect = (a: Rect | null, b: Rect | null) =>
+  a === b || (!!a && !!b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
 
 /**
  * The dashboard tour: dims the screen, cuts the current step's element out of the dimming and
@@ -43,17 +47,28 @@ export function TourOverlay() {
     const el = step.target ? document.querySelector(`[data-tour="${step.target}"]`) : null;
     el?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     const measure = () => {
-      setTarget(measureTarget(step.target));
-      setViewport({ width: window.innerWidth, height: window.innerHeight });
+      const next = measureTarget(step.target);
+      setTarget((prev) => (sameRect(prev, next) ? prev : next));
+      setViewport((prev) => (prev.width === window.innerWidth && prev.height === window.innerHeight
+        ? prev
+        : { width: window.innerWidth, height: window.innerHeight }));
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(document.body);
     if (el) ro.observe(el);
+    // Targets can mount after their step began (e.g. „Viewer testen" once the project loaded).
+    let frame = 0;
+    const mo = new MutationObserver(() => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; measure(); });
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
     window.addEventListener('resize', measure);
     window.addEventListener('scroll', measure, true);
     return () => {
       ro.disconnect();
+      mo.disconnect();
+      cancelAnimationFrame(frame);
       window.removeEventListener('resize', measure);
       window.removeEventListener('scroll', measure, true);
     };
@@ -81,15 +96,11 @@ export function TourOverlay() {
   useEffect(() => {
     if (!active) return;
     const onKey = (e: KeyboardEvent) => {
-      const { next, back, skip } = useTourStore.getState();
-      if (e.key === 'Enter') {
-        const onButton = e.target instanceof HTMLButtonElement && popoverRef.current?.contains(e.target);
-        if (onButton) return; // the focused button's own click
-        next();
-      } else if (e.key === 'ArrowRight') next();
-      else if (e.key === 'ArrowLeft') back();
-      else if (e.key === 'Escape') skip();
-      else return;
+      const action = tourKeyAction(e);
+      if (!action) return;
+      const onButton = e.target instanceof HTMLButtonElement && popoverRef.current?.contains(e.target);
+      if (e.key === 'Enter' && onButton) return; // the focused button's own click
+      useTourStore.getState()[action]();
       e.preventDefault();
       e.stopImmediatePropagation();
     };

@@ -346,7 +346,7 @@ export const EditorLayout = () => {
         </Suspense>
       )}
 
-      <TourAutoStart />
+      <TourAutoStart layoutDialogOpen={wikiOpen || settingsOpen} />
       <TourOverlay />
     </div>
   );
