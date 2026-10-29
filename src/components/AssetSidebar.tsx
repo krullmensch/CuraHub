@@ -242,6 +242,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
         <>
             <Card 
                 data-wall-editor-inset="left"
+                data-tour="asset-sidebar"
                 className={cn(
                     "absolute left-4 top-6 bottom-8 w-64 bg-zinc-950/80 backdrop-blur-md border-zinc-800 shadow-xl flex flex-col z-20 rounded-xl overflow-hidden transition-transform duration-300 ease-in-out",
                     !isOpen && "-translate-x-[calc(100%+2rem)]" // Slide off screen

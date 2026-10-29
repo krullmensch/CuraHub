@@ -85,6 +85,7 @@ export const VersionPanel = ({
     <button
       onClick={handleToggle}
       title="Versionen anzeigen"
+      data-tour="version-panel"
       className={`absolute bottom-0 ${rightSidebarOpen ? 'right-[20.25rem]' : 'right-9'} h-8 max-w-[16rem] bg-blue-600 border border-blue-700 border-b-0 rounded-t-xl flex items-center gap-2 px-3 hover:bg-blue-500 transition-all duration-300 z-10 shadow-[0_-4px_15px_-3px_rgba(59,130,246,0.3)] ${
         isOpen ? 'translate-y-full opacity-0 pointer-events-none' : 'translate-y-0 opacity-100'
       }`}

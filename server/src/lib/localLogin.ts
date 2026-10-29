@@ -19,11 +19,11 @@ function getDummyHash(): string {
     return dummyHash;
 }
 
-export async function verifyLocalLogin(
-    findUser: (email: string) => Promise<LocalUser | null>,
+export async function verifyLocalLogin<U extends LocalUser>(
+    findUser: (email: string) => Promise<U | null>,
     username: string,
     password: string,
-): Promise<LocalUser | null> {
+): Promise<U | null> {
     const name = username.trim().toLowerCase();
     if (!name || name.includes('@')) return null;
     const user = await findUser(name);

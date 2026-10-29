@@ -332,6 +332,7 @@ export const PlannerCameraSystem = () => {
             if (e.key.toLowerCase() === 'h') {
                 if (document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA') return;
                 if (useEditorStore.getState().wallEditor) return; // H = hand tool in the 2D wall editor
+                if (isControlsLocked()) return; // dialog, book viewer or onboarding tour open
                 setFocusTarget({ target: [0, 0, 0], isHoming: true });
                 // RND-02: the store change alone doesn't touch any r3f-managed prop, so under
                 // frameloop="demand" nothing would kick off the homing animation below.

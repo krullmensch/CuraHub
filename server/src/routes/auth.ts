@@ -6,6 +6,7 @@ import { authenticate, requireProf, roleAtLeast, AppRole } from '../lib/middlewa
 import { loginRateLimit, resetLoginAttempts } from '../lib/loginRateLimit';
 import { createRateLimit } from '../lib/rateLimit';
 import { verifyLocalLogin } from '../lib/localLogin';
+import { publicUser, completeOnboarding, prismaOnboardingStore } from '../lib/onboarding';
 
 export const authRouter = Router();
 const prisma = new PrismaClient();
@@ -81,7 +82,7 @@ authRouter.post('/login', loginRateLimit, async (req, res) => {
 
     resetLoginAttempts(req);
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: TOKEN_TTL });
-    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+    res.json({ token, user: publicUser(user) });
   } catch (error) {
     console.error('[Auth Error]:', error);
     if (error instanceof z.ZodError) {
@@ -111,7 +112,7 @@ authRouter.post('/local-login', localLoginLimiter.middleware, async (req, res) =
     );
     if (!user) return res.status(401).json({ error: 'Benutzername oder Passwort falsch.' });
     const token = jwt.sign({ userId: user.id, role: user.role }, JWT_SECRET, { expiresIn: TOKEN_TTL });
-    res.json({ token, user: { id: user.id, email: user.email, role: user.role } });
+    res.json({ token, user: publicUser(user) });
   } catch (error) {
     console.error('[Auth Error] local login:', error);
     res.status(500).json({ error: 'Anmeldung fehlgeschlagen' });
@@ -140,10 +141,22 @@ authRouter.get('/me', async (req, res) => {
 
         res.json({
             token: freshToken,
-            user: { id: user.id, email: user.email, role: user.role },
+            user: publicUser(user),
         });
     } catch {
         res.status(401).json({ error: 'Invalid token' });
+    }
+});
+
+// POST /auth/me/onboarding — the dashboard tour was finished or skipped (first call wins)
+authRouter.post('/me/onboarding', authenticate, async (req: Request, res) => {
+    try {
+        const at = await completeOnboarding(prismaOnboardingStore(prisma), req.user!.userId, new Date());
+        if (!at) return res.status(401).json({ error: 'User not found' });
+        res.json({ onboardingCompletedAt: at.toISOString() });
+    } catch (error) {
+        console.error('[Auth Error] onboarding:', error);
+        res.status(500).json({ error: 'Speichern fehlgeschlagen' });
     }
 });
 

@@ -289,7 +289,7 @@ export const ProjectSelector = () => {
   );
 
   return (
-    <div className="relative" ref={dropdownRef}>
+    <div className="relative" ref={dropdownRef} data-tour="project-selector">
       <button
         onClick={openDropdown}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-sm text-white transition-colors min-w-[160px]"

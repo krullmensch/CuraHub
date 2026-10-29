@@ -5,6 +5,8 @@ In CuraHub verwaltest du deine Ausstellungen in Projekten. Das System nutzt eine
 ## Projekt-Dashboard
 Oben im Editor wechselst du zwischen deinen Projekten und legst neue an. Jedes Projekt ist eine Ausstellung mit eigener Asset-Bibliothek und eigenen Versionen.
 
+Beim ersten Besuch führt dich eine kurze Tour durch das Dashboard. Du kannst sie jederzeit über **Tour starten** oben im Wiki erneut ansehen.
+
 ## Versionskontrolle
 Eine Version ist ein kompletter Snapshot (Speicherpunkt) deiner Ausstellung, inklusive aller platzierten Kunstwerke und Wände.
 - **Version speichern:** Die Versionshistorie (unten im Editor) hält den aktuellen Stand mit einem Kommentar fest.

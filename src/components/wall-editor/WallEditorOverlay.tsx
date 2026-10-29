@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useShallow } from 'zustand/react/shallow';
 import { toast } from '@/hooks/use-toast';
 import { useEditorStore, instanceRefMap } from '@/store/editorStore';
+import { useTourStore } from '@/store/tourStore';
 import {
     EMPTY_GUIDES,
     makeViewTransform,
@@ -674,6 +675,7 @@ export const WallEditorOverlay = ({ face }: WallEditorOverlayProps) => {
     useEffect(() => {
         const onKeyDown = (e: KeyboardEvent) => {
             if (isTypingTarget(e.target)) return;
+            if (useTourStore.getState().active) return; // the onboarding tour handles its own keys
             const view = useWallEditorView.getState();
             const store = useEditorStore.getState();
             const cmd = e.metaKey || e.ctrlKey;
