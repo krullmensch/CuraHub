@@ -22,17 +22,19 @@ describe('cameraHomePose', () => {
     expect(cameraHomePose().position[1]).toBeCloseTo(CAMERA_HOME_HEIGHT, 9);
   });
 
-  it('stands on the window side (windows sit in the wall at z = -3.65, facing -Z), centred in x', () => {
+  it('stands diagonally on the window side (windows face -Z) at the corner with the +X side wall', () => {
     const { position } = cameraHomePose();
     expect(position[2]).toBeLessThan(-3.65);
-    expect(position[0]).toBeCloseTo(0, 9);
+    expect(position[0]).toBeGreaterThan(0);
+    expect(position[0]).toBeCloseTo(-position[2], 9);
   });
 
   it('returns a fresh copy each time', () => {
     const a = cameraHomePose();
+    const x = a.position[0];
     a.position[0] = 99;
     a.target[1] = 99;
-    expect(cameraHomePose().position[0]).toBe(0);
+    expect(cameraHomePose().position[0]).toBe(x);
     expect(cameraHomePose().target[1]).toBe(0);
   });
 });
