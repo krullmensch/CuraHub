@@ -27,6 +27,7 @@ import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
 import { framedArtworkLayout } from '../lib/frameStyles';
 import { WallEditor } from '../components/wall-editor/WallEditorChrome';
+import { useTourStore } from '../store/tourStore';
 import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
@@ -480,6 +481,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       // Delete/Backspace after a click on a panel button or control must not remove the selection
       if ((e.key === 'Delete' || e.key === 'Backspace') && isFormControlTarget(e.target)) return;
       if (useBookViewerStore.getState().book) return; // the book viewer handles its own keys
+      if (useTourStore.getState().active) return; // the onboarding tour handles its own keys
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
@@ -730,7 +732,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
 
       {/* ── Tool Bar — bottom center ── */}
       {viewMode !== 'firstPerson' && !wallEditorOpen && (
-        <div style={{
+        <div data-tour="editor-toolbar" style={{
           position: 'absolute',
           bottom: 20,
           left: '50%',

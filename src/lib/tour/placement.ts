@@ -20,6 +20,11 @@ export function spotlightRect(target: Rect, padding = SPOTLIGHT_PADDING): Rect {
   return { x: target.x - padding, y: target.y - padding, width: target.width + 2 * padding, height: target.height + 2 * padding };
 }
 
+/** False for elements moved out of view (a collapsed sidebar is translated off screen). */
+export function isOnScreen(r: Rect, viewport: Size): boolean {
+  return r.x + r.width > 0 && r.y + r.height > 0 && r.x < viewport.width && r.y < viewport.height;
+}
+
 const clamp = (v: number, min: number, max: number) => Math.min(Math.max(v, min), max);
 
 /** Where the tour popover goes: next to the target (preferred side first), centred, or as a bottom sheet. */

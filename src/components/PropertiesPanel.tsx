@@ -386,7 +386,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
 
     return (
         <>
-            <Card data-wall-editor-inset="right" className={cn(
+            <Card data-wall-editor-inset="right" data-tour="properties-panel" className={cn(
                 "absolute right-4 top-6 bottom-8 w-72 bg-zinc-950/80 backdrop-blur-md border-zinc-800 shadow-xl flex flex-col z-20 rounded-xl overflow-hidden transition-transform duration-300 ease-in-out",
                 !isOpen && "translate-x-[calc(100%+2rem)]"
             )}>

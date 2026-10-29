@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { popoverPosition, spotlightRect } from './placement';
+import { isOnScreen, popoverPosition, spotlightRect } from './placement';
 
 const viewport = { width: 1280, height: 800 };
 const popover = { width: 320, height: 160 };
@@ -37,5 +37,15 @@ describe('popoverPosition', () => {
     const narrow = { width: 639, height: 800 };
     expect(popoverPosition(header, popover, narrow, 'bottom')).toEqual({ mode: 'sheet' });
     expect(popoverPosition(null, popover, narrow, 'bottom')).toEqual({ mode: 'sheet' });
+  });
+});
+
+describe('isOnScreen', () => {
+  it('accepts a target that overlaps the viewport', () => {
+    expect(isOnScreen({ x: -100, y: 10, width: 150, height: 20 }, viewport)).toBe(true);
+  });
+  it('rejects a target pushed out of the viewport (collapsed sidebar)', () => {
+    expect(isOnScreen({ x: -272, y: 24, width: 256, height: 700 }, viewport)).toBe(false);
+    expect(isOnScreen({ x: 1290, y: 24, width: 288, height: 700 }, viewport)).toBe(false);
   });
 });

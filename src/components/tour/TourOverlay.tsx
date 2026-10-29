@@ -1,7 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTourStore } from '@/store/tourStore';
-import { popoverPosition, spotlightRect, type Rect } from '@/lib/tour/placement';
+import { isOnScreen, popoverPosition, spotlightRect, type Rect } from '@/lib/tour/placement';
 import { TourBody } from './TourBody';
 
 const POPOVER_WIDTH = 320;
@@ -14,8 +14,9 @@ function measureTarget(target: string | undefined): Rect | null {
   const el = document.querySelector(`[data-tour="${target}"]`);
   if (!el) return null;
   const r = el.getBoundingClientRect();
-  if (r.width === 0 || r.height === 0) return null;
-  return { x: r.left, y: r.top, width: r.width, height: r.height };
+  const rect = { x: r.left, y: r.top, width: r.width, height: r.height };
+  if (rect.width === 0 || rect.height === 0) return null;
+  return isOnScreen(rect, { width: window.innerWidth, height: window.innerHeight }) ? rect : null;
 }
 
 /**

@@ -14,6 +14,8 @@ import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LivePresenceBar, SelfAvatar } from './live/PresenceAvatars';
 import { startEditorPresence } from '../lib/live/liveConnection';
+import { TourAutoStart } from './tour/TourAutoStart';
+import { TourOverlay } from './tour/TourOverlay';
 
 const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
 const ProjectSettingsDialog = lazy(() =>
@@ -159,6 +161,7 @@ export const EditorLayout = () => {
                     Editor
                 </Link>
                 <Link 
+                    data-tour="nav-assets"
                     to={activeProjectSlug ? `/exhibition/${activeProjectSlug}/assets` : "/project"} 
                     className={`transition-colors ${isActive('/assets') ? 'text-white' : 'text-gray-400 hover:text-white'}`}
                 >
@@ -166,6 +169,7 @@ export const EditorLayout = () => {
                 </Link>
                 <a
                     href="#"
+                    data-tour="nav-wiki"
                     onClick={(e) => { e.preventDefault(); setWikiOpen(true); }}
                     className="transition-colors text-gray-400 hover:text-white flex items-center gap-1"
                 >
@@ -181,6 +185,7 @@ export const EditorLayout = () => {
                 {user?.role === 'admin' && (
                     <Link
                         to="/users"
+                        data-tour="nav-users"
                         className="transition-colors text-gray-400 hover:text-white"
                     >
                         Benutzerverwaltung
@@ -195,6 +200,7 @@ export const EditorLayout = () => {
             {/* Project Settings Button — only for Prof/Admin */}
             {isProf && activeExhibitionId && (
               <button
+                data-tour="project-settings"
                 onClick={() => setSettingsOpen(true)}
                 className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
               >
@@ -205,7 +211,7 @@ export const EditorLayout = () => {
 
             {/* Viewer Button */}
             {activeExhibitionSlug && (
-              <div className="relative" ref={viewerPopoverRef}>
+              <div className="relative" ref={viewerPopoverRef} data-tour="viewer-button">
                 <button
                   onClick={() => setViewerPopoverOpen((o) => !o)}
                   className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
@@ -339,6 +345,9 @@ export const EditorLayout = () => {
           <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         </Suspense>
       )}
+
+      <TourAutoStart />
+      <TourOverlay />
     </div>
   );
 };
