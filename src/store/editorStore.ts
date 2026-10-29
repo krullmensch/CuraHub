@@ -434,6 +434,44 @@ const listsLoadedFor: { instances: number | null; walls: number | null; figures:
   instances: null, walls: null, figures: null,
 };
 
+export type LoadedList = keyof typeof listsLoadedFor;
+
+/** Lists whose fetch failed for `loadFailedVersion`: auto-sync stays gated, shown as an error. */
+const loadFailedLists = new Set<LoadedList>();
+let loadFailedVersion: number | null = null;
+/** The version the "could not be loaded" toast was shown for (once per version). */
+let loadFailToastVersion: number | null = null;
+
+export const LIST_LOAD_FAILED_MESSAGE =
+  'Daten dieser Version konnten nicht geladen werden – Änderungen werden nicht gespeichert. Bitte neu laden.';
+
+/**
+ * A loader (PlacedArtworks, ModularWallsController, ScaleFigures) could not fetch its list for
+ * `versionId`. Auto-sync stays gated (it never diffs before all three lists are loaded), so the
+ * curator is told once per version, and the save indicator shows an error while edits wait.
+ */
+export function markListLoadFailed(kind: LoadedList, versionId: number): void {
+  const state = useEditorStore.getState();
+  if (versionId !== state.activeVersionId) return;
+  if (loadFailedVersion !== versionId) { loadFailedLists.clear(); loadFailedVersion = versionId; }
+  loadFailedLists.add(kind);
+  if (loadFailToastVersion !== versionId) {
+    loadFailToastVersion = versionId;
+    toast.error(LIST_LOAD_FAILED_MESSAGE);
+  }
+  if (state.hasUnsavedChanges) useEditorStore.setState({ syncStatus: 'error' });
+}
+
+/** A list loaded after all (setLocal*): its failure no longer counts. */
+function clearListLoadFailed(kind: LoadedList, versionId: number | null): void {
+  if (loadFailedVersion === versionId) loadFailedLists.delete(kind);
+}
+
+/** True while a list of `versionId` failed to load and was not loaded since. */
+function listLoadFailed(versionId: number): boolean {
+  return loadFailedVersion === versionId && loadFailedLists.size > 0;
+}
+
 /** Artwork ids without those another tab holds (live claims); tells the user about the rest. */
 function claimableInstanceIds(ids: number[]): number[] {
   const { allowed, holders } = splitClaimedInstances(ids, heldBy);
@@ -746,6 +784,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // Snapshot prevInstances so auto-sync doesn't re-POST API-loaded data
     prevInstances = [...instances];
     listsLoadedFor.instances = get().activeVersionId;
+    clearListLoadFailed('instances', listsLoadedFor.instances);
     persistedUndoDepth = 0;
     return set({
       localInstances: instances,
@@ -844,6 +883,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // Temp negative IDs (defaults) are excluded so auto-sync detects and POSTs them.
     prevWalls = walls.filter(w => w.id > 0);
     listsLoadedFor.walls = get().activeVersionId;
+    clearListLoadFailed('walls', listsLoadedFor.walls);
     return set({ localWalls: walls });
   },
   addWall: (wall) => {
@@ -891,6 +931,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // Only real ids count as persisted; temp ids stay "new" so auto-sync POSTs them.
     prevScaleFigures = figures.filter(f => f.id > 0);
     listsLoadedFor.figures = get().activeVersionId;
+    clearListLoadFailed('figures', listsLoadedFor.figures);
     return set({ localScaleFigures: figures, selectedFigureId: null });
   },
   addScaleFigure: (figure) => {
@@ -1285,8 +1326,10 @@ const runSyncBatch = async () => {
     // Not every list of the active version is loaded yet (version switch): the lists may still
     // hold the previous version's rows. Loading them (setLocal*) schedules the next batch.
     if (!listsLoadedForVersion(activeVersionId)) {
-      useEditorStore.setState({ syncStatus: 'idle' });
-      lastSyncStatus = 'idle';
+      // A failed load keeps it gated for good: edits waiting then show as an error, not idle.
+      const failed = listLoadFailed(activeVersionId) && state.hasUnsavedChanges;
+      useEditorStore.setState({ syncStatus: failed ? 'error' : 'idle' });
+      lastSyncStatus = failed ? 'error' : 'idle';
       cancelAutoRetry();
       return;
     }

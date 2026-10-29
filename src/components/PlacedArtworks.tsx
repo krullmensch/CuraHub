@@ -1,6 +1,6 @@
 import { memo, useEffect, useRef, useCallback, Suspense } from 'react';
 import * as THREE from 'three';
-import { useEditorStore, instanceRefMap, type ArtworkInstanceData } from '../store/editorStore';
+import { useEditorStore, instanceRefMap, markListLoadFailed, type ArtworkInstanceData } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { SelectableInstance } from './SelectableInstance';
 import { VideoInstance } from './VideoInstance';
@@ -150,6 +150,7 @@ export const PlacedArtworks = ({ viewerInstances, isEditor = true }: PlacedArtwo
                 setLocalInstances(valid);
             } catch (err) {
                 console.error("Failed to load instances", err);
+                if (!cancelled) markListLoadFailed('instances', activeVersionId);
             }
         };
 

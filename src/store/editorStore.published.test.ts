@@ -12,7 +12,7 @@ vi.hoisted(() => {
     },
   });
 });
-import { flushAutoSync, isAutoSyncSettled, useEditorStore, type ArtworkInstanceData, type ModularWallData, type ScaleFigureData } from './editorStore';
+import { flushAutoSync, isAutoSyncSettled, LIST_LOAD_FAILED_MESSAGE, markListLoadFailed, useEditorStore, type ArtworkInstanceData, type ModularWallData, type ScaleFigureData } from './editorStore';
 import { useAuthStore } from './authStore';
 import { publishedEditGate } from '../lib/publishedEditGate';
 import { toast } from '@/hooks/use-toast';
@@ -358,5 +358,33 @@ describe('flushAutoSync / isAutoSyncSettled (I2)', () => {
     handler = () => json({});
     await flushAutoSync();
     expect(isAutoSyncSettled()).toBe(true);
+  });
+});
+
+describe('a failed list load (S1)', () => {
+  it('tells the curator once, keeps the sync gated and shows the waiting edits as an error', async () => {
+    const toastSpy = vi.spyOn(toast, 'error');
+    state().setActiveVersion(16);
+    state().setLocalInstances([inst(50)]);
+    state().setLocalWalls([wall(51, 'Wall A')]);
+    markListLoadFailed('figures', 16);
+    markListLoadFailed('figures', 16);
+    markListLoadFailed('figures', 99); // not the active version: ignored
+    expect(toastSpy).toHaveBeenCalledTimes(1);
+    expect(toastSpy).toHaveBeenCalledWith(LIST_LOAD_FAILED_MESSAGE);
+    expect(state().syncStatus).toBe('idle'); // nothing waits yet
+
+    move(50, 3);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(state().syncStatus).toBe('error');
+    expect(isAutoSyncSettled()).toBe(false);
+
+    // Loaded after all: the held edit is sent and the error clears.
+    state().setLocalScaleFigures([]);
+    await settle();
+    expect(fetchMock.mock.calls.map(([url, init]) => `${init.method} ${url}`)).toEqual(['PATCH /api/instances/50']);
+    expect(state().syncStatus).toBe('idle');
+    toastSpy.mockRestore();
   });
 });

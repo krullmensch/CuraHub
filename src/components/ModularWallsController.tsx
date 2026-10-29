@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useThree, useFrame } from '@react-three/fiber';
 import { TransformControls } from '@react-three/drei';
 import type { TransformControls as TransformControlsImpl } from 'three-stdlib';
-import { useEditorStore, instanceRefMap, type ModularWallData } from '@/store/editorStore';
+import { useEditorStore, instanceRefMap, markListLoadFailed, type ModularWallData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { ModularWallMesh } from './ModularWallMesh';
 import { registerWallObject } from '../lib/live/sceneObjects';
@@ -284,6 +284,8 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
                 if (cancelled) return;
 
                 const data: ModularWallData[] = await res.json();
+                // Switched versions while parsing: this data belongs to the previous one.
+                if (cancelled) return;
 
                 if (data.length > 0) {
                     // DB has walls — use them
@@ -303,6 +305,7 @@ export const ModularWallsController = ({ viewerWalls, isEditor = true }: Modular
                 }
             } catch (err) {
                 console.error("Failed to load walls:", err);
+                if (!cancelled) markListLoadFailed('walls', activeVersionId);
             }
         };
 

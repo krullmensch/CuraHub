@@ -2,7 +2,7 @@ import { memo, useCallback, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { TransformControls, useGLTF } from '@react-three/drei';
-import { useEditorStore, type ScaleFigureData } from '@/store/editorStore';
+import { markListLoadFailed, useEditorStore, type ScaleFigureData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
 import { SCALE_FIGURE_MESH, SCALE_FIGURE_URL, scaleFigureBridge, spawnPoseFromCamera, spawnPoseFromHit, type FigurePose } from '@/lib/scaleFigure';
@@ -141,6 +141,7 @@ export const ScaleFigures = ({ viewerFigures, isEditor = true }: ScaleFiguresPro
                 if (!cancelled) setLocalScaleFigures(data);
             } catch (err) {
                 console.error('Failed to load scale figures:', err);
+                if (!cancelled) markListLoadFailed('figures', activeVersionId);
             }
         })();
         return () => { cancelled = true; };
