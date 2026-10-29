@@ -14,6 +14,7 @@ import {
 } from '../lib/wallGuides';
 import { publishChange, publishVersionEvent } from '../live/broadcast';
 import { ensureVersionWritable } from '../lib/versionWritable';
+import { mayCreateBranch, startsNewBranch } from '../lib/branchCreation';
 
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
@@ -245,10 +246,25 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
         const isAdmin = req.user!.role === 'admin';
         const userRole = req.user!.role;
 
-        // Branching (non-main) requires curator+ role
-        if (data.branch_name !== 'main') {
-            const allowedRoles = ['curator', 'prof', 'admin'];
-            if (!allowedRoles.includes(userRole)) {
+        // Verify user has access (owner or collaborator, or admin)
+        const exhibition = await prisma.exhibition.findFirst({
+            where: {
+                id: exhibitionId,
+                ...exhibitionAccessFilter(userId, isAdmin)
+            }
+        });
+        if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
+
+        // Starting a branch (non-main, other than the source's) requires curator+ role and a free
+        // name; a version on the source's own branch continues it (lib/branchCreation.ts).
+        const sourceBranch = data.sourceVersionId
+            ? (await prisma.exhibitionVersion.findFirst({
+                where: { id: data.sourceVersionId, exhibition_id: exhibitionId },
+                select: { branch_name: true },
+            }))?.branch_name
+            : null;
+        if (startsNewBranch(data.branch_name, sourceBranch)) {
+            if (!mayCreateBranch(userRole)) {
                 return res.status(403).json({ error: 'Branches können nur von Kuratoren, Profs oder Admins erstellt werden' });
             }
             // Forbid duplicate branch names within the same exhibition
@@ -259,15 +275,6 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                 return res.status(400).json({ error: 'Ein Branch mit diesem Namen existiert bereits.' });
             }
         }
-
-        // Verify user has access (owner or collaborator, or admin)
-        const exhibition = await prisma.exhibition.findFirst({
-            where: {
-                id: exhibitionId,
-                ...exhibitionAccessFilter(userId, isAdmin)
-            }
-        });
-        if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
 
         // Find the source version to snapshot from if needed for parent tracking
         let sourceVersionId = data.sourceVersionId;

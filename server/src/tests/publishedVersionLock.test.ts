@@ -145,3 +145,34 @@ describe('versions list', () => {
         expect(byId.get(open.versionId)?.published_at).toBeNull();
     });
 });
+
+describe('working copy of a published version on a branch (I1)', () => {
+    let branchPublishedId: number;
+
+    beforeAll(async () => {
+        const owner = await prisma.user.findFirstOrThrow({ where: { email: OWNER_EMAIL } });
+        const v = await prisma.exhibitionVersion.create({
+            data: {
+                exhibition_id: exhibitionId, created_by_user_id: owner.id, comment: 'branch published',
+                branch_name: `${SUFFIX}-b`, is_published: true, published_at: new Date(),
+            },
+        });
+        branchPublishedId = v.id;
+    });
+
+    it('continuing the source version\'s branch is allowed', async () => {
+        const res = await request(app).post(`/exhibitions/${exhibitionId}/versions`).set(auth()).send({
+            comment: 'Arbeitskopie', branch_name: `${SUFFIX}-b`, sourceVersionId: branchPublishedId,
+        });
+        expect(res.status).toBe(201);
+        const created = await prisma.exhibitionVersion.findUnique({ where: { id: res.body.id } });
+        expect(created).toMatchObject({ branch_name: `${SUFFIX}-b`, parent_version_id: branchPublishedId, is_published: false });
+    });
+
+    it('starting a branch whose name is taken is still refused', async () => {
+        const res = await request(app).post(`/exhibitions/${exhibitionId}/versions`).set(auth()).send({
+            comment: 'Neuer Branch', branch_name: `${SUFFIX}-b`, sourceVersionId: open.versionId,
+        });
+        expect(res.status).toBe(400);
+    });
+});
