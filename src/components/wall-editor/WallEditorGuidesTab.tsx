@@ -111,7 +111,7 @@ export const WallEditorGuidesTab = ({ face }: { face: WallFace }) => {
                 </div>
 
                 {guides.length === 0 ? (
-                    <p className="text-xs text-zinc-500">Aus dem Lineal ziehen oder hier anlegen.</p>
+                    <p className="text-xs text-zinc-400">Aus dem Lineal ziehen oder hier anlegen.</p>
                 ) : (
                     <ul className="space-y-0.5">
                         {sortGuides(guides).map((g) => (
@@ -149,7 +149,7 @@ export const WallEditorGuidesTab = ({ face }: { face: WallFace }) => {
                     </ul>
                 )}
 
-                <p className="text-[10px] text-zinc-500 leading-relaxed">
+                <p className="text-[10px] text-zinc-400 leading-relaxed">
                     Waagrechte Linien messen ab Boden, senkrechte ab der linken Wandkante. Werke rasten an Hilfslinien ein.
                 </p>
                 {hidden && <p className="text-[10px] text-zinc-400">Ausgeblendet: Linien werden nicht gezeichnet, Werke rasten nicht an ihnen ein.</p>}

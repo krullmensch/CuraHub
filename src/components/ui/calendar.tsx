@@ -26,7 +26,7 @@ function Calendar({
         chevron: `${defaults.chevron} fill-zinc-400`,
         day_button: `${defaults.day_button} text-zinc-300 hover:bg-zinc-800`,
         month_caption: `${defaults.month_caption} text-zinc-200`,
-        weekday: `${defaults.weekday} text-zinc-500`,
+        weekday: `${defaults.weekday} text-zinc-400`,
         outside: `${defaults.outside} text-zinc-600`,
         disabled: `${defaults.disabled} text-zinc-700`,
         ...classNames,

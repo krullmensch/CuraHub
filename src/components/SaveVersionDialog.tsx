@@ -121,6 +121,7 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
           <button
             onClick={onCancel}
             className="p-1 hover:bg-zinc-800 rounded transition-colors"
+            aria-label="Schließen"
           >
             <X className="h-4 w-4 text-gray-400" />
           </button>

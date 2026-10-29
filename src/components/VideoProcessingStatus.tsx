@@ -37,10 +37,10 @@ const Step = ({ state, label, detail, children }: { state: StepState; label: str
         <div className="pt-0.5">
             {state === 'done' && <CheckCircle2 className="h-4 w-4 text-green-400" />}
             {state === 'active' && <Loader2 className="h-4 w-4 animate-spin text-blue-400" />}
-            {state === 'pending' && <Circle className="h-4 w-4 text-zinc-600" />}
+            {state === 'pending' && <Circle className="h-4 w-4 text-zinc-500" />}
         </div>
         <div className="min-w-0 flex-1">
-            <p className={cn('text-sm', state === 'pending' ? 'text-zinc-500' : 'text-zinc-100')}>{label}</p>
+            <p className={cn('text-sm', state === 'pending' ? 'text-zinc-400' : 'text-zinc-100')}>{label}</p>
             {detail && <p className="text-xs text-zinc-400">{detail}</p>}
             {children}
         </div>
@@ -117,7 +117,7 @@ export function VideoProcessingStatus({ assetId, onFinished }: { assetId: number
         <div className="w-full space-y-3 p-2">
             <div className="flex items-center justify-between">
                 <p className="text-sm font-medium text-zinc-100">Video wird verarbeitet</p>
-                <p className="text-xs text-zinc-500">Das Werk kann danach platziert werden.</p>
+                <p className="text-xs text-zinc-400">Das Werk kann danach platziert werden.</p>
             </div>
             <ol className="space-y-2.5">
                 <Step state="done" label="Hochgeladen" detail={sourceDetail ? `Original: ${sourceDetail}` : undefined} />

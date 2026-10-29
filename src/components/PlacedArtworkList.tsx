@@ -17,7 +17,7 @@ const Thumbnail = ({ inst }: { inst: ArtworkInstanceData }) => {
     }
     const Icon = type === 'video' ? Play : type === 'splat' ? Sparkles : Box;
     return (
-        <span className="h-8 w-8 shrink-0 rounded bg-zinc-800 flex items-center justify-center text-zinc-500">
+        <span className="h-8 w-8 shrink-0 rounded bg-zinc-800 flex items-center justify-center text-zinc-400">
             <Icon className="h-4 w-4" />
         </span>
     );
@@ -63,7 +63,7 @@ export const PlacedArtworkList = () => {
     });
 
     if (groups.length === 0) {
-        return <p className="p-4 text-xs text-zinc-500 italic text-center">Noch keine Werke im Raum.</p>;
+        return <p className="p-4 text-xs text-zinc-400 italic text-center">Noch keine Werke im Raum.</p>;
     }
 
     return (
@@ -76,7 +76,7 @@ export const PlacedArtworkList = () => {
                             <button
                                 type="button"
                                 onClick={() => toggleGroup(group.key)}
-                                className="text-zinc-500 hover:text-zinc-200"
+                                className="text-zinc-400 hover:text-zinc-200"
                                 aria-label={open ? 'Einklappen' : 'Ausklappen'}
                             >
                                 {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -89,7 +89,7 @@ export const PlacedArtworkList = () => {
                             >
                                 {group.label}
                             </button>
-                            <span className="text-[10px] tabular-nums text-zinc-500">{group.ids.length}</span>
+                            <span className="text-[10px] tabular-nums text-zinc-400">{group.ids.length}</span>
                         </div>
                         {open && group.ids.map((id) => {
                             const inst = byId.get(id);

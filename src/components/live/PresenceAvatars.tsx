@@ -63,7 +63,7 @@ export const VersionPresence = ({ versionId }: { versionId: number }) => {
     <span className="flex items-center -space-x-1" title={here.map(personTitle).join('\n')}>
       {shown.map((p) => <PresenceAvatar key={p.userId} person={p} size="sm" />)}
       {here.length > shown.length && (
-        <span className="pl-1.5 text-[9px] text-zinc-400">+{here.length - shown.length}</span>
+        <span className="pl-1.5 text-[10px] text-zinc-400">+{here.length - shown.length}</span>
       )}
     </span>
   );
@@ -82,7 +82,7 @@ export const LivePresenceBar = () => {
   if (status === 'idle') return null;
   if (status !== 'open') {
     return (
-      <span className="flex items-center gap-1.5 text-[11px] text-zinc-500" title="Live-Verbindung getrennt – wird neu aufgebaut">
+      <span className="flex items-center gap-1.5 text-[11px] text-zinc-400" title="Live-Verbindung getrennt – wird neu aufgebaut">
         <span className="h-1.5 w-1.5 rounded-full bg-zinc-500 animate-pulse" />
         Offline
       </span>

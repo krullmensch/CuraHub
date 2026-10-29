@@ -31,7 +31,7 @@ export const MergeDialog = ({ sourceVersion, onConfirm, onCancel }: MergeDialogP
             <GitMerge className="h-4 w-4 text-green-400" />
             <h2 className="text-base font-semibold text-white">Branch in main mergen</h2>
           </div>
-          <button onClick={onCancel} className="p-1 hover:bg-zinc-800 rounded transition-colors">
+          <button onClick={onCancel} className="p-1 hover:bg-zinc-800 rounded transition-colors" aria-label="Schließen">
             <X className="h-4 w-4 text-gray-400" />
           </button>
         </div>
@@ -43,11 +43,11 @@ export const MergeDialog = ({ sourceVersion, onConfirm, onCancel }: MergeDialogP
             wird als neue Version auf <span className="font-semibold text-white">main</span> kopiert.
           </p>
           <div className="bg-zinc-800 border border-zinc-700 rounded-lg px-3 py-2">
-            <p className="text-xs text-zinc-500 mb-0.5">Quell-Version</p>
+            <p className="text-xs text-zinc-400 mb-0.5">Quell-Version</p>
             <p className="text-sm text-white truncate">{sourceVersion.comment || 'Kein Kommentar'}</p>
-            <p className="text-xs text-zinc-500 mt-0.5">{sourceVersion._count.instances} Objekte</p>
+            <p className="text-xs text-zinc-400 mt-0.5">{sourceVersion._count.instances} Objekte</p>
           </div>
-          <p className="text-xs text-zinc-500">
+          <p className="text-xs text-zinc-400">
             Die bestehenden Versionen auf main werden nicht verändert — es wird lediglich eine neue Version hinzugefügt.
           </p>
 

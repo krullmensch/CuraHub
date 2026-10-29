@@ -82,36 +82,36 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
               <Dialog.Title className="text-white font-display text-xl font-light">
                 Ausstellungen
               </Dialog.Title>
-              <Dialog.Description className="text-zinc-500 text-sm mt-1">
+              <Dialog.Description className="text-zinc-400 text-sm mt-1">
                 {userEmail}
               </Dialog.Description>
             </div>
             <Dialog.Close asChild>
-              <button className="text-zinc-500 hover:text-white transition-colors p-1">
+              <button className="text-zinc-400 hover:text-white transition-colors p-1" aria-label="Schließen">
                 <X className="w-5 h-5" />
               </button>
             </Dialog.Close>
           </div>
 
-          {loading && <p className="text-zinc-500 text-sm">Wird geladen…</p>}
+          {loading && <p className="text-zinc-400 text-sm">Wird geladen…</p>}
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
           {!loading && !error && (
             <div className="space-y-8">
               {/* List A: Owned exhibitions */}
               <section>
-                <h3 className="text-xs tracking-[0.2em] uppercase text-zinc-500 font-medium mb-3">
+                <h3 className="text-xs tracking-[0.2em] uppercase text-zinc-400 font-medium mb-3">
                   Eigene Ausstellungen
                 </h3>
                 {owned.length === 0 ? (
-                  <p className="text-zinc-600 text-sm">Keine eigenen Ausstellungen.</p>
+                  <p className="text-zinc-400 text-sm">Keine eigenen Ausstellungen.</p>
                 ) : (
                   <ul className="space-y-2">
                     {owned.map((e) => (
                       <li key={e.id} className="flex items-center justify-between border border-zinc-800 rounded-lg px-4 py-3 bg-zinc-950/50">
                         <div>
                           <p className="text-zinc-200 text-sm">{e.title}</p>
-                          <p className="text-zinc-600 text-xs mt-0.5">{e.projectName}</p>
+                          <p className="text-zinc-400 text-xs mt-0.5">{e.projectName}</p>
                         </div>
                         {pendingDeleteId === e.id ? (
                           <div className="flex items-center gap-1.5">
@@ -123,7 +123,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
                             </button>
                             <button
                               onClick={() => setPendingDeleteId(null)}
-                              className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1.5 rounded transition-colors"
+                              className="text-xs text-zinc-400 hover:text-zinc-300 px-2 py-1.5 rounded transition-colors"
                             >
                               Abbrechen
                             </button>
@@ -131,7 +131,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
                         ) : (
                           <button
                             onClick={() => setPendingDeleteId(e.id)}
-                            className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded transition-all"
+                            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded transition-all"
                           >
                             <Trash2 className="w-3 h-3" />
                             Löschen
@@ -145,18 +145,18 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
 
               {/* List B: Collaborating exhibitions */}
               <section>
-                <h3 className="text-xs tracking-[0.2em] uppercase text-zinc-500 font-medium mb-3">
+                <h3 className="text-xs tracking-[0.2em] uppercase text-zinc-400 font-medium mb-3">
                   Kollaborationen
                 </h3>
                 {collaborating.length === 0 ? (
-                  <p className="text-zinc-600 text-sm">Keine Kollaborationen.</p>
+                  <p className="text-zinc-400 text-sm">Keine Kollaborationen.</p>
                 ) : (
                   <ul className="space-y-2">
                     {collaborating.map((e) => (
                       <li key={e.id} className="flex items-center justify-between border border-zinc-800 rounded-lg px-4 py-3 bg-zinc-950/50">
                         <div>
                           <p className="text-zinc-200 text-sm">{e.title}</p>
-                          <p className="text-zinc-600 text-xs mt-0.5">{e.projectName}</p>
+                          <p className="text-zinc-400 text-xs mt-0.5">{e.projectName}</p>
                         </div>
                         {pendingRevokeId === e.id ? (
                           <div className="flex items-center gap-1.5">
@@ -168,7 +168,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
                             </button>
                             <button
                               onClick={() => setPendingRevokeId(null)}
-                              className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1.5 rounded transition-colors"
+                              className="text-xs text-zinc-400 hover:text-zinc-300 px-2 py-1.5 rounded transition-colors"
                             >
                               Abbrechen
                             </button>
@@ -176,7 +176,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
                         ) : (
                           <button
                             onClick={() => setPendingRevokeId(e.id)}
-                            className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-orange-400 border border-zinc-700 hover:border-orange-800 px-3 py-1.5 rounded transition-all"
+                            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-orange-400 border border-zinc-700 hover:border-orange-800 px-3 py-1.5 rounded transition-all"
                           >
                             <UserMinus className="w-3 h-3" />
                             Zugang entziehen

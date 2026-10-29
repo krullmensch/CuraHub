@@ -32,7 +32,7 @@ export const WallEditorArtworkTab = ({ face }: { face: WallFace }) => {
 
     const selected = face.items.filter((i) => selection.includes(i.id));
     if (selected.length === 0) {
-        return <p className="text-xs text-zinc-500">Wähle ein Werk aus, um Größe, Rahmen und Passepartout zu ändern.</p>;
+        return <p className="text-xs text-zinc-400">Wähle ein Werk aus, um Größe, Rahmen und Passepartout zu ändern.</p>;
     }
 
     const single = selected.length === 1 ? selected[0] : null;
@@ -82,7 +82,7 @@ export const WallEditorArtworkTab = ({ face }: { face: WallFace }) => {
                 <div className="rounded-md bg-zinc-900 border border-zinc-800 p-2.5 space-y-0.5">
                     <div className="text-sm text-zinc-100 font-medium">{selected.length} Werke</div>
                     {pictures.length > 0 && pictures.length < selected.length && (
-                        <div className="text-[11px] text-zinc-500">
+                        <div className="text-[11px] text-zinc-400">
                             Rahmen und Passepartout gelten für {pictures.length === 1 ? 'das Bild' : `${pictures.length} Bilder`} der Auswahl.
                         </div>
                     )}
@@ -117,7 +117,7 @@ export const WallEditorArtworkTab = ({ face }: { face: WallFace }) => {
                 ) : undefined}
             >
                 {isMonitor ? (
-                    <p className="text-xs text-zinc-500">Der Monitor hat eine feste Größe.</p>
+                    <p className="text-xs text-zinc-400">Der Monitor hat eine feste Größe.</p>
                 ) : (
                     <>
                         {single && size && (
@@ -134,7 +134,7 @@ export const WallEditorArtworkTab = ({ face }: { face: WallFace }) => {
                                 +5 %
                             </Button>
                         </div>
-                        <p className="text-[10px] text-zinc-500 leading-relaxed">
+                        <p className="text-[10px] text-zinc-400 leading-relaxed">
                             {single ? 'Bildmaß ohne Rahmen. ' : ''}Skaliert wird immer um die Bildmitte. Frei skalieren: S drücken oder an einer Ecke der Auswahl ziehen.
                         </p>
                     </>

@@ -183,7 +183,7 @@ export const ExhibitionsPage = () => {
             </Link>
           )}
           {isAuthenticated ? (
-            <Link to="/project" className="text-zinc-500 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
+            <Link to="/project" className="text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
               Dashboard
             </Link>
           ) : (
@@ -202,7 +202,7 @@ export const ExhibitionsPage = () => {
         <div className="max-w-5xl mx-auto">
           <div className="flex items-end justify-between gap-6 pb-8 border-b border-zinc-800">
             <div>
-              <p className="text-[10px] tracking-[0.4em] uppercase text-zinc-600 mb-3">
+              <p className="text-[10px] tracking-[0.4em] uppercase text-zinc-400 mb-3">
                 HSBI · Digitale Galerie
               </p>
               <h1 className="font-display text-5xl sm:text-6xl font-light tracking-tight text-white leading-[1.05]">
@@ -210,7 +210,7 @@ export const ExhibitionsPage = () => {
               </h1>
             </div>
             {!loading && !error && (
-              <p className="text-zinc-600 text-sm pb-1 shrink-0">
+              <p className="text-zinc-400 text-sm pb-1 shrink-0">
                 {entries.length} {entries.length === 1 ? 'Ausstellung' : 'Ausstellungen'}
               </p>
             )}
@@ -236,10 +236,10 @@ export const ExhibitionsPage = () => {
 
           {error && !loading && (
             <div className="text-center py-24 catalogue-in" style={{ animationDelay: '0.1s' }}>
-              <p className="text-zinc-600 mb-6 text-sm">{error}</p>
+              <p className="text-zinc-400 mb-6 text-sm">{error}</p>
               <button
                 onClick={fetchData}
-                className="text-xs tracking-widest uppercase text-zinc-500 hover:text-white border border-zinc-800 hover:border-zinc-600 px-6 py-2.5 rounded-full transition-all"
+                className="text-xs tracking-widest uppercase text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-600 px-6 py-2.5 rounded-full transition-all"
               >
                 Erneut versuchen
               </button>
@@ -248,7 +248,7 @@ export const ExhibitionsPage = () => {
 
           {!loading && !error && entries.length === 0 && (
             <div className="text-center py-24 catalogue-in" style={{ animationDelay: '0.1s' }}>
-              <p className="text-zinc-600 text-sm">
+              <p className="text-zinc-400 text-sm">
                 Noch keine Ausstellungen veröffentlicht.
               </p>
             </div>
@@ -294,7 +294,7 @@ export const ExhibitionsPage = () => {
                             <div className="min-w-0">
                               <div className="flex items-center gap-2.5 mb-1.5">
                                 {entry.isFeatured && (
-                                  <span className="text-[9px] tracking-[0.35em] uppercase text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full shrink-0">
+                                  <span className="text-[11px] tracking-[0.35em] uppercase text-zinc-400 bg-zinc-800 px-2 py-0.5 rounded-full shrink-0">
                                     Aktuell
                                   </span>
                                 )}

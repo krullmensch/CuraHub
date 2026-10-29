@@ -232,7 +232,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-zinc-500" />
+            <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
           </div>
         ) : (
           <div className="space-y-6 py-2">
@@ -320,7 +320,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
-                  className={`w-full flex flex-col items-center justify-center gap-2 py-8 rounded-lg border-2 border-dashed transition-colors text-zinc-500 ${isDragging ? 'border-blue-500 bg-blue-950/20 text-blue-300' : 'border-zinc-700 hover:border-zinc-500 bg-zinc-900/50 hover:bg-zinc-900 hover:text-zinc-300'}`}
+                  className={`w-full flex flex-col items-center justify-center gap-2 py-8 rounded-lg border-2 border-dashed transition-colors text-zinc-400 ${isDragging ? 'border-blue-500 bg-blue-950/20 text-blue-300' : 'border-zinc-700 hover:border-zinc-500 bg-zinc-900/50 hover:bg-zinc-900 hover:text-zinc-300'}`}
                 >
                   {uploadingPoster ? (
                     <Loader2 className="h-8 w-8 animate-spin" />
@@ -330,7 +330,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                   <span className="text-sm">
                     {uploadingPoster ? 'Wird hochgeladen…' : isDragging ? 'Bild ablegen…' : 'Klicken oder Bild hierher ziehen'}
                   </span>
-                  <span className="text-xs text-zinc-600">JPG, PNG oder WebP · max. 10 MB</span>
+                  <span className="text-xs text-zinc-400">JPG, PNG oder WebP · max. 10 MB</span>
                 </button>
               )}
               <input
@@ -355,11 +355,11 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                     <div key={c.id} className="flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-900 border border-zinc-800">
                       <div className="min-w-0">
                         <p className="text-sm text-zinc-200 truncate">{c.user.email.split('@')[0]}</p>
-                        <p className="text-xs text-zinc-500">{roleBadge(c.user.role)}</p>
+                        <p className="text-xs text-zinc-400">{roleBadge(c.user.role)}</p>
                       </div>
                       <button
                         onClick={() => handleRemoveCollaborator(c)}
-                        className="shrink-0 ml-2 p-1 rounded text-zinc-600 hover:text-red-400 hover:bg-red-950/30 transition-colors"
+                        className="shrink-0 ml-2 p-1 rounded text-zinc-500 hover:text-red-400 hover:bg-red-950/30 transition-colors"
                         title="Entfernen"
                       >
                         <X className="h-3.5 w-3.5" />
@@ -371,14 +371,14 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
 
               {/* Eligible users list */}
               {eligibleUsers.length === 0 ? (
-                <p className="text-xs text-zinc-600 text-center py-4">
+                <p className="text-xs text-zinc-400 text-center py-4">
                   {collaborators.length === 0 ? 'Keine Kuratoren oder Professoren verfügbar.' : 'Alle verfügbaren Benutzer wurden hinzugefügt.'}
                 </p>
               ) : (
                 <div className="space-y-2">
                   {/* Search */}
                   <div className="relative">
-                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-400" />
                     <Input
                       value={userSearch}
                       onChange={(e) => setUserSearch(e.target.value)}
@@ -394,7 +394,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                         <div key={u.id} className="flex items-center justify-between px-2.5 py-2 rounded-md hover:bg-zinc-800 transition-colors">
                           <div className="min-w-0">
                             <p className="text-sm text-zinc-200 truncate">{u.email.split('@')[0]}</p>
-                            <p className="text-xs text-zinc-500">{roleBadge(u.role)}</p>
+                            <p className="text-xs text-zinc-400">{roleBadge(u.role)}</p>
                           </div>
                           <button
                             onClick={() => handleInvite(u)}
@@ -410,7 +410,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                       ))
                     }
                     {eligibleUsers.filter(u => u.email.toLowerCase().includes(userSearch.toLowerCase())).length === 0 && (
-                      <p className="text-xs text-zinc-600 text-center py-3">Keine Treffer</p>
+                      <p className="text-xs text-zinc-400 text-center py-3">Keine Treffer</p>
                     )}
                   </div>
                 </div>

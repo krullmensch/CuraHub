@@ -25,7 +25,7 @@ export function DatePicker({ value, onChange, placeholder = "Datum wählen" }: D
           variant="outline"
           className={cn(
             "w-full justify-start text-left font-normal bg-zinc-900 border-zinc-700 hover:bg-zinc-800 hover:border-zinc-600",
-            !value && "text-zinc-500"
+            !value && "text-zinc-400"
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4" />
@@ -71,7 +71,7 @@ export function DateRangePicker({ value, onChange, placeholder = "Zeitraum wähl
           variant="outline"
           className={cn(
             "w-full justify-start text-left font-normal bg-zinc-900 border-zinc-700 hover:bg-zinc-800 hover:border-zinc-600",
-            !value?.from && "text-zinc-500"
+            !value?.from && "text-zinc-400"
           )}
         >
           <CalendarIcon className="mr-2 h-4 w-4 shrink-0" />

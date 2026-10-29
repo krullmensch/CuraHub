@@ -16,7 +16,7 @@ export function SystemCheckList({ checks }: { checks: SetupCheck[] }) {
           {ICON[c.status]}
           <div>
             <div className="text-white/85">{c.label}</div>
-            <div className="text-white/40 text-xs">{c.detail}</div>
+            <div className="text-white/60 text-xs">{c.detail}</div>
           </div>
         </li>
       ))}

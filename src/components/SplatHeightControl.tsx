@@ -89,7 +89,7 @@ export function SplatHeightControl({ instanceId }: { instanceId: number }) {
           </Button>
         )}
       </div>
-      <p className="text-[10px] text-zinc-500">
+      <p className="text-[10px] text-zinc-400">
         Höhe des Objekts im Original. Gilt für alle Platzierungen dieses Splats; die Größe oben skaliert nur diese Platzierung.
       </p>
     </div>

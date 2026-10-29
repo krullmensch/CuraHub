@@ -110,7 +110,7 @@ const ArrangeTab = ({ face }: { face: WallFace }) => {
             <Section title="Auswahl">
                 {count === 0 && (
                     <div className="space-y-2">
-                        <p className="text-xs text-zinc-500 leading-relaxed">
+                        <p className="text-xs text-zinc-400 leading-relaxed">
                             Klicke ein Werk an oder ziehe einen Rahmen auf. Mit ⇧ wählst du mehrere aus.
                             {face.items.length === 0 && ' Auf dieser Seite hängt noch nichts – zieh ein Werk aus der Bibliothek auf die Wand.'}
                         </p>
@@ -127,7 +127,7 @@ const ArrangeTab = ({ face }: { face: WallFace }) => {
                                 {[single.inst.artwork.artist, single.inst.artwork.year].filter(Boolean).join(', ')}
                             </div>
                         )}
-                        <div className="text-[11px] text-zinc-500 tabular-nums">
+                        <div className="text-[11px] text-zinc-400 tabular-nums">
                             {formatCm(single.rect.w, false)} × {formatCm(single.rect.h)}
                             {single.inst.artwork.asset.type === 'image' ? ' mit Rahmen' : ''}
                         </div>
@@ -136,7 +136,7 @@ const ArrangeTab = ({ face }: { face: WallFace }) => {
                 {count > 1 && box && (
                     <div className="rounded-md bg-zinc-900 border border-zinc-800 p-2.5">
                         <div className="text-sm text-zinc-100 font-medium">{count} Werke</div>
-                        <div className="text-[11px] text-zinc-500 tabular-nums">Gruppe {formatCm(box.w, false)} × {formatCm(box.h)}</div>
+                        <div className="text-[11px] text-zinc-400 tabular-nums">Gruppe {formatCm(box.w, false)} × {formatCm(box.h)}</div>
                     </div>
                 )}
             </Section>
@@ -152,13 +152,13 @@ const ArrangeTab = ({ face }: { face: WallFace }) => {
                                 key={t}
                                 type="button"
                                 onClick={() => setAlignTarget(t)}
-                                className={cn('px-1.5 py-0.5 rounded', alignTarget === t ? 'bg-zinc-700 text-white' : 'text-zinc-500 hover:text-zinc-300')}
+                                className={cn('px-1.5 py-0.5 rounded', alignTarget === t ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-300')}
                             >
                                 {t === 'selection' ? 'Zueinander' : 'An Wand'}
                             </button>
                         ))}
                     </div>
-                ) : count === 1 ? <span className="text-[10px] text-zinc-500">an der Wand</span> : undefined}
+                ) : count === 1 ? <span className="text-[10px] text-zinc-400">an der Wand</span> : undefined}
             >
                 <div className="flex gap-0.5 rounded-md bg-zinc-900/60 border border-zinc-800 p-0.5">
                     {ALIGN_ACTIONS.map((a) => (
@@ -179,7 +179,7 @@ const ArrangeTab = ({ face }: { face: WallFace }) => {
 
             <Section title="Abstände">
                 {count < 2 ? (
-                    <p className="text-xs text-zinc-500">Wähle mindestens zwei Werke aus, um Abstände festzulegen.</p>
+                    <p className="text-xs text-zinc-400">Wähle mindestens zwei Werke aus, um Abstände festzulegen.</p>
                 ) : (
                     <div className="space-y-2">
                         {(['x', 'y'] as const).map((axis) => (
@@ -205,7 +205,7 @@ const ArrangeTab = ({ face }: { face: WallFace }) => {
                                 </Button>
                             </div>
                         ))}
-                        <p className="text-[10px] text-zinc-500 leading-relaxed">
+                        <p className="text-[10px] text-zinc-400 leading-relaxed">
                             Tipp: Die pinken Abstandsmarken zwischen ausgewählten Werken lassen sich direkt ziehen.
                         </p>
                     </div>
@@ -252,7 +252,7 @@ const ArrangeTab = ({ face }: { face: WallFace }) => {
                         {SHORTCUTS.map(([key, text]) => (
                             <div key={key} className="flex justify-between gap-2 text-[11px]">
                                 <dt className="text-zinc-300 whitespace-nowrap">{key}</dt>
-                                <dd className="text-zinc-500 text-right">{text}</dd>
+                                <dd className="text-zinc-400 text-right">{text}</dd>
                             </div>
                         ))}
                     </dl>
@@ -301,7 +301,7 @@ export const WallEditorPanel = ({ onToggle }: WallEditorPanelProps) => {
         <>
             <div className="flex items-center border-b border-zinc-800 bg-blue-600">
                 <div className="flex-1 py-2.5 px-3 text-xs font-medium text-white">2D-Wandeditor</div>
-                <Button variant="ghost" size="icon" className="h-8 w-8 text-white/60 hover:text-white hover:bg-white/10 mr-1" onClick={onToggle}>
+                <Button variant="ghost" size="icon" className="h-8 w-8 text-white/80 hover:text-white hover:bg-white/10 mr-1" onClick={onToggle} aria-label="Panel ausblenden">
                     <ChevronRight className="h-4 w-4" />
                 </Button>
             </div>
@@ -318,7 +318,7 @@ export const WallEditorPanel = ({ onToggle }: WallEditorPanelProps) => {
                             className={cn('flex-1 h-7 rounded transition-colors', tab === t.id ? 'bg-zinc-700 text-white' : 'text-zinc-400 hover:text-zinc-200')}
                         >
                             {t.label}
-                            {t.id === 'guides' && guideCount > 0 && <span className="ml-1 text-zinc-500 tabular-nums">{guideCount}</span>}
+                            {t.id === 'guides' && guideCount > 0 && <span className="ml-1 text-zinc-400 tabular-nums">{guideCount}</span>}
                         </button>
                     ))}
                 </div>

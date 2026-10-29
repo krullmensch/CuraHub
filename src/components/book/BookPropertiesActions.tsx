@@ -21,7 +21,7 @@ export function BookPropertiesActions({ instanceId }: { instanceId: number }) {
       </Button>
       <div className="space-y-3">
         <Label className="text-xs text-zinc-400 uppercase tracking-wider">Buch</Label>
-        {!saved && <p className="text-xs text-zinc-500">Wird gespeichert …</p>}
+        {!saved && <p className="text-xs text-zinc-400">Wird gespeichert …</p>}
         {/* Keyed by instance: switching books never shows the previous book's unsaved fields;
             fresh data for the same book flows in through the form's per-field sync. */}
         <BookSettingsForm

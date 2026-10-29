@@ -184,7 +184,7 @@ export function TourOverlay() {
               style={{ width: `${((stepIndex + 1) / steps.length) * 100}%` }}
             />
           </div>
-          <span className="shrink-0 text-xs tabular-nums text-zinc-500">Schritt {stepIndex + 1} von {steps.length}</span>
+          <span className="shrink-0 text-xs tabular-nums text-zinc-400">Schritt {stepIndex + 1} von {steps.length}</span>
         </div>
 
         <h2 id="tour-title" className="mb-2 font-display text-base font-semibold text-white">{step.title}</h2>
@@ -192,7 +192,7 @@ export function TourOverlay() {
 
         <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
           {!isLast && (
-            <button onClick={skip} className="mr-auto text-xs text-zinc-500 transition-colors hover:text-zinc-300">
+            <button onClick={skip} className="mr-auto text-xs text-zinc-400 transition-colors hover:text-zinc-300">
               Überspringen
             </button>
           )}

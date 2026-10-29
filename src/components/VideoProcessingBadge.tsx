@@ -48,7 +48,7 @@ export function VideoProcessingBadge({ assetId, blocking, size = 'sm', onSettled
         // The video is already usable — a slim strip that doesn't hide the thumbnail.
         return (
             <div className="pointer-events-none absolute inset-x-0 top-0 space-y-0.5 bg-black/70 px-1.5 py-1">
-                <p className={cn('truncate leading-none text-white', size === 'sm' ? 'text-[9px]' : 'text-[11px]')}>{text}</p>
+                <p className={cn('truncate leading-none text-white', size === 'sm' ? 'text-[10px]' : 'text-[11px]')}>{text}</p>
                 {bar}
             </div>
         );

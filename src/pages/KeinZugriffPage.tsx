@@ -33,7 +33,7 @@ export default function KeinZugriffPage() {
         </Link>
         {isAuthenticated ? (
           <div className="flex items-center gap-4">
-            <span className="text-xs text-zinc-500 tracking-wide">
+            <span className="text-xs text-zinc-400 tracking-wide">
               Eingeloggt als <span className="text-zinc-300">{user?.email}</span>
             </span>
             <button
@@ -57,7 +57,7 @@ export default function KeinZugriffPage() {
       <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center px-4 pt-20">
         {!isAuthenticated ? (
           <>
-            <p className="text-xs tracking-[0.35em] uppercase text-zinc-600">Kein Zugriff</p>
+            <p className="text-xs tracking-[0.35em] uppercase text-zinc-400">Kein Zugriff</p>
             <h1 className="text-3xl font-display font-bold text-white">Du bist nicht eingeloggt</h1>
             <p className="text-zinc-400 max-w-sm">
               Melde dich mit deinem HSBI-Account an, um deinen Zugang zu prüfen.
@@ -71,7 +71,7 @@ export default function KeinZugriffPage() {
           </>
         ) : (
           <>
-            <p className="text-xs tracking-[0.35em] uppercase text-zinc-600">
+            <p className="text-xs tracking-[0.35em] uppercase text-zinc-400">
               {unlocked ? 'Zugang erteilt' : 'Zugang ausstehend'}
             </p>
             <h1 className="text-3xl font-display font-bold text-white">
