@@ -1627,11 +1627,13 @@ const syncToBackend = async () => {
     prevWalls = Array.from(nextWallsMap.values());
     prevScaleFigures = Array.from(nextFiguresMap.values());
 
-    if (versionPublished || publishedSilently) {
+    // A 409 for a version the curator has left since says nothing about the active one.
+    const stillActive = useEditorStore.getState().activeVersionId === activeVersionId;
+    if ((versionPublished || publishedSilently) && stillActive) {
       // Further edits are held back by the branch at the top of this function.
       useEditorStore.getState().setActiveVersionPublished(true);
       if (versionPublished) publishedEditGate.request(persistedUndoDepth);
-    } else if (!anyFailure) {
+    } else if (!anyFailure && !versionPublished && !publishedSilently) {
       persistedUndoDepth = Math.min(batchStartUndoDepth, useEditorStore.getState().pastInstances.length);
     }
 
@@ -1691,6 +1693,14 @@ useEditorStore.subscribe((state, prevState) => {
   if (state.localInstances !== prevState.localInstances || state.localWalls !== prevState.localWalls ||
       state.localScaleFigures !== prevState.localScaleFigures) {
     scheduleSync();
+  }
+  // A push onto a full undo stack (slice(-MAX_HISTORY_SIZE)) drops the oldest step: the
+  // persisted step moves one down.
+  const past = state.pastInstances;
+  const before = prevState.pastInstances;
+  if (past !== before && before.length === MAX_HISTORY_SIZE && past.length === MAX_HISTORY_SIZE
+      && past[MAX_HISTORY_SIZE - 1] === prevState.localInstances && past[0] === before[1]) {
+    persistedUndoDepth = Math.max(0, persistedUndoDepth - 1);
   }
   // Undoing below the persisted step: the persisted state is no longer on the undo stack.
   if (state.pastInstances.length < persistedUndoDepth) persistedUndoDepth = state.pastInstances.length;

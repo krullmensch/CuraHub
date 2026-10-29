@@ -135,9 +135,10 @@ export function startWallLayoutSync(): () => void {
         }
     };
 
-    const send = (exhibitionId: number, versionId: number, keepalive = false) => {
+    const send = (exhibitionId: number, versionId: number, keepalive = false, publishedWhenScheduled = false) => {
         // Published: nothing is sent (not even the keepalive flush on pagehide), the change stays local.
-        if (heldBackAsPublished(versionId)) return;
+        // `publishedWhenScheduled` covers the flush on a version switch, which clears the flag first.
+        if (heldBackAsPublished(versionId) || publishedWhenScheduled) return;
         const body = currentBody();
         queue = queue.then(async () => {
             try {
@@ -174,7 +175,8 @@ export function startWallLayoutSync(): () => void {
     const schedule = () => {
         const { activeExhibitionId, activeVersionId } = useEditorStore.getState();
         if (activeExhibitionId == null || activeVersionId == null || activeVersionId !== loadedVersionId) return;
-        pending = (keepalive) => send(activeExhibitionId, activeVersionId, keepalive);
+        const publishedNow = useEditorStore.getState().activeVersionPublished;
+        pending = (keepalive) => send(activeExhibitionId, activeVersionId, keepalive, publishedNow);
         clearTimeout(timer);
         timer = setTimeout(() => flush(), SAVE_DEBOUNCE_MS);
     };

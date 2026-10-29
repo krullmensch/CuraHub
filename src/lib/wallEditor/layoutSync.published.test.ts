@@ -74,6 +74,15 @@ describe('wall layout sync on a published version', () => {
     expect(patches()).toHaveLength(0);
   });
 
+  it('switching away right after an edit of a published version sends nothing for it', async () => {
+    useEditorStore.setState({ activeVersionPublished: true });
+    useWallEditorView.getState().setHangingHeight(1.8);
+    // The switch clears the flag before the pending change is flushed.
+    useEditorStore.setState({ activeVersionId: VERSION + 1, activeVersionPublished: false });
+    await settle(20);
+    expect(patches()).toHaveLength(0);
+  });
+
   it('a 409 version_published marks the version published and requests the gate', async () => {
     const toastSpy = vi.spyOn(toast, 'error');
     patchResponse = () => json({ code: 'version_published', message: 'Veröffentlicht' }, 409);

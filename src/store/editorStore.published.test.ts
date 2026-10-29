@@ -172,6 +172,42 @@ describe('auto-sync on a published version', () => {
   });
 });
 
+describe('published-version review fixes', () => {
+  it('a 409 version_published that arrives after switching versions leaves the new version alone', async () => {
+    let answer: (res: Response) => void = () => {};
+    fetchMock.mockImplementationOnce(() => new Promise<Response>((resolve) => { answer = resolve; }));
+    move(1, 5);
+    await new Promise((resolve) => setTimeout(resolve, 170)); // the batch for VERSION is in flight
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    state().setActiveVersion(VERSION + 1);
+    answer(published());
+    await settle();
+    expect(state().activeVersionPublished).toBe(false);
+    expect(publishedEditGate.getState().phase).toBe('idle');
+    useEditorStore.setState({ activeVersionId: VERSION });
+  });
+
+  it('at the undo cap, discarding drops exactly the held steps', async () => {
+    const full = Array.from({ length: 50 }, () => state().localInstances);
+    useEditorStore.setState({ pastInstances: full });
+    move(1, 3); // saved; shifts the full stack
+    await settle();
+    fetchMock.mockClear();
+    state().setActiveVersionPublished(true);
+    move(1, 5);
+    move(2, 6);
+    await settle();
+    expect(fetchMock).not.toHaveBeenCalled();
+    const { undoDepth } = publishedEditGate.getState();
+    expect(undoDepth).toBe(48);
+    state().discardUnsyncedChanges(undoDepth);
+    expect(state().pastInstances).toHaveLength(48);
+    expect(state().localInstances.map((i) => i.position_x)).toEqual([3, 0]);
+    state().undo();
+    expect(state().localInstances.map((i) => i.position_x)).toEqual([0, 0]);
+  });
+});
+
 describe('default walls on a published version', () => {
   const defaults = () => [wall(-1, 'Wall A', 0, true), wall(-2, 'Wall B', 3, true)];
 
