@@ -13,6 +13,7 @@ import { emitWallEvent } from '../lib/wallEvents';
 import { heldBy, reportHeld } from '../lib/live/claimGate';
 import { claimKey, keepHeldInstances, restoreRefused, splitClaimedInstances, wallBlocker } from '../lib/live/claims';
 import { liveSessionHeaders } from '../lib/live/session';
+import { publishedEditGate } from '../lib/publishedEditGate';
 import {
   defaultWallReplacedBy, deleteInHistory, deleteRemote, figureSyncedEqual, instanceSyncedEqual,
   upsertInHistory, upsertRemote, wallSyncedEqual, withoutDeleted,
@@ -362,6 +363,11 @@ interface EditorState {
   commitLocalChange: (newInstances: ArtworkInstanceData[]) => void;
   undo: () => void;
   redo: () => void;
+  /**
+   * Drops the changes auto-sync held back (published version): the lists go back to what is
+   * believed persisted and the undo steps after `undoDepth` are dropped.
+   */
+  discardUnsyncedChanges: (undoDepth: number) => void;
   markSaved: () => void;
   setSyncStatus: (status: 'idle' | 'saving' | 'error') => void;
 
@@ -714,6 +720,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setLocalInstances: (instances) => {
     // Snapshot prevInstances so auto-sync doesn't re-POST API-loaded data
     prevInstances = [...instances];
+    persistedUndoDepth = 0;
     return set({
       localInstances: instances,
       pastInstances: [],
@@ -760,6 +767,33 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ...clearInstanceSelection,
     };
   }),
+  discardUnsyncedChanges: (undoDepth) => {
+    persistedUndoDepth = Math.min(persistedUndoDepth, undoDepth);
+    set((state) => {
+      const instances = [...prevInstances];
+      const walls = [...prevWalls];
+      const figures = [...prevScaleFigures];
+      const instanceIds = new Set(instances.map(i => i.id));
+      const wallIds = new Set(walls.map(w => w.id));
+      const selectedInstanceIds = state.selectedInstanceIds.filter(id => instanceIds.has(id));
+      return {
+        localInstances: instances,
+        localWalls: walls,
+        localScaleFigures: figures,
+        pastInstances: state.pastInstances.slice(0, Math.max(0, undoDepth)),
+        futureInstances: [],
+        hasUnsavedChanges: false,
+        selectedInstanceIds,
+        selectedInstanceId: state.selectedInstanceId !== null && instanceIds.has(state.selectedInstanceId)
+          ? state.selectedInstanceId
+          : selectedInstanceIds[selectedInstanceIds.length - 1] ?? null,
+        wallEditorSelection: state.wallEditorSelection.filter(id => instanceIds.has(id)),
+        selectedWallId: state.selectedWallId !== null && wallIds.has(state.selectedWallId) ? state.selectedWallId : null,
+        selectedFigureId: state.selectedFigureId !== null && figures.some(f => f.id === state.selectedFigureId) ? state.selectedFigureId : null,
+        ...(state.wallEditor?.kind === 'wall' && !wallIds.has(state.wallEditor.wallId) ? { wallEditor: null, wallEditorSelection: [] } : {}),
+      };
+    });
+  },
   markSaved: () => set({
     hasUnsavedChanges: false
   }),
@@ -1047,6 +1081,46 @@ let prevInstances: ArtworkInstanceData[] = [];
 let prevWalls: ModularWallData[] = [];
 let prevScaleFigures: ScaleFigureData[] = [];
 
+// ── Published versions (read-only on the server) ────────────────────────────────────────────
+// While `activeVersionPublished` is set, a batch sends nothing: local lists keep the change, the
+// prev* snapshots stay as they are (invariant #3 still holds — nothing new was persisted), and
+// `publishedEditGate.request()` opens the dialog once. A 409 `version_published` (published
+// while this tab edited) is bookkept like a 423 — the row stays at its persisted value in
+// prev* — but nothing is reverted: the dialog decides (`discardUnsyncedChanges`).
+//
+// Undo depth at which the local lists last matched what is persisted: the undo steps after it
+// are the ones auto-sync still holds. Advanced by every batch that ends without a failure.
+let persistedUndoDepth = 0;
+
+/** Default walls of a version without walls (ModularWallsController): temp id + isDefault. */
+const isUnsavedDefaultWall = (w: ModularWallData) => w.id < 0 && w.isDefault === true;
+
+/** True when a batch would send something: the diff below, without its requests. */
+function hasUnsyncedChanges(instances: ArtworkInstanceData[], walls: ModularWallData[], figures: ScaleFigureData[]): boolean {
+  const differs = <T extends { id: number }>(
+    persisted: T[], local: T[], equal: (a: T, b: T) => boolean, isNew: (row: T) => boolean,
+  ) => {
+    const before = new Map(persisted.map(row => [row.id, row]));
+    const now = new Set(local.map(row => row.id));
+    return local.some(row => { const p = before.get(row.id); return p ? !equal(row, p) : isNew(row); })
+      || persisted.some(row => row.id > 0 && !now.has(row.id));
+  };
+  return differs(prevInstances, instances, instanceSyncedEqual, i => Boolean(i.artworkId ?? i.artwork?.id ?? i.assetId))
+    || differs(prevWalls, walls, wallSyncedEqual, w => w.id < 0)
+    || differs(prevScaleFigures, figures, figureSyncedEqual, f => f.id < 0);
+}
+
+/** 409 because the version is published (server: `version_published`). Reads the body only then. */
+async function isVersionPublishedRefusal(res: Response | null): Promise<boolean> {
+  if (res?.status !== 409) return false;
+  try {
+    const body: unknown = await res.json();
+    return (body as { code?: unknown } | null)?.code === 'version_published';
+  } catch {
+    return false;
+  }
+}
+
 // Guards against duplicate POSTs: track temp IDs currently being synced
 const syncingInstanceTempIds = new Set<number>();
 const syncingWallTempIds = new Set<number>();
@@ -1158,6 +1232,22 @@ const syncToBackend = async () => {
       return;
     }
 
+    if (state.activeVersionPublished) {
+      // Untouched default walls of a published version without walls are not an edit: count
+      // them as persisted, so they are neither POSTed nor ask (the server would refuse them).
+      const known = new Set(prevWalls.map(w => w.id));
+      const defaults = localWalls.filter(w => isUnsavedDefaultWall(w) && !known.has(w.id));
+      if (defaults.length > 0) prevWalls = [...prevWalls, ...defaults];
+      if (hasUnsyncedChanges(localInstances, localWalls, localScaleFigures)) {
+        publishedEditGate.request(persistedUndoDepth);
+      }
+      useEditorStore.setState({ syncStatus: 'idle' });
+      lastSyncStatus = 'idle';
+      cancelAutoRetry();
+      return;
+    }
+    const batchStartUndoDepth = state.pastInstances.length;
+
     const currInstances = localInstances;
     const currWalls = localWalls;
     const currFigures = localScaleFigures;
@@ -1166,6 +1256,10 @@ const syncToBackend = async () => {
     // Changes the server refused because another tab holds the object (423) — undone below.
     const refusedNames: string[] = [];
     const refused = { instances: new Set<number>(), walls: new Set<number>(), figures: new Set<number>() };
+    // Refused with 409 version_published: kept local, nothing reverted (see above).
+    let versionPublished = false;
+    // Only default walls were refused: the version is published, but nobody edited anything.
+    let publishedSilently = false;
 
     // ── Instance sync ──
     const prevMap = new Map(prevInstances.map(i => [i.id, i]));
@@ -1206,6 +1300,7 @@ const syncToBackend = async () => {
           });
 
           if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // stays "new"
           if (!res?.ok) {
             anyFailure = true;
             console.error('[AutoSync] Failed to create instance after retries:', inst.id, res?.status);
@@ -1244,6 +1339,7 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.instances.add(prev.id); return; }
         if (!res?.ok) {
@@ -1290,6 +1386,7 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.instances.add(curr.id); return; }
         if (!res?.ok) {
@@ -1329,6 +1426,13 @@ const syncToBackend = async () => {
           });
 
           if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (await isVersionPublishedRefusal(res)) {
+            // A default wall the server refused: the version was published before this tab knew.
+            // Counted as persisted, silently — the curator did not edit anything.
+            if (wall.isDefault) { nextWallsMap.set(wall.id, wall); publishedSilently = true; }
+            else versionPublished = true;
+            return;
+          }
           if (!res?.ok) {
             anyFailure = true;
             console.error('[AutoSync] Failed to create wall after retries:', wall.id, res?.status);
@@ -1368,6 +1472,7 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/walls/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.walls.add(prev.id); return; }
         if (!res?.ok) {
@@ -1401,6 +1506,7 @@ const syncToBackend = async () => {
           }),
         });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.walls.add(curr.id); return; }
         if (!res?.ok) {
@@ -1438,6 +1544,7 @@ const syncToBackend = async () => {
           });
 
           if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // stays "new"
           if (!res?.ok) {
             anyFailure = true;
             console.error('[AutoSync] Failed to create scale figure after retries:', figure.id, res?.status);
@@ -1468,6 +1575,7 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/scale-figures/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.figures.add(prev.id); return; }
         if (!res?.ok) {
@@ -1499,6 +1607,7 @@ const syncToBackend = async () => {
           }),
         });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.figures.add(curr.id); return; }
         if (!res?.ok) {
@@ -1517,6 +1626,14 @@ const syncToBackend = async () => {
     prevInstances = Array.from(nextInstancesMap.values());
     prevWalls = Array.from(nextWallsMap.values());
     prevScaleFigures = Array.from(nextFiguresMap.values());
+
+    if (versionPublished || publishedSilently) {
+      // Further edits are held back by the branch at the top of this function.
+      useEditorStore.getState().setActiveVersionPublished(true);
+      if (versionPublished) publishedEditGate.request(persistedUndoDepth);
+    } else if (!anyFailure) {
+      persistedUndoDepth = Math.min(batchStartUndoDepth, useEditorStore.getState().pastInstances.length);
+    }
 
     // Refused because someone else holds the object: back to the saved state, no retry.
     if (refusedNames.length > 0) {
@@ -1551,7 +1668,7 @@ const syncToBackend = async () => {
       syncStatus: newSyncStatus,
       // FUNC-04: only clear the dirty flag if this batch fully succeeded AND no further local
       // edit happened while it (including retries) was in flight.
-      ...(!anyFailure && localEditSeq === batchStartEditSeq ? { hasUnsavedChanges: false } : {}),
+      ...(!anyFailure && !versionPublished && localEditSeq === batchStartEditSeq ? { hasUnsavedChanges: false } : {}),
     });
 
     // Schedule an automatic follow-up sync so a failed batch recovers on its own instead of
@@ -1575,6 +1692,18 @@ useEditorStore.subscribe((state, prevState) => {
       state.localScaleFigures !== prevState.localScaleFigures) {
     scheduleSync();
   }
+  // Undoing below the persisted step: the persisted state is no longer on the undo stack.
+  if (state.pastInstances.length < persistedUndoDepth) persistedUndoDepth = state.pastInstances.length;
+});
+
+// The active version is no longer published (unpublished elsewhere): send what was held back.
+// Not on a version switch — that one resets the snapshots and loads the new version's data.
+useEditorStore.subscribe((state, prevState) => {
+  if (!prevState.activeVersionPublished || state.activeVersionPublished) return;
+  if (state.activeVersionId !== prevState.activeVersionId) return;
+  // Default walls counted as persisted while published are POSTed now (they have no database row).
+  if (prevWalls.some(isUnsavedDefaultWall)) prevWalls = prevWalls.filter(w => !isUnsavedDefaultWall(w));
+  scheduleSync();
 });
 
 // Reset prev snapshots when version changes — setLocalInstances/setLocalWalls/
@@ -1585,6 +1714,7 @@ useEditorStore.subscribe((state, prevState) => {
     prevInstances = [];
     prevWalls = [];
     prevScaleFigures = [];
+    persistedUndoDepth = 0;
     syncingInstanceTempIds.clear();
     syncingWallTempIds.clear();
     syncingFigureTempIds.clear();
