@@ -1,5 +1,6 @@
 import { useCallback, useState } from 'react';
 import { SizeFields } from './SizeFields';
+import { FramePreview } from './FramePreview';
 import type { SizeCm } from '@/lib/mobilePlanner/arSize';
 import { FrameControls } from '@/components/properties/FrameControls';
 import { useFrameState } from './useFrameState';
@@ -9,6 +10,8 @@ import type { PassepartoutValue } from '@/lib/passepartout';
 
 interface FrameSheetProps {
   title: string;
+  /** Picture for the live preview (thumbnail is enough). */
+  imageUrl: string;
   /** Starting size: the artwork's cm values or its pixel size, like the editor places it. */
   pictureCm: SizeCm;
   onStart: (frame: { frameStyle: FrameStyleId; passepartout: PassepartoutValue }, size: SizeCm) => void;
@@ -16,7 +19,7 @@ interface FrameSheetProps {
 }
 
 /** Asset list: pick frame and passepartout before AR (preset: the last combination picked anywhere). */
-export function FrameSheet({ title, pictureCm, onStart, onCancel }: FrameSheetProps) {
+export function FrameSheet({ title, imageUrl, pictureCm, onStart, onCancel }: FrameSheetProps) {
   const initial = useEditorStore.getState();
   // Nothing to write — the choice only lives in this sheet (and becomes the default for new drops).
   const commit = useCallback(() => {}, []);
@@ -31,6 +34,9 @@ export function FrameSheet({ title, pictureCm, onStart, onCancel }: FrameSheetPr
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 truncate font-semibold" style={{ fontFamily: '"Funnel Display", sans-serif' }}>{title}</div>
+        <div className="mb-4">
+          <FramePreview imageUrl={imageUrl} size={size} frameStyle={frame.frameStyle} passepartout={frame.passepartout} />
+        </div>
         <div className="mb-4">
           <SizeFields size={size} onChange={setSize} />
         </div>

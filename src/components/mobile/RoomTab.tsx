@@ -9,6 +9,7 @@ import { withFrameStyle, withPassepartout } from '@/lib/frameEdits';
 import { arArtworkInstance, canOfferAr } from '@/lib/mobilePlanner/arArtwork';
 import { scaleForSizeCm, type SizeCm } from '@/lib/mobilePlanner/arSize';
 import { SizeFields } from './SizeFields';
+import { FramePreview } from './FramePreview';
 import { pictureSize } from '@/lib/wallEditor/footprint';
 import { useHeldByOthers } from '@/hooks/use-held-claims';
 import { claimKey } from '@/lib/live/claims';
@@ -62,6 +63,15 @@ function SelectedArtwork({ inst }: { inst: ArtworkInstanceData }) {
         </div>
         <div className="text-xs text-zinc-500 mt-1">{sizeLabel}</div>
       </div>
+
+      {isPicture && (
+        <FramePreview
+          imageUrl={inst.artwork.asset.thumbnailPath || inst.artwork.asset.path}
+          size={{ w: size.w * 100, h: size.h * 100 }}
+          frameStyle={frame.frameStyle}
+          passepartout={frame.passepartout}
+        />
+      )}
 
       {isPicture && (
         <SizeFields size={{ w: size.w * 100, h: size.h * 100 }} onChange={changeSize} disabled={!!held} />

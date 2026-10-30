@@ -78,6 +78,7 @@ export function AssetsTab() {
       {sheetFor && (
         <FrameSheet
           title={titleOf(sheetFor)}
+          imageUrl={sheetFor.thumbnailPath || sheetFor.path}
           pictureCm={assetSizeCm(arSourceFromAsset(sheetFor).artwork)}
           onCancel={() => setSheetFor(null)}
           onStart={(frame, size) => {
