@@ -61,7 +61,7 @@ Out of scope: placing or moving artworks on the phone, uploads, the 2D wall edit
 
 ### Size
 
-An artwork needs its real size: `Artwork.width` / `height` (cm). Missing → the button is disabled with „Maße fehlen – am Rechner eintragen". Videos use the artwork size too (their still is used as picture).
+Changed 2026-10-30 after testing (most artworks have no cm values): a placed artwork goes at its hung size (as in the editor: cm values or pixels/dpi, times its scale); the Room tab has „Breite / Höhe (cm)" fields (aspect kept) that change the hung size like the properties panel; the asset sheet has the same fields, preset the same way, used for AR only. AR is offered for pictures only.
 
 ### Frame sheet (asset list only)
 
@@ -86,7 +86,7 @@ Bottom sheet with `FrameControls` in a **local** state (not written to any insta
 
 | Case | Behaviour |
 |---|---|
-| No real size | AR button disabled, „Maße fehlen – am Rechner eintragen" |
+| No cm values | Size from pixels/dpi like the editor; editable in „Breite / Höhe (cm)" |
 | Picture fails to load / export throws | Toast „AR-Modell konnte nicht erstellt werden." |
 | Device without AR | 3D preview only + hint |
 | Published version, frame changed | Part D's dialog (working copy / branch / discard) |

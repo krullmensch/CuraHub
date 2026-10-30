@@ -11,8 +11,8 @@ Beim ersten Besuch führt dich eine kurze Tour durch das Dashboard. Du kannst si
 Öffnest du den Editor auf einem Smartphone, erscheint statt des vollen Editors eine **mobile Ansicht**: oben der 3D-Raum (mit einem Finger drehen, mit zwei Fingern zoomen und verschieben), unten die Reiter **Raum** und **Assets**.
 
 - **Raum:** Tippe ein Kunstwerk an, um Titel und Maße zu sehen und Rahmen und Passepartout umzustellen. Änderungen werden wie am Rechner gespeichert; bei einer veröffentlichten Version fragt CuraHub zuerst nach einer Arbeitskopie.
-- **In AR an Wand:** zeigt das Werk mit Rahmen und Passepartout in echter Größe an einer echten Wand (iPhone über die AR-Ansicht von iOS, Android in Chrome). Dafür braucht das Werk Breite und Höhe in cm; fehlen sie, steht dort **Maße fehlen – am Rechner eintragen**.
-- **Assets:** Bilder und Videos des Projekts; über **In AR an Wand** wählst du vorher Rahmen und Passepartout und siehst das noch nicht gehängte Werk an der Wand.
+- **In AR an Wand:** zeigt das Werk mit Rahmen und Passepartout in der Größe, in der es im Editor hängt, an einer echten Wand (iPhone über die AR-Ansicht von iOS, Android in Chrome). **Breite** und **Höhe** (cm) lassen sich im Reiter Raum ändern; das Seitenverhältnis bleibt erhalten und die neue Größe wird wie am Rechner gespeichert.
+- **Assets:** Bilder und Videos des Projekts; über **In AR an Wand** wählst du vorher Größe, Rahmen und Passepartout und siehst das noch nicht gehängte Werk an der Wand.
 
 Hängen, verschieben, hochladen und der 2D-Wandeditor gehen nur am Rechner. **Vollen Editor öffnen** (unten im Blatt) schaltet auf dem Gerät dauerhaft zum vollen Editor, **Mobile Ansicht** in der Kopfzeile wieder zurück.
 

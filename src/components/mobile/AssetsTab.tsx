@@ -4,7 +4,8 @@ import { useEditorStore, type ArtworkInstanceData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { toast } from '@/hooks/use-toast';
 import { assetSearch, arSourceFromAsset, type PlannerAsset } from '@/lib/mobilePlanner/assetSearch';
-import { arArtworkInstance, arDisabledReason } from '@/lib/mobilePlanner/arArtwork';
+import { arArtworkInstance } from '@/lib/mobilePlanner/arArtwork';
+import { assetSizeCm } from '@/lib/mobilePlanner/arSize';
 import { FrameSheet } from './FrameSheet';
 
 const ArWallSheet = lazy(() => import('./ArWallSheet'));
@@ -16,7 +17,8 @@ interface ArTarget {
 }
 
 const titleOf = (asset: PlannerAsset) => asset.artwork?.title || asset.filename;
-const sizeLabelOf = (asset: PlannerAsset) => `${asset.artwork?.width ?? '–'} × ${asset.artwork?.height ?? '–'} cm`;
+const cmText = (v: number) => (Math.round(v * 10) / 10).toLocaleString('de-DE');
+const sizeLabel = (s: { w: number; h: number }) => `${cmText(s.w)} × ${cmText(s.h)} cm`;
 
 /** The project's pictures and videos, each with „In AR an Wand" (no upload, no placing on the phone). */
 export function AssetsTab() {
@@ -54,7 +56,6 @@ export function AssetsTab() {
 
       <div className="grid grid-cols-2 gap-3">
         {shown.map((asset) => {
-          const reason = arDisabledReason(asset.artwork ?? {});
           return (
             <div key={asset.id} className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
               <img src={asset.thumbnailPath || asset.path} alt="" loading="lazy" className="aspect-square w-full object-cover" />
@@ -62,14 +63,12 @@ export function AssetsTab() {
                 <div className="truncate text-xs text-zinc-200">{titleOf(asset)}</div>
                 <button
                   type="button"
-                  disabled={!!reason}
                   onClick={() => setSheetFor(asset)}
                   className="flex w-full items-center justify-center gap-1.5 rounded-md bg-blue-600 py-2 text-xs font-semibold text-white disabled:opacity-40"
                 >
                   <Smartphone size={14} />
                   In AR an Wand
                 </button>
-                {reason && <p className="text-[10px] leading-tight text-zinc-500">{reason}</p>}
               </div>
             </div>
           );
@@ -79,13 +78,13 @@ export function AssetsTab() {
       {sheetFor && (
         <FrameSheet
           title={titleOf(sheetFor)}
-          pictureCm={{ w: sheetFor.artwork?.width ?? 0, h: sheetFor.artwork?.height ?? 0 }}
+          pictureCm={assetSizeCm(arSourceFromAsset(sheetFor).artwork)}
           onCancel={() => setSheetFor(null)}
-          onStart={(frame) => {
+          onStart={(frame, size) => {
             setArTarget({
-              instance: arArtworkInstance(arSourceFromAsset(sheetFor), frame),
+              instance: arArtworkInstance(arSourceFromAsset(sheetFor), frame, size),
               title: titleOf(sheetFor),
-              sizeLabel: sizeLabelOf(sheetFor),
+              sizeLabel: sizeLabel(size),
             });
             setSheetFor(null);
           }}

@@ -1,14 +1,7 @@
 import type { FrameStyleId } from '@/lib/frameStyles';
 import type { PassepartoutValue } from '@/lib/passepartout';
 import type { ArtworkInstanceData } from '@/store/editorStore';
-
-export const AR_MISSING_SIZE = 'Maße fehlen – am Rechner eintragen';
-
-/** Why an artwork can't go to the wall in AR (no real size in cm), or null. */
-export function arDisabledReason(artwork: { width?: number | null; height?: number | null }): string | null {
-  const ok = (v: number | null | undefined) => typeof v === 'number' && v > 0;
-  return ok(artwork.width) && ok(artwork.height) ? null : AR_MISSING_SIZE;
-}
+import { scaleForSizeCm, type SizeCm } from './arSize';
 
 /** Pictures go to the wall; videos (no frame, still not at real size), models, splats and books don't. */
 export function canOfferAr(assetType: string | undefined): boolean {
@@ -24,15 +17,17 @@ export interface ArArtworkSource {
 
 /**
  * The one artwork the AR model is built from: at the origin, facing +Z, with the chosen frame and
- * passepartout. A placed artwork keeps its hung size (its scale), one from the asset list goes at
- * the real size from its cm values. Never part of the editor's instance list.
+ * passepartout. A placed artwork keeps its hung size (its scale, exactly as in the editor); one from
+ * the asset list goes at `sizeCm` (picked in the sheet) or at scale 1. Never part of the editor's
+ * instance list.
  */
 export function arArtworkInstance(
   base: ArtworkInstanceData | ArArtworkSource,
   frame: { frameStyle: FrameStyleId; passepartout: PassepartoutValue },
+  sizeCm?: SizeCm,
 ): ArtworkInstanceData {
   const placed = 'scale_x' in base ? base : null;
-  return {
+  const inst: ArtworkInstanceData = {
     id: -1,
     artworkId: base.artworkId,
     assetId: base.assetId,
@@ -52,4 +47,5 @@ export function arArtworkInstance(
     scale_y: placed ? Math.abs(placed.scale_y) || 1 : 1,
     scale_z: 1,
   };
+  return sizeCm ? { ...inst, ...scaleForSizeCm(inst, sizeCm) } : inst;
 }

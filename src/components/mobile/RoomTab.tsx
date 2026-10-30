@@ -6,7 +6,9 @@ import { useFrameState } from './useFrameState';
 import { frameStyleOf, type FrameStyleId } from '@/lib/frameStyles';
 import { passepartoutOf, type PassepartoutValue } from '@/lib/passepartout';
 import { withFrameStyle, withPassepartout } from '@/lib/frameEdits';
-import { arArtworkInstance, arDisabledReason, canOfferAr } from '@/lib/mobilePlanner/arArtwork';
+import { arArtworkInstance, canOfferAr } from '@/lib/mobilePlanner/arArtwork';
+import { scaleForSizeCm, type SizeCm } from '@/lib/mobilePlanner/arSize';
+import { SizeFields } from './SizeFields';
 import { pictureSize } from '@/lib/wallEditor/footprint';
 import { useHeldByOthers } from '@/hooks/use-held-claims';
 import { claimKey } from '@/lib/live/claims';
@@ -41,9 +43,15 @@ function SelectedArtwork({ inst }: { inst: ArtworkInstanceData }) {
   const size = pictureSize(inst);
   // Frames and AR are for pictures only (the properties panel also hides frames for videos).
   const isPicture = canOfferAr(inst.artwork.asset.type ?? 'image');
-  const arReason = arDisabledReason(inst.artwork);
   const title = displayArtworkTitle(inst.artwork.title ?? '') || inst.artwork.asset.filename || 'Kunstwerk';
   const sizeLabel = `${cm(size.w)} × ${cm(size.h)} cm`;
+
+  // Same as the properties panel's „Size (cm)": the hung size is the instance scale.
+  const changeSize = (next: SizeCm) => {
+    const store = useEditorStore.getState();
+    const scale = scaleForSizeCm(inst, next);
+    store.commitLocalChange(store.localInstances.map((i) => (i.id === inst.id ? { ...i, ...scale } : i)));
+  };
 
   return (
     <div className="space-y-4">
@@ -54,6 +62,10 @@ function SelectedArtwork({ inst }: { inst: ArtworkInstanceData }) {
         </div>
         <div className="text-xs text-zinc-500 mt-1">{sizeLabel}</div>
       </div>
+
+      {isPicture && (
+        <SizeFields size={{ w: size.w * 100, h: size.h * 100 }} onChange={changeSize} disabled={!!held} />
+      )}
 
       {isPicture && (
         held ? (
@@ -75,14 +87,12 @@ function SelectedArtwork({ inst }: { inst: ArtworkInstanceData }) {
         <div>
           <button
             type="button"
-            disabled={!!arReason}
             onClick={() => setArInstance(arArtworkInstance(inst, { frameStyle: frame.frameStyle, passepartout: frame.passepartout }))}
             className="w-full flex items-center justify-center gap-2 rounded-lg bg-blue-600 py-3 text-sm font-semibold text-white disabled:opacity-40"
           >
             <Smartphone size={16} />
             In AR an Wand
           </button>
-          {arReason && <p className="mt-1 text-xs text-zinc-500">{arReason}</p>}
         </div>
       )}
 

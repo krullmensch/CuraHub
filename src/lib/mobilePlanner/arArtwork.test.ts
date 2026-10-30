@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { arArtworkInstance, arDisabledReason, canOfferAr } from './arArtwork';
+import { arArtworkInstance, canOfferAr } from './arArtwork';
 import { pictureSize } from '@/lib/wallEditor/footprint';
 import type { ArtworkInstanceData } from '@/store/editorStore';
 
@@ -10,15 +10,6 @@ const placed: ArtworkInstanceData = {
     position_x: 3, position_y: 1.45, position_z: -2, rotation_x: 0, rotation_y: 1.2, rotation_z: 0,
     scale_x: 1.5, scale_y: 1.5, scale_z: 1,
 };
-
-describe('arDisabledReason', () => {
-    it('missing size disables AR', () => {
-        expect(arDisabledReason({ width: null, height: 50 })).toBe('Maße fehlen – am Rechner eintragen');
-        expect(arDisabledReason({ width: 0, height: 50 })).toBe('Maße fehlen – am Rechner eintragen');
-        expect(arDisabledReason({})).toBe('Maße fehlen – am Rechner eintragen');
-    });
-    it('real size allows AR', () => expect(arDisabledReason({ width: 40, height: 50 })).toBeNull());
-});
 
 describe('canOfferAr', () => {
     it('pictures only (videos have no frame and no real-size still)', () => {
@@ -50,6 +41,14 @@ describe('arArtworkInstance', () => {
         const size = pictureSize(inst);
         expect(size.w).toBeCloseTo(0.4);
         expect(size.h).toBeCloseTo(0.5);
+    });
+
+    it('an asset without cm values goes at the size picked in the sheet', () => {
+        const noCm = { ...artwork, width: null, height: null };
+        const inst = arArtworkInstance({ artworkId: 4, assetId: 9, artwork: noCm }, frame, { w: 60, h: 48 });
+        const size = pictureSize(inst);
+        expect(size.w).toBeCloseTo(0.6);
+        expect(size.h).toBeCloseTo(0.48);
     });
 
     it('does not change the placed instance', () => {

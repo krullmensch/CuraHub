@@ -1,4 +1,6 @@
-import { useCallback } from 'react';
+import { useCallback, useState } from 'react';
+import { SizeFields } from './SizeFields';
+import type { SizeCm } from '@/lib/mobilePlanner/arSize';
 import { FrameControls } from '@/components/properties/FrameControls';
 import { useFrameState } from './useFrameState';
 import { useEditorStore } from '@/store/editorStore';
@@ -7,8 +9,9 @@ import type { PassepartoutValue } from '@/lib/passepartout';
 
 interface FrameSheetProps {
   title: string;
-  pictureCm: { w: number; h: number };
-  onStart: (frame: { frameStyle: FrameStyleId; passepartout: PassepartoutValue }) => void;
+  /** Starting size: the artwork's cm values or its pixel size, like the editor places it. */
+  pictureCm: SizeCm;
+  onStart: (frame: { frameStyle: FrameStyleId; passepartout: PassepartoutValue }, size: SizeCm) => void;
   onCancel: () => void;
 }
 
@@ -17,6 +20,7 @@ export function FrameSheet({ title, pictureCm, onStart, onCancel }: FrameSheetPr
   const initial = useEditorStore.getState();
   // Nothing to write — the choice only lives in this sheet (and becomes the default for new drops).
   const commit = useCallback(() => {}, []);
+  const [size, setSize] = useState(pictureCm);
   const frame = useFrameState({ frameStyle: initial.defaultFrameStyle, passepartout: initial.defaultPassepartout }, commit);
 
   return (
@@ -27,6 +31,9 @@ export function FrameSheet({ title, pictureCm, onStart, onCancel }: FrameSheetPr
         onClick={(e) => e.stopPropagation()}
       >
         <div className="mb-3 truncate font-semibold" style={{ fontFamily: '"Funnel Display", sans-serif' }}>{title}</div>
+        <div className="mb-4">
+          <SizeFields size={size} onChange={setSize} />
+        </div>
         <FrameControls
           frameStyle={frame.frameStyle}
           onFrameToggle={frame.onFrameToggle}
@@ -34,13 +41,13 @@ export function FrameSheet({ title, pictureCm, onStart, onCancel }: FrameSheetPr
           passepartout={frame.passepartout}
           onPassepartoutToggle={frame.onPassepartoutToggle}
           onPassepartoutChange={frame.onPassepartoutChange}
-          pictureCm={pictureCm}
+          pictureCm={size}
         />
         <div className="mt-4 flex gap-2">
           <button type="button" onClick={onCancel} className="flex-1 rounded-lg border border-zinc-700 py-3 text-sm">Abbrechen</button>
           <button
             type="button"
-            onClick={() => onStart({ frameStyle: frame.frameStyle, passepartout: frame.passepartout })}
+            onClick={() => onStart({ frameStyle: frame.frameStyle, passepartout: frame.passepartout }, size)}
             className="flex-1 rounded-lg bg-blue-600 py-3 text-sm font-semibold"
           >
             In AR an Wand
