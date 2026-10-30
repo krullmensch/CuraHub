@@ -1,4 +1,4 @@
-import type * as THREE from 'three'
+import * as THREE from 'three'
 import { GLTFExporter } from 'three/examples/jsm/exporters/GLTFExporter.js'
 import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js'
 
@@ -36,8 +36,22 @@ export function usdzExportOptions(placement: 'floor' | 'wall') {
   }
 }
 
+/**
+ * Quick Look's vertical plane anchor: +Y points out of the wall and -Z up along it. Our artwork faces
+ * +Z with its top at +Y, so it is turned -90° about X (without this it stuck out of the wall like a
+ * shelf, back up).
+ */
+export function orientForWallAnchor(root: THREE.Object3D): THREE.Group {
+  const group = new THREE.Group()
+  group.rotation.x = -Math.PI / 2
+  group.add(root)
+  return group
+}
+
 /** USDZ for iOS Quick Look, built on the device (the mobile planner's single artwork). */
 export async function exportUsdz(root: THREE.Group, placement: 'floor' | 'wall'): Promise<Blob> {
-  const data = await new USDZExporter().parseAsync(root, usdzExportOptions(placement))
+  const target = placement === 'wall' ? orientForWallAnchor(root) : root
+  target.updateMatrixWorld(true)
+  const data = await new USDZExporter().parseAsync(target, usdzExportOptions(placement))
   return new Blob([data as BlobPart], { type: 'model/vnd.usdz+zip' })
 }
