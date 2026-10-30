@@ -26,6 +26,7 @@ import { isWalking, setTouchWalking, subscribeWalking } from '../lib/touch/walki
 import { touchInput } from '../lib/touch/touchInput';
 import { TouchControls } from '../components/touch/TouchControls';
 import { TouchTapHandler } from '../components/touch/TouchTapHandler';
+import { TouchFov } from '../components/touch/TouchFov';
 import { viewerFrameloop } from '../lib/touch/viewerFrameloop';
 import { useEditorStore } from '../store/editorStore';
 import { Grid } from 'ldrs/react';
@@ -333,6 +334,7 @@ export const ViewerPage = () => {
                                 suspends until the room collider exists, so the player never spawns early;
                                 SceneReadySignal fires after the first frame with the player in place. */}
                             {touch && <TouchTapHandler instances={data.instances} />}
+                            {touch && <TouchFov />}
                             <Suspense fallback={null}>
                                 <PhysicsWorld mode="viewer" viewerWalls={data.walls} viewerInstances={data.instances}>
                                     <SceneReadySignal onReady={handleSceneReady} />
