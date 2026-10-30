@@ -13,6 +13,7 @@ const AssetLibraryPage = lazy(() => import('./pages/AssetLibraryPage').then((m) 
 const ExhibitionsPage = lazy(() => import('./pages/ExhibitionsPage').then((m) => ({ default: m.ExhibitionsPage })));
 const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
 const KeinZugriffPage = lazy(() => import('./pages/KeinZugriffPage'));
+const ArExportPage = lazy(() => import('./pages/ArExportPage'));
 const SetupPage = lazy(() => import('./pages/SetupPage').then((m) => ({ default: m.SetupPage })));
 
 const RouteFallback = () => (
@@ -35,6 +36,8 @@ function App() {
           <Route path="/exhibition" element={<ExhibitionsPage />} />
           {/* Public Viewer */}
           <Route path="/exhibition/:slug" element={<ViewerPage />} />
+          {/* AR export: opened by the server's headless export job (token in the fragment) */}
+          <Route path="/ar-export/:versionId" element={<ArExportPage />} />
 
           {/* Protected Routes — curator role required */}
           <Route element={<ProtectedRoute requiredRole="curator" />}>

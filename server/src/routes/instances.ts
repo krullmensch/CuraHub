@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { ensureNotClaimed } from '../live/claimGuard';
+import { ensureVersionWritable } from '../lib/versionWritable';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
@@ -48,6 +49,7 @@ instancesRouter.post('/', authenticate, idempotency, async (req: Request, res) =
         if (!version) {
             return res.status(404).json({ error: 'Version not found or access denied' });
         }
+        if (!ensureVersionWritable(res, version)) return;
 
         // 2. Resolve Artwork ID
         let artworkId = data.artworkId;
@@ -198,10 +200,12 @@ instancesRouter.patch('/:id', authenticate, async (req: Request, res) => {
             where: {
                 id: instanceId,
                 version: { exhibition: exhibitionAccessFilter(userId, isAdmin) }
-            }
+            },
+            include: { version: { select: { is_published: true } } }
         });
 
         if (!existing) return res.status(404).json({ error: 'Instance not found or access denied' });
+        if (!ensureVersionWritable(res, existing.version)) return;
         if (!ensureNotClaimed(req, res, 'instance', instanceId)) return;
 
         // Build update payload
@@ -269,10 +273,12 @@ instancesRouter.delete('/:id', authenticate, async (req: Request, res) => {
             where: {
                 id: instanceId,
                 version: { exhibition: exhibitionAccessFilter(userId, isAdmin) }
-            }
+            },
+            include: { version: { select: { is_published: true } } }
         });
 
         if (!existing) return res.status(404).json({ error: 'Instance not found or access denied' });
+        if (!ensureVersionWritable(res, existing.version)) return;
         if (!ensureNotClaimed(req, res, 'instance', instanceId)) return;
 
         await prisma.artworkInstance.delete({ where: { id: instanceId } });

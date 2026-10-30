@@ -13,6 +13,7 @@ import { emitWallEvent } from '../lib/wallEvents';
 import { heldBy, reportHeld } from '../lib/live/claimGate';
 import { claimKey, keepHeldInstances, restoreRefused, splitClaimedInstances, wallBlocker } from '../lib/live/claims';
 import { liveSessionHeaders } from '../lib/live/session';
+import { publishedEditGate } from '../lib/publishedEditGate';
 import {
   defaultWallReplacedBy, deleteInHistory, deleteRemote, figureSyncedEqual, instanceSyncedEqual,
   upsertInHistory, upsertRemote, wallSyncedEqual, withoutDeleted,
@@ -234,6 +235,8 @@ interface EditorState {
   isPlacing: boolean;
   pendingArtwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string } | null;
   isDialogOpen: boolean;
+  /** Phone planning view: look, select and change frames only — no gizmos, keys, wall editor, figures. */
+  mobilePlanner: boolean;
 
   // Camera State
   plannerViewMode: PlannerViewMode;
@@ -280,6 +283,8 @@ interface EditorState {
   activeExhibitionId: number | null;
   activeExhibitionSlug: string | null;
   activeVersionId: number | null;
+  /** The active version is published (read-only on the server). Set by lib/versions/versionStatus. */
+  activeVersionPublished: boolean;
 
   // Phase 6: Local State & Undo/Redo
   localInstances: ArtworkInstanceData[];
@@ -314,6 +319,7 @@ interface EditorState {
 
   // Actions
   setDialogOpen: (isOpen: boolean) => void;
+  setMobilePlanner: (on: boolean) => void;
   startPlacement: (artwork: { id: number; type: 'asset' | 'artwork'; width: number; height: number; url: string }) => void;
   setDragging: (isDragging: boolean, asset: { id: number; type: 'asset' | 'artwork'; assetType: AssetType; width: number; height: number; dpi: number; url: string; videoUrl?: string; artworkWidth?: number; artworkHeight?: number; book?: BookDragInfo } | null) => void;
   setDragPosition: (pos: { x: number; y: number } | null) => void;
@@ -353,12 +359,20 @@ interface EditorState {
   // Phase 5 actions
   setActiveProject: (id: number | null, name: string | null, slug: string | null, exhibitionId: number | null, versionId: number | null, exhibitionSlug?: string | null) => void;
   setActiveVersion: (id: number | null) => void;
+  setActiveVersionPublished: (published: boolean) => void;
 
   // Phase 6 Actions
   setLocalInstances: (instances: ArtworkInstanceData[]) => void;
   commitLocalChange: (newInstances: ArtworkInstanceData[]) => void;
   undo: () => void;
   redo: () => void;
+  /**
+   * Drops the changes auto-sync held back (published version): the lists go back to what is
+   * believed persisted and the undo steps after `undoDepth` are dropped. With `switchTo`, the
+   * same update also switches to that version (no undo history), so auto-sync never sees the
+   * discarded lists without the switch.
+   */
+  discardUnsyncedChanges: (undoDepth: number, switchTo?: number) => void;
   markSaved: () => void;
   setSyncStatus: (status: 'idle' | 'saving' | 'error') => void;
 
@@ -400,6 +414,67 @@ let localEditSeq = 0;
 
 export const clearInstanceSelection = { selectedInstanceId: null, selectedInstanceIds: [] as number[] };
 
+/** What every switch of the active version resets (setActiveVersion, discard + switch). */
+function versionSwitchFields(state: { activeVersionId: number | null }, id: number | null) {
+  return {
+    activeVersionId: id,
+    ...(id !== state.activeVersionId ? { activeVersionPublished: false } : {}),
+    ...clearInstanceSelection,
+    selectedFigureId: null,
+    wallEditor: null,
+    wallEditorSelection: [] as number[],
+  };
+}
+
+/**
+ * The version each list was last loaded for (setLocalInstances / setLocalWalls /
+ * setLocalScaleFigures, an empty list or the default walls included). Auto-sync only diffs once
+ * all three belong to the active version: until then the lists may still hold the previous
+ * version's rows, which an empty snapshot would POST into the new version as duplicates.
+ * Cleared on every version switch.
+ */
+const listsLoadedFor: { instances: number | null; walls: number | null; figures: number | null } = {
+  instances: null, walls: null, figures: null,
+};
+
+export type LoadedList = keyof typeof listsLoadedFor;
+
+/** Lists whose fetch failed for `loadFailedVersion`: auto-sync stays gated, shown as an error. */
+const loadFailedLists = new Set<LoadedList>();
+let loadFailedVersion: number | null = null;
+/** The version the "could not be loaded" toast was shown for (once per version). */
+let loadFailToastVersion: number | null = null;
+
+export const LIST_LOAD_FAILED_MESSAGE =
+  'Daten dieser Version konnten nicht geladen werden – Änderungen werden nicht gespeichert. Bitte neu laden.';
+
+/**
+ * A loader (PlacedArtworks, ModularWallsController, ScaleFigures) could not fetch its list for
+ * `versionId`. Auto-sync stays gated (it never diffs before all three lists are loaded), so the
+ * curator is told once per version, and the save indicator shows an error while edits wait.
+ */
+export function markListLoadFailed(kind: LoadedList, versionId: number): void {
+  const state = useEditorStore.getState();
+  if (versionId !== state.activeVersionId) return;
+  if (loadFailedVersion !== versionId) { loadFailedLists.clear(); loadFailedVersion = versionId; }
+  loadFailedLists.add(kind);
+  if (loadFailToastVersion !== versionId) {
+    loadFailToastVersion = versionId;
+    toast.error(LIST_LOAD_FAILED_MESSAGE);
+  }
+  if (state.hasUnsavedChanges) useEditorStore.setState({ syncStatus: 'error' });
+}
+
+/** A list loaded after all (setLocal*): its failure no longer counts. */
+function clearListLoadFailed(kind: LoadedList, versionId: number | null): void {
+  if (loadFailedVersion === versionId) loadFailedLists.delete(kind);
+}
+
+/** True while a list of `versionId` failed to load and was not loaded since. */
+function listLoadFailed(versionId: number): boolean {
+  return loadFailedVersion === versionId && loadFailedLists.size > 0;
+}
+
 /** Artwork ids without those another tab holds (live claims); tells the user about the rest. */
 function claimableInstanceIds(ids: number[]): number[] {
   const { allowed, holders } = splitClaimedInstances(ids, heldBy);
@@ -436,6 +511,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   isPlacing: false,
   pendingArtwork: null,
   isDialogOpen: false,
+  mobilePlanner: false,
 
   // Initial Camera State
   plannerViewMode: 'perspective',
@@ -485,6 +561,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   activeExhibitionId: null,
   activeExhibitionSlug: null,
   activeVersionId: null,
+  activeVersionPublished: false,
 
   // Phase 6 defaults
   localInstances: [],
@@ -511,6 +588,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   wallEditorSelection: [],
 
   setDialogOpen: (isOpen) => set({ isDialogOpen: isOpen }),
+  setMobilePlanner: (on) => set({ mobilePlanner: on }),
   startPlacement: (artwork) => set({ isPlacing: true, pendingArtwork: artwork }),
   cancelPlacement: () => set({ isPlacing: false, pendingArtwork: null }),
   completePlacement: () => set({ isPlacing: false, pendingArtwork: null }),
@@ -698,16 +776,21 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     activeExhibitionId: exhibitionId,
     activeExhibitionSlug: exhibitionSlug,
     activeVersionId: versionId,
+    ...(versionId !== state.activeVersionId ? { activeVersionPublished: false } : {}),
     ...clearInstanceSelection, // Clear selection on project switch
     // The 2D wall editor only survives a re-activation of the same version.
     ...(versionId !== state.activeVersionId ? { wallEditor: null, wallEditorSelection: [] } : {}),
   })),
-  setActiveVersion: (id) => set({ activeVersionId: id, ...clearInstanceSelection, selectedFigureId: null, wallEditor: null, wallEditorSelection: [] }),
+  setActiveVersionPublished: (published) => set({ activeVersionPublished: published }),
+  setActiveVersion: (id) => set((state) => versionSwitchFields(state, id)),
 
   // Phase 6 actions
   setLocalInstances: (instances) => {
     // Snapshot prevInstances so auto-sync doesn't re-POST API-loaded data
     prevInstances = [...instances];
+    listsLoadedFor.instances = get().activeVersionId;
+    clearListLoadFailed('instances', listsLoadedFor.instances);
+    persistedUndoDepth = 0;
     return set({
       localInstances: instances,
       pastInstances: [],
@@ -754,6 +837,46 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       ...clearInstanceSelection,
     };
   }),
+  discardUnsyncedChanges: (undoDepth, switchTo) => {
+    persistedUndoDepth = Math.min(persistedUndoDepth, undoDepth);
+    set((state) => {
+      if (switchTo !== undefined && switchTo !== state.activeVersionId) {
+        // The new version's data replaces the lists once it is loaded (setLocal*).
+        return {
+          ...versionSwitchFields(state, switchTo),
+          localInstances: [...prevInstances],
+          localWalls: [...prevWalls],
+          localScaleFigures: [...prevScaleFigures],
+          pastInstances: [],
+          futureInstances: [],
+          hasUnsavedChanges: false,
+          selectedWallId: null,
+        };
+      }
+      const instances = [...prevInstances];
+      const walls = [...prevWalls];
+      const figures = [...prevScaleFigures];
+      const instanceIds = new Set(instances.map(i => i.id));
+      const wallIds = new Set(walls.map(w => w.id));
+      const selectedInstanceIds = state.selectedInstanceIds.filter(id => instanceIds.has(id));
+      return {
+        localInstances: instances,
+        localWalls: walls,
+        localScaleFigures: figures,
+        pastInstances: state.pastInstances.slice(0, Math.max(0, undoDepth)),
+        futureInstances: [],
+        hasUnsavedChanges: false,
+        selectedInstanceIds,
+        selectedInstanceId: state.selectedInstanceId !== null && instanceIds.has(state.selectedInstanceId)
+          ? state.selectedInstanceId
+          : selectedInstanceIds[selectedInstanceIds.length - 1] ?? null,
+        wallEditorSelection: state.wallEditorSelection.filter(id => instanceIds.has(id)),
+        selectedWallId: state.selectedWallId !== null && wallIds.has(state.selectedWallId) ? state.selectedWallId : null,
+        selectedFigureId: state.selectedFigureId !== null && figures.some(f => f.id === state.selectedFigureId) ? state.selectedFigureId : null,
+        ...(state.wallEditor?.kind === 'wall' && !wallIds.has(state.wallEditor.wallId) ? { wallEditor: null, wallEditorSelection: [] } : {}),
+      };
+    });
+  },
   markSaved: () => set({
     hasUnsavedChanges: false
   }),
@@ -764,6 +887,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     // Only snapshot walls with real (positive) IDs so auto-sync doesn't re-POST API data.
     // Temp negative IDs (defaults) are excluded so auto-sync detects and POSTs them.
     prevWalls = walls.filter(w => w.id > 0);
+    listsLoadedFor.walls = get().activeVersionId;
+    clearListLoadFailed('walls', listsLoadedFor.walls);
     return set({ localWalls: walls });
   },
   addWall: (wall) => {
@@ -810,6 +935,8 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   setLocalScaleFigures: (figures) => {
     // Only real ids count as persisted; temp ids stay "new" so auto-sync POSTs them.
     prevScaleFigures = figures.filter(f => f.id > 0);
+    listsLoadedFor.figures = get().activeVersionId;
+    clearListLoadFailed('figures', listsLoadedFor.figures);
     return set({ localScaleFigures: figures, selectedFigureId: null });
   },
   addScaleFigure: (figure) => {
@@ -1041,6 +1168,46 @@ let prevInstances: ArtworkInstanceData[] = [];
 let prevWalls: ModularWallData[] = [];
 let prevScaleFigures: ScaleFigureData[] = [];
 
+// ── Published versions (read-only on the server) ────────────────────────────────────────────
+// While `activeVersionPublished` is set, a batch sends nothing: local lists keep the change, the
+// prev* snapshots stay as they are (invariant #3 still holds — nothing new was persisted), and
+// `publishedEditGate.request()` opens the dialog once. A 409 `version_published` (published
+// while this tab edited) is bookkept like a 423 — the row stays at its persisted value in
+// prev* — but nothing is reverted: the dialog decides (`discardUnsyncedChanges`).
+//
+// Undo depth at which the local lists last matched what is persisted: the undo steps after it
+// are the ones auto-sync still holds. Advanced by every batch that ends without a failure.
+let persistedUndoDepth = 0;
+
+/** Default walls of a version without walls (ModularWallsController): temp id + isDefault. */
+const isUnsavedDefaultWall = (w: ModularWallData) => w.id < 0 && w.isDefault === true;
+
+/** True when a batch would send something: the diff below, without its requests. */
+function hasUnsyncedChanges(instances: ArtworkInstanceData[], walls: ModularWallData[], figures: ScaleFigureData[]): boolean {
+  const differs = <T extends { id: number }>(
+    persisted: T[], local: T[], equal: (a: T, b: T) => boolean, isNew: (row: T) => boolean,
+  ) => {
+    const before = new Map(persisted.map(row => [row.id, row]));
+    const now = new Set(local.map(row => row.id));
+    return local.some(row => { const p = before.get(row.id); return p ? !equal(row, p) : isNew(row); })
+      || persisted.some(row => row.id > 0 && !now.has(row.id));
+  };
+  return differs(prevInstances, instances, instanceSyncedEqual, i => Boolean(i.artworkId ?? i.artwork?.id ?? i.assetId))
+    || differs(prevWalls, walls, wallSyncedEqual, w => w.id < 0)
+    || differs(prevScaleFigures, figures, figureSyncedEqual, f => f.id < 0);
+}
+
+/** 409 because the version is published (server: `version_published`). Reads the body only then. */
+async function isVersionPublishedRefusal(res: Response | null): Promise<boolean> {
+  if (res?.status !== 409) return false;
+  try {
+    const body: unknown = await res.json();
+    return (body as { code?: unknown } | null)?.code === 'version_published';
+  } catch {
+    return false;
+  }
+}
+
 // Guards against duplicate POSTs: track temp IDs currently being synced
 const syncingInstanceTempIds = new Set<number>();
 const syncingWallTempIds = new Set<number>();
@@ -1121,9 +1288,18 @@ function remapInstanceRefs(oldId: number, newId: number) {
   if (bboxSize) { modelBBoxMap.set(newId, bboxSize); modelBBoxMap.delete(oldId); }
 }
 
-const syncToBackend = async () => {
+/** The batch in flight, so a flush can wait for it (flushAutoSync). */
+let currentBatch: Promise<void> | null = null;
+
+const syncToBackend = (): Promise<void> => {
   // Prevent concurrent sync runs — reschedule if already syncing (see invariant #1 above).
-  if (isSyncing) { scheduleSync(); return; }
+  if (isSyncing) { scheduleSync(); return currentBatch ?? Promise.resolve(); }
+  const batch = runSyncBatch().finally(() => { if (currentBatch === batch) currentBatch = null; });
+  currentBatch = batch;
+  return batch;
+};
+
+const runSyncBatch = async () => {
   isSyncing = true;
 
   // Snapshot the "dirty counter" before doing any work — used at the end to tell whether a
@@ -1152,6 +1328,33 @@ const syncToBackend = async () => {
       return;
     }
 
+    // Not every list of the active version is loaded yet (version switch): the lists may still
+    // hold the previous version's rows. Loading them (setLocal*) schedules the next batch.
+    if (!listsLoadedForVersion(activeVersionId)) {
+      // A failed load keeps it gated for good: edits waiting then show as an error, not idle.
+      const failed = listLoadFailed(activeVersionId) && state.hasUnsavedChanges;
+      useEditorStore.setState({ syncStatus: failed ? 'error' : 'idle' });
+      lastSyncStatus = failed ? 'error' : 'idle';
+      cancelAutoRetry();
+      return;
+    }
+
+    if (state.activeVersionPublished) {
+      // Untouched default walls of a published version without walls are not an edit: count
+      // them as persisted, so they are neither POSTed nor ask (the server would refuse them).
+      const known = new Set(prevWalls.map(w => w.id));
+      const defaults = localWalls.filter(w => isUnsavedDefaultWall(w) && !known.has(w.id));
+      if (defaults.length > 0) prevWalls = [...prevWalls, ...defaults];
+      if (hasUnsyncedChanges(localInstances, localWalls, localScaleFigures)) {
+        publishedEditGate.request(persistedUndoDepth);
+      }
+      useEditorStore.setState({ syncStatus: 'idle' });
+      lastSyncStatus = 'idle';
+      cancelAutoRetry();
+      return;
+    }
+    const batchStartUndoDepth = state.pastInstances.length;
+
     const currInstances = localInstances;
     const currWalls = localWalls;
     const currFigures = localScaleFigures;
@@ -1160,6 +1363,10 @@ const syncToBackend = async () => {
     // Changes the server refused because another tab holds the object (423) — undone below.
     const refusedNames: string[] = [];
     const refused = { instances: new Set<number>(), walls: new Set<number>(), figures: new Set<number>() };
+    // Refused with 409 version_published: kept local, nothing reverted (see above).
+    let versionPublished = false;
+    // Only default walls were refused: the version is published, but nobody edited anything.
+    let publishedSilently = false;
 
     // ── Instance sync ──
     const prevMap = new Map(prevInstances.map(i => [i.id, i]));
@@ -1200,6 +1407,7 @@ const syncToBackend = async () => {
           });
 
           if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // stays "new"
           if (!res?.ok) {
             anyFailure = true;
             console.error('[AutoSync] Failed to create instance after retries:', inst.id, res?.status);
@@ -1207,9 +1415,9 @@ const syncToBackend = async () => {
           }
 
           const created = await res.json();
-          // Replace temp ID with real DB ID
+          // Replace temp ID with real DB ID (not in another version's lists after a switch)
           const current = useEditorStore.getState();
-          useEditorStore.setState({
+          if (current.activeVersionId === activeVersionId) useEditorStore.setState({
             localInstances: current.localInstances.map(i =>
               i.id === inst.id ? { ...i, id: created.id, artworkId: created.artworkId } : i
             ),
@@ -1238,6 +1446,7 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.instances.add(prev.id); return; }
         if (!res?.ok) {
@@ -1284,6 +1493,7 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/instances/${curr.id}`, { method: 'PATCH', headers, body: JSON.stringify(body) });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.instances.add(curr.id); return; }
         if (!res?.ok) {
@@ -1323,6 +1533,13 @@ const syncToBackend = async () => {
           });
 
           if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (await isVersionPublishedRefusal(res)) {
+            // A default wall the server refused: the version was published before this tab knew.
+            // Counted as persisted, silently — the curator did not edit anything.
+            if (wall.isDefault) { nextWallsMap.set(wall.id, wall); publishedSilently = true; }
+            else versionPublished = true;
+            return;
+          }
           if (!res?.ok) {
             anyFailure = true;
             console.error('[AutoSync] Failed to create wall after retries:', wall.id, res?.status);
@@ -1330,12 +1547,15 @@ const syncToBackend = async () => {
           }
 
           const created = await res.json();
+          // After a version switch the temp id (default walls: -1…-n) may name a wall of the new
+          // version: leave its lists and guides alone.
+          const stillOnVersion = useEditorStore.getState().activeVersionId === activeVersionId;
           // Before the store update, so data keyed by the temp id moves along (ruler guides).
-          emitWallEvent({ type: 'replaced', from: wall.id, to: created.id });
+          if (stillOnVersion) emitWallEvent({ type: 'replaced', from: wall.id, to: created.id });
           const current = useEditorStore.getState();
           // Another tab's default wall that arrived live meanwhile is the same wall: keep one.
           const known = current.localWalls.some(w => w.id === created.id);
-          useEditorStore.setState({
+          if (stillOnVersion) useEditorStore.setState({
             localWalls: known
               ? current.localWalls.filter(w => w.id !== wall.id)
               : current.localWalls.map(w => w.id === wall.id ? { ...created } : w),
@@ -1362,6 +1582,7 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/walls/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.walls.add(prev.id); return; }
         if (!res?.ok) {
@@ -1395,6 +1616,7 @@ const syncToBackend = async () => {
           }),
         });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.walls.add(curr.id); return; }
         if (!res?.ok) {
@@ -1432,6 +1654,7 @@ const syncToBackend = async () => {
           });
 
           if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+          if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // stays "new"
           if (!res?.ok) {
             anyFailure = true;
             console.error('[AutoSync] Failed to create scale figure after retries:', figure.id, res?.status);
@@ -1442,7 +1665,7 @@ const syncToBackend = async () => {
           const current = useEditorStore.getState();
           // Only the id changes: edits made while the POST was in flight stay and are PATCHed
           // by the next batch (the snapshot below holds the values that were POSTed).
-          useEditorStore.setState({
+          if (current.activeVersionId === activeVersionId) useEditorStore.setState({
             localScaleFigures: current.localScaleFigures.map(f =>
               f.id === figure.id ? { ...f, id: created.id, versionId: created.versionId } : f
             ),
@@ -1462,6 +1685,7 @@ const syncToBackend = async () => {
       tasks.push((async () => {
         const res = await fetchWithRetry(`/api/scale-figures/${prev.id}`, { method: 'DELETE', headers });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.figures.add(prev.id); return; }
         if (!res?.ok) {
@@ -1493,6 +1717,7 @@ const syncToBackend = async () => {
           }),
         });
         if (res?.status === 401) { has401 = true; anyFailure = true; return; }
+        if (await isVersionPublishedRefusal(res)) { versionPublished = true; return; } // prev value stays
         const holder = await refusedBy(res);
         if (holder !== null) { refusedNames.push(holder); refused.figures.add(curr.id); return; }
         if (!res?.ok) {
@@ -1508,12 +1733,24 @@ const syncToBackend = async () => {
     // prev*/isSyncing/hasUnsavedChanges — see invariant #1.
     await Promise.allSettled(tasks);
 
-    prevInstances = Array.from(nextInstancesMap.values());
-    prevWalls = Array.from(nextWallsMap.values());
-    prevScaleFigures = Array.from(nextFiguresMap.values());
+    // A batch for a version the curator has left since says nothing about the active one: its
+    // snapshots were reset on the switch and belong to the new version's loaded data.
+    const stillActive = useEditorStore.getState().activeVersionId === activeVersionId;
+    if (stillActive) {
+      prevInstances = Array.from(nextInstancesMap.values());
+      prevWalls = Array.from(nextWallsMap.values());
+      prevScaleFigures = Array.from(nextFiguresMap.values());
+    }
+    if ((versionPublished || publishedSilently) && stillActive) {
+      // Further edits are held back by the branch at the top of this function.
+      useEditorStore.getState().setActiveVersionPublished(true);
+      if (versionPublished) publishedEditGate.request(persistedUndoDepth);
+    } else if (stillActive && !anyFailure && !versionPublished && !publishedSilently) {
+      persistedUndoDepth = Math.min(batchStartUndoDepth, useEditorStore.getState().pastInstances.length);
+    }
 
     // Refused because someone else holds the object: back to the saved state, no retry.
-    if (refusedNames.length > 0) {
+    if (refusedNames.length > 0 && stillActive) {
       const current = useEditorStore.getState();
       useEditorStore.setState({
         localInstances: restoreRefused(current.localInstances, refused.instances, nextInstancesMap),
@@ -1545,7 +1782,7 @@ const syncToBackend = async () => {
       syncStatus: newSyncStatus,
       // FUNC-04: only clear the dirty flag if this batch fully succeeded AND no further local
       // edit happened while it (including retries) was in flight.
-      ...(!anyFailure && localEditSeq === batchStartEditSeq ? { hasUnsavedChanges: false } : {}),
+      ...(!anyFailure && !versionPublished && localEditSeq === batchStartEditSeq ? { hasUnsavedChanges: false } : {}),
     });
 
     // Schedule an automatic follow-up sync so a failed batch recovers on its own instead of
@@ -1569,16 +1806,44 @@ useEditorStore.subscribe((state, prevState) => {
       state.localScaleFigures !== prevState.localScaleFigures) {
     scheduleSync();
   }
+  // A push onto a full undo stack (slice(-MAX_HISTORY_SIZE)) drops the oldest step: the
+  // persisted step moves one down.
+  const past = state.pastInstances;
+  const before = prevState.pastInstances;
+  if (past !== before && before.length === MAX_HISTORY_SIZE && past.length === MAX_HISTORY_SIZE
+      && past[MAX_HISTORY_SIZE - 1] === prevState.localInstances && past[0] === before[1]) {
+    persistedUndoDepth = Math.max(0, persistedUndoDepth - 1);
+  }
+  // Undoing below the persisted step: the persisted state is no longer on the undo stack.
+  if (state.pastInstances.length < persistedUndoDepth) persistedUndoDepth = state.pastInstances.length;
+});
+
+// The active version is no longer published (unpublished elsewhere): send what was held back.
+// Not on a version switch — that one resets the snapshots and loads the new version's data.
+useEditorStore.subscribe((state, prevState) => {
+  if (!prevState.activeVersionPublished || state.activeVersionPublished) return;
+  if (state.activeVersionId !== prevState.activeVersionId) return;
+  // Default walls counted as persisted while published are POSTed now (they have no database row).
+  if (prevWalls.some(isUnsavedDefaultWall)) prevWalls = prevWalls.filter(w => !isUnsavedDefaultWall(w));
+  scheduleSync();
 });
 
 // Reset prev snapshots when version changes — setLocalInstances/setLocalWalls/
 // setLocalScaleFigures will re-snapshot when the fetched data arrives, so no timeout needed.
 // The figure counterparts (prevScaleFigures, syncingFigureTempIds) are reset with the rest.
+// The pending debounce belongs to the previous version and the lists count as not loaded until
+// the new version's data arrives (C1: otherwise its rows are POSTed into the new version).
 useEditorStore.subscribe((state, prevState) => {
   if (state.activeVersionId !== prevState.activeVersionId) {
+    if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+    cancelAutoRetry();
+    listsLoadedFor.instances = null;
+    listsLoadedFor.walls = null;
+    listsLoadedFor.figures = null;
     prevInstances = [];
     prevWalls = [];
     prevScaleFigures = [];
+    persistedUndoDepth = 0;
     syncingInstanceTempIds.clear();
     syncingWallTempIds.clear();
     syncingFigureTempIds.clear();
@@ -1688,6 +1953,40 @@ function applyRemoteDelete(kind: 'instance' | 'wall' | 'figure', id: number): bo
   const wasSelected = s.selectedFigureId === id;
   useEditorStore.setState({ localScaleFigures: lists.local, ...(wasSelected ? { selectedFigureId: null } : {}) });
   return wasSelected;
+}
+
+/** True once instances, walls and scale figures have all been loaded for `versionId`. */
+function listsLoadedForVersion(versionId: number): boolean {
+  return listsLoadedFor.instances === versionId && listsLoadedFor.walls === versionId
+    && listsLoadedFor.figures === versionId;
+}
+
+/**
+ * Sends what auto-sync still holds now (debounce, automatic retry, error state) and resolves
+ * once nothing is in flight any more. Says nothing about success: ask `isAutoSyncSettled()`.
+ */
+export async function flushAutoSync(): Promise<void> {
+  // A batch can schedule a follow-up (temp-id remaps, edits while it ran); a few rounds settle it.
+  for (let round = 0; round < 5; round++) {
+    if (currentBatch) await currentBatch;
+    const s = useEditorStore.getState();
+    const pending = syncTimer !== null || autoRetryTimer !== null || s.syncStatus === 'error'
+      || hasUnsyncedChanges(s.localInstances, s.localWalls, s.localScaleFigures);
+    if (!pending) return;
+    if (syncTimer) { clearTimeout(syncTimer); syncTimer = null; }
+    if (autoRetryTimer) { clearTimeout(autoRetryTimer); autoRetryTimer = null; }
+    await syncToBackend();
+    // Still failing after fetchWithRetry's own retries: the automatic retry takes it from here.
+    if (useEditorStore.getState().syncStatus === 'error') return;
+  }
+}
+
+/** True when everything local is persisted for the active version: nothing pending, no error. */
+export function isAutoSyncSettled(): boolean {
+  const s = useEditorStore.getState();
+  if (s.activeVersionId == null || !listsLoadedForVersion(s.activeVersionId)) return false;
+  return !isSyncing && syncTimer === null && s.syncStatus !== 'error'
+    && !hasUnsyncedChanges(s.localInstances, s.localWalls, s.localScaleFigures);
 }
 
 /** True while auto-sync has something unsaved in flight — a full merge has to wait. */

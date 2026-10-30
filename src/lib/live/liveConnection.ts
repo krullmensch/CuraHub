@@ -161,6 +161,11 @@ async function resync() {
 }
 
 function handleVersions(msg: VersionsMessage) {
+  if (msg.event === 'arExport') {
+    // The version list doesn't change, only the AR export row of the published version.
+    useLiveStore.setState((s) => ({ arExportRevision: s.arExportRevision + 1 }));
+    return;
+  }
   useLiveStore.setState((s) => ({ versionsRevision: s.versionsRevision + 1 }));
   const self = useLiveStore.getState().self?.session ?? null;
   const editor = useEditorStore.getState();

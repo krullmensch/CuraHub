@@ -27,6 +27,11 @@ export function resetArtworkLoadProgress(): void {
     setArtworkLoadProgress(EMPTY);
 }
 
+/** Current value outside React (the AR export page polls it). */
+export function getArtworkLoadProgress(): ArtworkLoadProgress {
+    return progress;
+}
+
 function subscribe(listener: () => void): () => void {
     listeners.add(listener);
     return () => listeners.delete(listener);

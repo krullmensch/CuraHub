@@ -13,6 +13,9 @@ import {
     type WallGuides,
 } from '../lib/wallGuides';
 import { publishChange, publishVersionEvent } from '../live/broadcast';
+import { onVersionDeleted, onVersionPublished } from '../lib/arExportJobs';
+import { ensureVersionWritable } from '../lib/versionWritable';
+import { mayCreateBranch, startsNewBranch } from '../lib/branchCreation';
 
 export const versionsRouter = Router();
 const prisma = new PrismaClient();
@@ -111,6 +114,7 @@ versionsRouter.get('/exhibitions/:exhibitionId/versions', authenticate, async (r
                 parent_version_id: true,
                 branch_name: true,
                 is_published: true,
+                published_at: true,
                 is_featured: true,
                 creator: {
                     select: { id: true, email: true }
@@ -180,7 +184,7 @@ function findVersionLayout(req: Request, exhibitionId: number, versionId: number
             exhibition_id: exhibitionId,
             exhibition: exhibitionAccessFilter(req.user!.userId, isAdmin),
         },
-        select: { id: true, hanging_height: true, wall_guides: true },
+        select: { id: true, is_published: true, hanging_height: true, wall_guides: true },
     });
 }
 
@@ -210,6 +214,7 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/wall-layout
         const data = wallLayoutPatchSchema.parse(req.body);
         const version = await findVersionLayout(req, exhibitionId, versionId);
         if (!version) return res.status(404).json({ error: 'Version not found' });
+        if (!ensureVersionWritable(res, version)) return;
 
         const updated = await prisma.exhibitionVersion.update({
             where: { id: versionId },
@@ -242,10 +247,25 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
         const isAdmin = req.user!.role === 'admin';
         const userRole = req.user!.role;
 
-        // Branching (non-main) requires curator+ role
-        if (data.branch_name !== 'main') {
-            const allowedRoles = ['curator', 'prof', 'admin'];
-            if (!allowedRoles.includes(userRole)) {
+        // Verify user has access (owner or collaborator, or admin)
+        const exhibition = await prisma.exhibition.findFirst({
+            where: {
+                id: exhibitionId,
+                ...exhibitionAccessFilter(userId, isAdmin)
+            }
+        });
+        if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
+
+        // Starting a branch (non-main, other than the source's) requires curator+ role and a free
+        // name; a version on the source's own branch continues it (lib/branchCreation.ts).
+        const sourceBranch = data.sourceVersionId
+            ? (await prisma.exhibitionVersion.findFirst({
+                where: { id: data.sourceVersionId, exhibition_id: exhibitionId },
+                select: { branch_name: true },
+            }))?.branch_name
+            : null;
+        if (startsNewBranch(data.branch_name, sourceBranch)) {
+            if (!mayCreateBranch(userRole)) {
                 return res.status(403).json({ error: 'Branches können nur von Kuratoren, Profs oder Admins erstellt werden' });
             }
             // Forbid duplicate branch names within the same exhibition
@@ -256,15 +276,6 @@ versionsRouter.post('/exhibitions/:exhibitionId/versions', authenticate, async (
                 return res.status(400).json({ error: 'Ein Branch mit diesem Namen existiert bereits.' });
             }
         }
-
-        // Verify user has access (owner or collaborator, or admin)
-        const exhibition = await prisma.exhibition.findFirst({
-            where: {
-                id: exhibitionId,
-                ...exhibitionAccessFilter(userId, isAdmin)
-            }
-        });
-        if (!exhibition) return res.status(404).json({ error: 'Exhibition not found' });
 
         // Find the source version to snapshot from if needed for parent tracking
         let sourceVersionId = data.sourceVersionId;
@@ -564,6 +575,9 @@ versionsRouter.delete('/exhibitions/:exhibitionId/versions/:versionId', authenti
             return res.status(400).json({ error: 'Die initiale Version kann nicht gelöscht werden.' });
         }
 
+        // The export row cascades with the version, its files don't: drop both first.
+        await onVersionDeleted(versionId);
+
         // Delete the version. Prisma cascade will delete ArtworkInstances automatically.
         await prisma.exhibitionVersion.delete({
             where: { id: versionId }
@@ -619,6 +633,8 @@ versionsRouter.patch('/exhibitions/:exhibitionId/versions/:versionId/publish', a
 
         res.json({ success: true, message: 'Version published' });
         publishVersionEvent(req, exhibitionId, 'published', versionId);
+        // Other exports of this exhibition go, the new one is built (failures only reach the log).
+        onVersionPublished(exhibitionId, versionId).catch((err) => console.error('[ArExport] publish hook failed:', err));
     } catch (e) {
         console.error('Failed to publish version:', e);
         res.status(500).json({ error: 'Failed to publish version' });

@@ -104,6 +104,7 @@ model ExhibitionVersion {
   instances           ArtworkInstance[]
   walls               ModularWall[]
   scaleFigures        ScaleFigure[]
+  arExport            ArExport?
 }
 
 model Artwork {
@@ -246,6 +247,25 @@ model ScaleFigure {
   createdAt   DateTime          @default(now())
 }
 
+
+/// AR export of a published version (GLB + USDZ in <uploads>/.ar/, see lib/arExportFiles.ts).
+model ArExport {
+  id          Int               @id @default(autoincrement())
+  versionId   Int               @unique
+  version     ExhibitionVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  // 'queued' | 'running' | 'done' | 'failed'
+  status      String            @db.VarChar(16)
+  glb_file    String?
+  usdz_file   String?
+  glb_size    Int?
+  usdz_size   Int?
+  // Works that failed to load and were left out
+  skipped     Int               @default(0)
+  error       String?           @db.Text
+  started_at  DateTime?
+  finished_at DateTime?
+}
 
 /// Instance-wide settings written by the setup wizard (keys: setup_completed_at, public_url).
 model SystemSetting {

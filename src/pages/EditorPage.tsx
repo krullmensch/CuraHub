@@ -18,7 +18,7 @@ import { RemoteSelectionSvg } from '../components/live/RemoteSelections';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
 import { BookViewerHost } from '../components/book/BookViewerHost';
-import { useBookViewerStore } from '../store/bookViewerStore';
+import { isControlsLocked } from '../lib/controlsLock';
 import { useEditorStore, nextTempId, isFloorAssetType, isFixedSizeMedium, type MediumType } from '../store/editorStore';
 import { toast } from '@/hooks/use-toast';
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, lazy, Suspense } from 'react';
@@ -29,7 +29,6 @@ import { VideoMediumPickerDialog } from '../components/VideoMediumPickerDialog';
 import { placementFeedback, placementResolver, type PlacementIssue } from '../lib/placementFeedback';
 import { framedArtworkLayout } from '../lib/frameStyles';
 import { WallEditor } from '../components/wall-editor/WallEditorChrome';
-import { useTourStore } from '../store/tourStore';
 import { useWallEditorView } from '../store/wallEditorViewStore';
 import { sideSeenFrom } from '../lib/wallEditor/geometry';
 import { roomFaceAt, targetForInstance, targetKey } from '../lib/wallEditor/faces';
@@ -161,7 +160,7 @@ function openWallEditorForSelection(): boolean {
 function handleCanvasDoubleClick(e: MouseEvent) {
   if (!(e.target instanceof HTMLCanvasElement)) return;
   const store = useEditorStore.getState();
-  if (store.plannerViewMode !== 'perspective') return;
+  if (store.plannerViewMode !== 'perspective' || store.mobilePlanner) return;
   const hit = wallEditorBridge.pick(e.clientX, e.clientY);
   if (!hit) return;
   const rooms = useWallEditorView.getState().roomFaces;
@@ -243,6 +242,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   const selectWall = useEditorStore((state) => state.selectWall);
   const selectZone = useEditorStore((state) => state.selectZone);
   const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
+  // Phone planning view (MobilePlannerLayout): no toolbar, keys, marquee, wall editor or double-click.
+  const mobilePlanner = useEditorStore((state) => state.mobilePlanner);
   // Hanging height and ruler guides of the 2D wall editor, per exhibition version
   useEffect(() => startWallLayoutSync(), []);
   // 2D wall editor: the selected wall, or the wall the selected artwork hangs on
@@ -497,12 +498,14 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   // Blender-style keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (useEditorStore.getState().mobilePlanner) return;
       // Don't trigger shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       // Delete/Backspace after a click on a panel button or control must not remove the selection
       if ((e.key === 'Delete' || e.key === 'Backspace') && isFormControlTarget(e.target)) return;
-      if (useBookViewerStore.getState().book) return; // the book viewer handles its own keys
-      if (useTourStore.getState().active) return; // the onboarding tour handles its own keys
+      // A dialog (e.g. the published-version question), the book viewer or the onboarding tour is
+      // open: they handle their own keys, nothing may change the scene behind them.
+      if (isControlsLocked()) return;
 
       const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
       const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
@@ -733,10 +736,10 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       <BookViewerHost />
       
       {/* ⇧ + drag: selection marquee over the 3D view */}
-      {viewMode === 'perspective' && !wallEditorOpen && isVisible && <SelectionMarquee containerRef={containerRef} />}
+      {viewMode === 'perspective' && !wallEditorOpen && isVisible && !mobilePlanner && <SelectionMarquee containerRef={containerRef} />}
 
       {/* 2D wall editor (overlay, top bar, tool bar) */}
-      {viewMode !== 'firstPerson' && isVisible && <WallEditor />}
+      {viewMode !== 'firstPerson' && isVisible && !mobilePlanner && <WallEditor />}
 
       {/* FPV Crosshair + Artwork Info Overlay */}
       {viewMode === 'firstPerson' && <ArtworkInfoOverlay />}
@@ -753,7 +756,7 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
       )}
 
       {/* ── Tool Bar — bottom center ── */}
-      {viewMode !== 'firstPerson' && !wallEditorOpen && (
+      {viewMode !== 'firstPerson' && !wallEditorOpen && !mobilePlanner && (
         <div style={{
           position: 'absolute',
           bottom: 20,

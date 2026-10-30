@@ -24,6 +24,7 @@ export const NOINDEX_ROUTE_PATTERNS = [
     /^\/project$/,
     /^\/users$/,
     /^\/setup$/,
+    /^\/ar-export\/[^/]+$/,
 ];
 
 export function isFrontendExhibitionPath(p: string): boolean {

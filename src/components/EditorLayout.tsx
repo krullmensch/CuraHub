@@ -9,13 +9,19 @@ import { LogOut, BookOpen, ExternalLink, Globe, Settings } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { VersionPanel } from './VersionPanel';
+import { PublishedVersionBadge } from './versions/PublishedVersionBadge';
+import { PublishedVersionDialog } from './versions/PublishedVersionDialog';
 
 import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
 import { LivePresenceBar, SelfAvatar } from './live/PresenceAvatars';
 import { startEditorPresence } from '../lib/live/liveConnection';
+import { startVersionStatus } from '../lib/versions/versionStatus';
 import { TourAutoStart } from './tour/TourAutoStart';
 import { TourOverlay } from './tour/TourOverlay';
+import { MobilePlannerLayout } from './mobile/MobilePlannerLayout';
+import { useMobilePlanner } from '../lib/mobilePlanner/mode';
+import { isTouchViewer, readTouchEnv } from '../lib/touch/touchMode';
 
 const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
 const ProjectSettingsDialog = lazy(() =>
@@ -68,6 +74,9 @@ export const EditorLayout = () => {
 
   // Live presence: report exhibition, version and mode while the editor is mounted.
   useEffect(() => startEditorPresence(), []);
+
+  // Whether the active version is published / a working copy of one.
+  useEffect(() => startVersionStatus(), []);
 
   // Check if a published version exists when popover opens
   useEffect(() => {
@@ -145,6 +154,18 @@ export const EditorLayout = () => {
   const isPlanningMode = viewMode !== 'firstPerson';
   const isActive = (path: string) => location.pathname.includes(path);
   const isAssetRoute = location.pathname.includes('/assets');
+  // Phones: the mobile planning view instead of the full editor (asset library stays as it is).
+  const { mobile, setOverride } = useMobilePlanner();
+  const [touchDevice] = useState(() => isTouchViewer(readTouchEnv()));
+
+  if (mobile && !isAssetRoute) {
+    return (
+      <>
+        <MobilePlannerLayout onFullEditor={() => setOverride('full')} onLogout={handleLogout} />
+        <PublishedVersionDialog />
+      </>
+    );
+  }
 
 
   return (
@@ -153,6 +174,7 @@ export const EditorLayout = () => {
         <div className="flex items-center gap-4">
             <h1 className="text-lg font-bold tracking-tight text-white">CuraHub <span className="text-blue-500">Dashboard</span></h1>
             <ProjectSelector />
+            <PublishedVersionBadge />
             <nav className="flex gap-4 ml-2 text-sm font-medium">
                 <Link 
                     to={activeProjectSlug ? `/exhibition/${activeProjectSlug}/edit` : "/project"} 
@@ -196,6 +218,15 @@ export const EditorLayout = () => {
         
         <div className="flex items-center gap-4">
             <LivePresenceBar />
+
+            {touchDevice && (
+              <button
+                onClick={() => setOverride('mobile')}
+                className="text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
+              >
+                Mobile Ansicht
+              </button>
+            )}
 
             {/* Project Settings Button — only for Prof/Admin */}
             {isProf && activeExhibitionId && (
@@ -331,6 +362,8 @@ export const EditorLayout = () => {
              </div>
          )}
       </div>
+
+      <PublishedVersionDialog />
 
       {/* Wiki Modal */}
       {wikiOpen && (

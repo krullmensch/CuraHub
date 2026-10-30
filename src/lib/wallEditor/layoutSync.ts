@@ -4,12 +4,23 @@ import { useEditorStore } from '@/store/editorStore';
 import { useWallEditorView } from '@/store/wallEditorViewStore';
 import { onWallEvent } from '@/lib/wallEvents';
 import { liveSessionHeaders } from '@/lib/live/session';
+import { publishedEditGate } from '@/lib/publishedEditGate';
 import { DEFAULT_HANGING_HEIGHT, parseWallLayout, serializeGuides, type WallLayout } from './guides';
 
 /** Hanging height and guides are saved this long after the last change. */
 const SAVE_DEBOUNCE_MS = 300;
 /** At most one "could not save" toast in this interval. */
 const ERROR_TOAST_INTERVAL_MS = 10_000;
+
+/** 409 because the version is published (server: `version_published`). */
+async function isVersionPublishedRefusal(res: Response): Promise<boolean> {
+    try {
+        const body: unknown = await res.json();
+        return (body as { code?: unknown } | null)?.code === 'version_published';
+    } catch {
+        return false;
+    }
+}
 
 const layoutUrl = (exhibitionId: number, versionId: number) =>
     `/api/exhibitions/${exhibitionId}/versions/${versionId}/wall-layout`;
@@ -26,6 +37,37 @@ let loadedVersionId: number | null = null;
 
 /** Set while a sync runs: takes a layout another tab saved. */
 let remoteApply: ((versionId: number, raw: unknown) => void) | null = null;
+
+/** Set while a sync runs: puts the last layout the server has back into the view store. */
+let revertApply: (() => void) | null = null;
+
+/** Set while a sync runs: sends a waiting change now; true once the server has the current layout. */
+let flushApply: (() => Promise<boolean>) | null = null;
+
+/**
+ * Sends a waiting hanging height / guide change now and resolves when it has landed: true when
+ * the server has what the view store holds (or no layout is loaded, so nothing can be saved).
+ */
+export function flushWallLayout(): Promise<boolean> {
+    return flushApply ? flushApply() : Promise.resolve(true);
+}
+
+/**
+ * Drops the hanging height / guide changes that were held back (published version): re-applies
+ * the layout last loaded from (or saved to) the server for the active version.
+ */
+export function revertWallLayout(): void {
+    revertApply?.();
+}
+
+/** The active version is published: its layout is read-only, edits wait for the curator's choice. */
+function heldBackAsPublished(versionId: number): boolean {
+    const { activeVersionId, activeVersionPublished, pastInstances } = useEditorStore.getState();
+    if (versionId !== activeVersionId || !activeVersionPublished) return false;
+    // Layout changes have no undo steps; held artwork edits already opened the gate themselves.
+    publishedEditGate.request(pastInstances.length);
+    return true;
+}
 
 /**
  * Hanging height and guides another tab saved (live channel). Taken over unless this tab has a
@@ -55,6 +97,13 @@ export function startWallLayoutSync(): () => void {
     let pending: ((keepalive: boolean) => void) | null = null;
     let queue: Promise<void> = Promise.resolve();
     let lastErrorToast = 0;
+    /** What the server has for `loadedVersionId` (loaded, saved or taken from another tab), as PATCH body. */
+    let serverLayout: { versionId: number; body: string } | null = null;
+
+    const currentBody = () => {
+        const view = useWallEditorView.getState();
+        return JSON.stringify({ hangingHeight: view.hangingHeight, guides: serializeGuides(view.guidesByFace) });
+    };
 
     const errorToast = (title: string, description: string) => {
         const now = Date.now();
@@ -89,6 +138,7 @@ export function startWallLayoutSync(): () => void {
             if (stopped || useEditorStore.getState().activeVersionId !== versionId) return;
             apply(layout);
             loadedVersionId = versionId;
+            serverLayout = { versionId, body: currentBody() };
         } catch (err) {
             // Without the stored layout nothing is saved, so it can't be overwritten.
             console.warn('[WallLayout] Failed to load hanging height and guides:', err);
@@ -96,15 +146,27 @@ export function startWallLayoutSync(): () => void {
         }
     };
 
-    const send = (exhibitionId: number, versionId: number, keepalive = false) => {
-        const view = useWallEditorView.getState();
-        const body = JSON.stringify({ hangingHeight: view.hangingHeight, guides: serializeGuides(view.guidesByFace) });
+    const send = (exhibitionId: number, versionId: number, keepalive = false, publishedWhenScheduled = false) => {
+        // Published: nothing is sent (not even the keepalive flush on pagehide), the change stays local.
+        // `publishedWhenScheduled` covers the flush on a version switch, which clears the flag first.
+        if (heldBackAsPublished(versionId) || publishedWhenScheduled) return;
+        const body = currentBody();
         queue = queue.then(async () => {
             try {
                 const res = await fetch(layoutUrl(exhibitionId, versionId), { method: 'PATCH', headers: authHeaders(), body, keepalive });
                 // No write access or the version is gone: keep the changes local, quietly.
                 if (res.status === 401 || res.status === 403 || res.status === 404) return;
+                if (res.status === 409 && await isVersionPublishedRefusal(res)) {
+                    // Published while this tab edited it: like the auto-sync, keep the change and ask.
+                    const editor = useEditorStore.getState();
+                    if (editor.activeVersionId === versionId) {
+                        editor.setActiveVersionPublished(true);
+                        heldBackAsPublished(versionId);
+                    }
+                    return;
+                }
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                if (versionId === loadedVersionId) serverLayout = { versionId, body };
             } catch (err) {
                 console.error('[WallLayout] Failed to save hanging height and guides:', err);
                 errorToast('Hängehöhe/Hilfslinien konnten nicht gespeichert werden', 'Die nächste Änderung versucht es erneut.');
@@ -113,6 +175,7 @@ export function startWallLayoutSync(): () => void {
     };
 
     const flush = (keepalive = false) => {
+        // The pending send checks for a published version itself (heldBackAsPublished).
         clearTimeout(timer);
         timer = undefined;
         const run = pending;
@@ -123,7 +186,8 @@ export function startWallLayoutSync(): () => void {
     const schedule = () => {
         const { activeExhibitionId, activeVersionId } = useEditorStore.getState();
         if (activeExhibitionId == null || activeVersionId == null || activeVersionId !== loadedVersionId) return;
-        pending = (keepalive) => send(activeExhibitionId, activeVersionId, keepalive);
+        const publishedNow = useEditorStore.getState().activeVersionPublished;
+        pending = (keepalive) => send(activeExhibitionId, activeVersionId, keepalive, publishedNow);
         clearTimeout(timer);
         timer = setTimeout(() => flush(), SAVE_DEBOUNCE_MS);
     };
@@ -131,6 +195,12 @@ export function startWallLayoutSync(): () => void {
     const unsubscribeView = useWallEditorView.subscribe((state, prev) => {
         if (applying) return;
         if (state.hangingHeight !== prev.hangingHeight || state.guidesByFace !== prev.guidesByFace) schedule();
+    });
+
+    // No longer published (unpublished elsewhere): send a layout that was held back.
+    const unsubscribePublished = useEditorStore.subscribe((state, prev) => {
+        if (!prev.activeVersionPublished || state.activeVersionPublished || state.activeVersionId !== prev.activeVersionId) return;
+        if (state.activeVersionId === loadedVersionId && serverLayout?.versionId === loadedVersionId && serverLayout.body !== currentBody()) schedule();
     });
 
     const unsubscribeEditor = useEditorStore.subscribe((state, prev) => {
@@ -161,7 +231,24 @@ export function startWallLayoutSync(): () => void {
 
     remoteApply = (versionId, raw) => {
         if (stopped || pending || versionId !== loadedVersionId) return;
-        apply(parseWallLayout(raw));
+        const layout = parseWallLayout(raw);
+        apply(layout);
+        serverLayout = { versionId, body: currentBody() };
+    };
+
+    revertApply = () => {
+        if (stopped || loadedVersionId == null || serverLayout?.versionId !== loadedVersionId) return;
+        clearTimeout(timer);
+        timer = undefined;
+        pending = null;
+        apply(parseWallLayout(JSON.parse(serverLayout.body)));
+    };
+
+    flushApply = async () => {
+        flush();
+        await queue;
+        if (stopped || loadedVersionId == null) return true;
+        return pending === null && serverLayout?.versionId === loadedVersionId && serverLayout.body === currentBody();
     };
 
     // Best-effort save when the tab is being hidden/closed/navigated away from.
@@ -176,7 +263,10 @@ export function startWallLayoutSync(): () => void {
         stopped = true;
         loadedVersionId = null;
         remoteApply = null;
+        revertApply = null;
+        flushApply = null;
         unsubscribeView();
+        unsubscribePublished();
         unsubscribeEditor();
         unsubscribeWallEditorOpen();
         unsubscribeWalls();

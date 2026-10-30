@@ -10,7 +10,7 @@ import { MainCanvasRegistrar } from '../components/MainCanvasRegistrar';
 import { RenderQualityControl } from '../components/RenderQualityControl';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { usePreparedRenderer } from '../hooks/use-prepared-renderer';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Hand } from 'lucide-react';
 import type { ArtworkInstanceData, ModularWallData, ScaleFigureData } from '../store/editorStore';
 import { BookViewerHost } from '../components/book/BookViewerHost';
 import { useBookViewerStore } from '../store/bookViewerStore';
@@ -19,6 +19,15 @@ import { useArtworkLoadProgress } from '../lib/artworkLoadProgress';
 import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
 import { setLiveLocation } from '../lib/live/liveConnection';
 import { VisitorCount } from '../components/live/PresenceAvatars';
+import { ArButton, type PublicArInfo } from '../components/viewer/ArButton';
+import { detectArPlatform } from '../lib/arExport/launch';
+import { useTouchViewer } from '../lib/touch/touchMode';
+import { isWalking, setTouchWalking, subscribeWalking } from '../lib/touch/walking';
+import { touchInput } from '../lib/touch/touchInput';
+import { TouchControls } from '../components/touch/TouchControls';
+import { TouchTapHandler } from '../components/touch/TouchTapHandler';
+import { viewerFrameloop } from '../lib/touch/viewerFrameloop';
+import { useEditorStore } from '../store/editorStore';
 import { Grid } from 'ldrs/react';
 import 'ldrs/react/Grid.css';
 
@@ -47,6 +56,7 @@ interface ExhibitionData {
     instances: ArtworkInstanceData[];
     walls: ModularWallData[];
     scaleFigures?: ScaleFigureData[];
+    ar?: PublicArInfo;
 }
 
 // RND-08: physics (Rapier) + player live in a lazy chunk; the download starts on mount.
@@ -55,6 +65,9 @@ const loadPhysicsWorld = () => import('../components/physics/PhysicsWorld');
 /** Never keep the door shut longer than this once the room itself is ready (slow or dead image). */
 const TEXTURE_WAIT_TIMEOUT_MS = 30_000;
 const PhysicsWorld = lazy(loadPhysicsWorld);
+
+/** While the AR export is being prepared the public payload is re-fetched at this interval. */
+const AR_POLL_MS = 15_000;
 
 export const ViewerPage = () => {
     const { slug } = useParams<{ slug: string }>();
@@ -83,6 +96,8 @@ export const ViewerPage = () => {
     const [showLoading, setShowLoading] = useState(true);
     const bookOpen = useBookViewerStore((s) => s.book !== null);
     const [isLocked, setIsLocked] = useState(false);
+    // Phones and tablets: two sticks and tap for info instead of pointer lock and crosshair.
+    const touch = useTouchViewer();
     const [isTabVisible, setIsTabVisible] = useState(document.visibilityState === 'visible');
     const [error, setError] = useState<string | null>(null);
     const renderSettings = useRenderQualitySettings();
@@ -99,19 +114,53 @@ export const ViewerPage = () => {
     const handleSceneReady = useCallback(() => setRoomReady(true), []);
     const handleShadersReady = useCallback(() => setShadersReady(true), []);
 
-    // Track pointer lock state
+    // Track the walking state: pointer lock on desktop, the entered state in the touch viewer
     useEffect(() => {
         const handler = () => {
-            const locked = !!document.pointerLockElement;
+            const locked = isWalking();
             setIsLocked(locked);
             if (!locked && !loading) {
                 // If we unlock and data is already ready, show the 'Ready' overlay again
                 setShowLoading(true);
             }
         };
-        document.addEventListener('pointerlockchange', handler);
-        return () => document.removeEventListener('pointerlockchange', handler);
+        return subscribeWalking(handler);
     }, [loading]);
+
+    // Touch viewer: the page itself must never scroll or zoom under the fixed sticks and panels
+    // (iOS: 100vh is the large viewport, double taps zoom).
+    useEffect(() => {
+        if (!touch) return;
+        const root = document.documentElement;
+        const prev = {
+            overflow: root.style.overflow,
+            overscroll: root.style.overscrollBehavior,
+            touchAction: root.style.touchAction,
+            bodyOverflow: document.body.style.overflow,
+        };
+        root.style.overflow = 'hidden';
+        root.style.overscrollBehavior = 'none';
+        root.style.touchAction = 'manipulation';
+        document.body.style.overflow = 'hidden';
+        return () => {
+            root.style.overflow = prev.overflow;
+            root.style.overscrollBehavior = prev.overscroll;
+            root.style.touchAction = prev.touchAction;
+            document.body.style.overflow = prev.bodyOverflow;
+        };
+    }, [touch]);
+
+    // Leaving the viewer ends the touch walk (a later viewer starts at its entry overlay).
+    useEffect(() => () => {
+        setTouchWalking(false);
+        touchInput.reset();
+    }, []);
+
+    const leaveTouchWalk = () => {
+        touchInput.reset();
+        useEditorStore.getState().setFpvHoveredInfo(null);
+        setTouchWalking(false);
+    };
 
     // A missing or very slow image must not lock the exhibition shut forever.
     useEffect(() => {
@@ -174,6 +223,31 @@ export const ViewerPage = () => {
         return () => setLiveLocation(null);
     }, [visitSlug]);
 
+    // Poll only the AR state while the export is queued/running; the scene itself stays untouched.
+    const arStatus = data?.ar?.status;
+    useEffect(() => {
+        if (!slug || (arStatus !== 'queued' && arStatus !== 'running')) return;
+        const timer = setInterval(async () => {
+            try {
+                const res = await fetch(`/public/exhibition/${slug}`);
+                if (!res.ok) return;
+                const json: ExhibitionData = await res.json();
+                setData((prev) => (prev ? { ...prev, ar: json.ar } : prev));
+            } catch {
+                // next tick tries again
+            }
+        }, AR_POLL_MS);
+        return () => clearInterval(timer);
+    }, [slug, arStatus]);
+
+    // ?ar=1 (QR code scan): big button on a phone — iOS needs a tap, no auto-launch.
+    const arEntry = useMemo(
+        () =>
+            new URLSearchParams(window.location.search).get('ar') === '1' &&
+            detectArPlatform(navigator.userAgent, navigator.maxTouchPoints) !== 'desktop',
+        [],
+    );
+
     // Handle the transition from loading to showing the scene
     useEffect(() => {
         if (!apiLoading && sceneReady && data) {
@@ -217,7 +291,7 @@ export const ViewerPage = () => {
     // RND-02: render continuously only while the player is actually in the scene
     // (pointer-locked) and the tab is visible. Otherwise render on demand — the entry
     // overlay is static HTML on top of the canvas, not a reason to keep rendering.
-    const frameloop: 'always' | 'demand' = isLocked && isTabVisible ? 'always' : 'demand';
+    const frameloop = viewerFrameloop(isLocked, isTabVisible, bookOpen);
 
     return (
         <>
@@ -226,7 +300,11 @@ export const ViewerPage = () => {
                     dpr={lowDpr ? [1, 1] : renderSettings.dpr}
                     frameloop={frameloop}
                     camera={{ position: [0, PLAYER_EYE_HEIGHT, 0], fov: 60 }}
-                    style={{ width: '100vw', height: '100vh' }}
+                    style={{
+                        width: '100vw',
+                        height: '100vh',
+                        ...(touch ? { position: 'fixed', inset: 0, height: '100dvh', touchAction: 'none', userSelect: 'none', WebkitUserSelect: 'none', WebkitTouchCallout: 'none' } : {}),
+                    }}
                     gl={glConfig}
                     shadows={CANVAS_SHADOWS}
                 >
@@ -254,6 +332,7 @@ export const ViewerPage = () => {
                             {/* Separate boundary: the room renders while Rapier still loads. PhysicsWorld
                                 suspends until the room collider exists, so the player never spawns early;
                                 SceneReadySignal fires after the first frame with the player in place. */}
+                            {touch && <TouchTapHandler instances={data.instances} />}
                             <Suspense fallback={null}>
                                 <PhysicsWorld mode="viewer" viewerWalls={data.walls} viewerInstances={data.instances}>
                                     <SceneReadySignal onReady={handleSceneReady} />
@@ -265,14 +344,30 @@ export const ViewerPage = () => {
             )}
 
             {/* FPV Crosshair + Artwork Info Overlay */}
-            <ArtworkInfoOverlay />
+            <ArtworkInfoOverlay touch={touch} />
             <BookViewerHost />
+
+            {/* Touch viewer while walking: the sticks and a way back to the entry overlay (Esc on desktop). */}
+            {touch && isLocked && !loading && (
+                <>
+                    <TouchControls />
+                    <button
+                        type="button"
+                        aria-label="Zurück"
+                        onClick={leaveTouchWalk}
+                        className="fixed z-[1010] p-2.5 rounded-lg text-white/80 bg-black/25 border border-white/20 backdrop-blur-sm"
+                        style={{ top: 'calc(env(safe-area-inset-top) + 16px)', left: 'calc(env(safe-area-inset-left) + 16px)' }}
+                    >
+                        <ArrowLeft size={18} />
+                    </button>
+                </>
+            )}
 
             {/* Exhibition title overlay */}
             {data?.exhibition.title && (
-                <div className="fixed top-6 left-6 z-20 pointer-events-none select-none">
+                <div className={`fixed top-6 z-20 pointer-events-none select-none ${touch && isLocked ? 'left-20' : 'left-6'}`}>
                     <h1
-                        className="text-white text-3xl font-bold tracking-tight drop-shadow-xl"
+                        className={`text-white font-bold tracking-tight drop-shadow-xl ${touch ? 'text-xl max-w-[45vw]' : 'text-3xl'}`}
                         style={{ fontFamily: '"Funnel Display", sans-serif' }}
                     >
                         {data.exhibition.title}
@@ -282,15 +377,24 @@ export const ViewerPage = () => {
 
             {/* Top-right nav button */}
             {/* Above the entry overlay (z-[1000]) — it comes back on Escape and swallowed the click. */}
-            <div className="fixed top-6 right-6 z-[1010] flex items-center gap-3">
-                <VisitorCount />
-                <button
+            {/* Touch viewer while walking: only the AR button stays, so the row never covers the back button. */}
+            <div className={`fixed top-6 right-6 z-[1010] flex items-center gap-3 ${touch && isLocked ? 'left-20 justify-end' : ''}`}>
+                {!(touch && isLocked) && <VisitorCount />}
+                {data && <ArButton ar={data.ar} slug={data.exhibition.slug} title={data.exhibition.title} />}
+                {!(touch && isLocked) && <button
                     onClick={() => window.open('/exhibitions', '_blank')}
                     className="text-white/70 hover:text-white text-sm font-medium uppercase tracking-[0.15em] bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 backdrop-blur-sm px-4 py-2 rounded-lg transition-all duration-200"
                 >
                     Ausstellungen
-                </button>
+                </button>}
             </div>
+
+            {/* ?ar=1 phone entry: above the loading overlay, so the tap is not taken as „enter". */}
+            {arEntry && data && (
+                <div className="fixed inset-x-0 bottom-16 z-[1010] flex justify-center px-6">
+                    <ArButton ar={data.ar} slug={data.exhibition.slug} title={data.exhibition.title} large label="In AR öffnen" />
+                </div>
+            )}
 
             {/* Fading Loading Overlay (Unifies API and Asset loading) */}
             {showLoading && !bookOpen && (
@@ -300,7 +404,8 @@ export const ViewerPage = () => {
                     }`}
                     onClick={() => {
                         if (!loading && !isLocked) {
-                            document.querySelector('canvas')?.requestPointerLock();
+                            if (touch) setTouchWalking(true);
+                            else document.querySelector('canvas')?.requestPointerLock();
                         }
                     }}
                 >
@@ -316,7 +421,7 @@ export const ViewerPage = () => {
                                     </div>
                                 ) : !isLocked ? (
                                     <div className="animate-in fade-in zoom-in duration-500 bg-white/5 border border-white/10 backdrop-blur-md p-8 rounded-full">
-                                        <MouseLeftIcon size={42} color="white" />
+                                        {touch ? <Hand size={42} color="white" /> : <MouseLeftIcon size={42} color="white" />}
                                     </div>
                                 ) : null}
                             </div>
@@ -352,7 +457,7 @@ export const ViewerPage = () => {
                                         {data?.exhibition.title}
                                     </h2>
                                     <p className="text-white/60 text-sm uppercase tracking-[0.4em] font-bold mt-4">
-                                        Klicken zum Betreten
+                                        {touch ? 'Tippen zum Betreten' : 'Klicken zum Betreten'}
                                     </p>
                                     {/* Choosing the quality must not enter the exhibition */}
                                     <div

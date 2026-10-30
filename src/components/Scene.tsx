@@ -15,6 +15,8 @@ import { WallMeasurements3D } from './WallMeasurements3D';
 import { RoomCutawayTracker } from './RoomCutawayTracker';
 import { useEditorStore, type ArtworkInstanceData, type ModularWallData, type ScaleFigureData } from '../store/editorStore';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
+import { useExportMode } from '../lib/arExport/exportMode';
+import { ExportPart } from './arExport/ExportPart';
 
 interface SceneProps {
     isEditor?: boolean;
@@ -24,17 +26,22 @@ interface SceneProps {
     viewerScaleFigures?: ScaleFigureData[];
     /** Called once the shaders of the loaded room/artworks are compiled (ShaderWarmup). */
     onShadersReady?: () => void;
+    /** Without the Satellit room (mobile planner's single-artwork AR model). */
+    roomless?: boolean;
 }
 
-export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerScaleFigures, onShadersReady }: SceneProps) => {
+export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerScaleFigures, onShadersReady, roomless = false }: SceneProps) => {
     const plannerViewMode = useEditorStore(state => state.plannerViewMode);
     // 2D wall editor: the room and the floor grid make way for the open wall
     const wallEditorOpen = useEditorStore(state => isEditor && !!state.wallEditor);
     const { rectAreaLights } = useRenderQualitySettings();
     const [windowViewReady, setWindowViewReady] = useState(false);
+    // AR export page: no camera system, player, street view, info raycast or shader warmup.
+    const exportMode = useExportMode().active;
 
-    // In Viewer mode (not editor), always force First Person
-    const viewMode = isEditor ? plannerViewMode : 'firstPerson';
+    // In Viewer mode (not editor), always force First Person. The AR export takes the orbit
+    // view's room: no ceiling (a model seen from outside), no street behind the windows.
+    const viewMode = isEditor ? plannerViewMode : exportMode ? 'perspective' : 'firstPerson';
     const showWindowView = viewMode === 'firstPerson';
 
     return (
@@ -80,13 +87,15 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                 )}
 
                 {/* Room collider lives in physics/PhysicsWorld.tsx (RND-08: Rapier loads only for first person). */}
-                <Satellit
-                    viewMode={viewMode}
-                    rectAreaLights={rectAreaLights}
-                    clearGlass={showWindowView && windowViewReady}
-                    hideGeometry={wallEditorOpen}
-                    publishWallFaces={isEditor}
-                />
+                {!roomless && (
+                    <Satellit
+                        viewMode={viewMode}
+                        rectAreaLights={rectAreaLights}
+                        clearGlass={showWindowView && windowViewReady}
+                        hideGeometry={wallEditorOpen}
+                        publishWallFaces={isEditor}
+                    />
+                )}
 
                 {/* Orbit view: room walls on the camera side cut away (toolbar toggle) */}
                 {isEditor && <RoomCutawayTracker />}
@@ -104,23 +113,24 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                     </Suspense>
                 )}
 
-                <Suspense fallback={null}>
+                {/* A plain Suspense boundary, except on the AR export page (reports when it loaded). */}
+                <ExportPart part="walls">
                     <PlacedArtworks viewerInstances={viewerInstances} isEditor={isEditor} />
                     <ModularWallsController viewerWalls={viewerWalls} isEditor={isEditor} />
-                </Suspense>
+                </ExportPart>
 
                 {/* Own boundary: the figure model doesn't hold back the artworks. The viewer
                     only loads it when the version has public figures. */}
                 {(isEditor || (viewerScaleFigures && viewerScaleFigures.length > 0)) && (
-                    <Suspense fallback={null}>
+                    <ExportPart part="figures">
                         <ScaleFigures viewerFigures={viewerScaleFigures} isEditor={isEditor} />
-                    </Suspense>
+                    </ExportPart>
                 )}
 
-                <FPVArtworkRaycaster isEditor={isEditor} instances={viewerInstances} />
+                {!exportMode && <FPVArtworkRaycaster isEditor={isEditor} instances={viewerInstances} />}
 
                 {/* Mounts together with the room (same Suspense boundary). */}
-                <ShaderWarmup onDone={onShadersReady} />
+                {!exportMode && <ShaderWarmup onDone={onShadersReady} />}
             </FrameInstancerProvider>
         </ArtworkTextureProvider>
     );

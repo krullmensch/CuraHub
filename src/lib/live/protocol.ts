@@ -70,7 +70,7 @@ const serverMessageSchema = z.discriminatedUnion('t', [
   z.object({
     t: z.literal('versions'),
     exhibitionId: z.number(),
-    event: z.enum(['created', 'deleted', 'published', 'featured']),
+    event: z.enum(['created', 'deleted', 'published', 'featured', 'arExport']),
     versionId: z.number(),
     fallbackVersionId: z.number().nullable(),
     by: z.string().nullable(),

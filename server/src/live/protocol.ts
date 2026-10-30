@@ -115,7 +115,7 @@ export type LiveChange =
     | { kind: 'artwork'; op: 'upsert'; data: { id: number } & Record<string, unknown> }
     | { kind: 'wallLayout'; op: 'upsert'; data: { hangingHeight: number; guides: unknown } };
 
-export type VersionEvent = 'created' | 'deleted' | 'published' | 'featured';
+export type VersionEvent = 'created' | 'deleted' | 'published' | 'featured' | 'arExport';
 
 /** WebSocket close codes (4000–4999 are free for applications). */
 export const CLOSE = {

@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import { Prisma, PrismaClient } from '@prisma/client';
 import { ensureNotClaimed } from '../live/claimGuard';
+import { ensureVersionWritable } from '../lib/versionWritable';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
@@ -92,6 +93,7 @@ wallsRouter.post('/', authenticate, idempotency, async (req: Request, res) => {
             }
         });
         if (!version) return res.status(404).json({ error: 'Version not found' });
+        if (!ensureVersionWritable(res, version)) return;
 
         const { isDefault, ...fields } = data;
         const create = async (tx: Prisma.TransactionClient) => {
@@ -149,9 +151,11 @@ wallsRouter.patch('/:id', authenticate, async (req: Request, res) => {
             where: {
                 id: wallId,
                 version: { exhibition: exhibitionAccessFilter(req.user!.userId, isAdmin) }
-            }
+            },
+            include: { version: { select: { is_published: true } } }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });
+        if (!ensureVersionWritable(res, existing.version)) return;
         if (!ensureNotClaimed(req, res, 'wall', wallId)) return;
 
         const wall = await prisma.modularWall.update({
@@ -182,9 +186,11 @@ wallsRouter.delete('/:id', authenticate, async (req: Request, res) => {
             where: {
                 id: wallId,
                 version: { exhibition: exhibitionAccessFilter(req.user!.userId, isAdmin) }
-            }
+            },
+            include: { version: { select: { is_published: true } } }
         });
         if (!existing) return res.status(404).json({ error: 'Wall not found' });
+        if (!ensureVersionWritable(res, existing.version)) return;
         if (!ensureNotClaimed(req, res, 'wall', wallId)) return;
 
         // Detach artworks: set wallId to null on any ArtworkInstances referencing this wall

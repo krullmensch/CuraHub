@@ -4,6 +4,7 @@ import { z } from 'zod';
 import fs from 'fs';
 import path from 'path';
 import { authenticate, requireCurator } from '../lib/middleware';
+import { onVersionsDeleted } from '../lib/arExportJobs';
 
 export const projectsRouter = Router();
 const prisma = new PrismaClient();
@@ -243,6 +244,7 @@ projectsRouter.delete('/:id', authenticate, requireCurator, async (req: Request,
             }
         }
 
+        await onVersionsDeleted({ exhibition: { projectId } });
         await prisma.project.delete({ where: { id: projectId } });
         res.json({ success: true, id: projectId });
     } catch (e) {

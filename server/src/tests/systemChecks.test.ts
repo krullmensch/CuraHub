@@ -16,6 +16,7 @@ function deps(over: Partial<CheckDeps> = {}): CheckDeps {
         run: async () => {},
         freeBytes: async () => 50 * 1024 ** 3,
         reachHsbi: async () => {},
+        chromiumAvailable: async () => true,
         backups: async () => ({ count: 3, newest: { name: 'curahub-20261011-030000.sql.gz', mtimeMs: NOW - 3 * HOUR, size: 2 * 1024 ** 2 }, lastError: null }),
         now: () => NOW,
         timeoutMs: 50,
@@ -28,7 +29,7 @@ const byId = (checks: { id: string; status: string }[]) => Object.fromEntries(ch
 describe('runSystemChecks', () => {
     it('is all green on a healthy instance behind the proxy', async () => {
         const checks = await runSystemChecks(deps(), viaProxy);
-        expect(checks.map((c) => c.id)).toEqual(['database', 'migrations', 'uploads', 'ffmpeg', 'poppler', 'disk', 'hsbi', 'backup', 'proxy']);
+        expect(checks.map((c) => c.id)).toEqual(['database', 'migrations', 'uploads', 'ffmpeg', 'poppler', 'arExport', 'disk', 'hsbi', 'backup', 'proxy']);
         expect(checks.every((c) => c.status === 'ok')).toBe(true);
         expect(checks.every((c) => c.label && c.detail)).toBe(true);
     });
@@ -41,6 +42,12 @@ describe('runSystemChecks', () => {
     it('fails migrations with a failed row or missing ones', async () => {
         expect(byId(await runSystemChecks(deps({ migrationRows: async () => ({ finished: 9, failed: 1 }) }), viaProxy)).migrations).toBe('fail');
         expect(byId(await runSystemChecks(deps({ migrationRows: async () => ({ finished: 8, failed: 0 }) }), viaProxy)).migrations).toBe('fail');
+    });
+    it('warns (does not fail) when Chromium is missing', async () => {
+        const checks = await runSystemChecks(deps({ chromiumAvailable: async () => false }), viaProxy);
+        const ar = checks.find((c) => c.id === 'arExport')!;
+        expect(ar).toMatchObject({ label: 'AR-Export (Chromium)', status: 'warn' });
+        expect(byId(checks).database).toBe('ok');
     });
     it('fails when a tool is missing', async () => {
         const run = async (cmd: string) => { if (cmd === 'pdftoppm') throw new Error('ENOENT'); };

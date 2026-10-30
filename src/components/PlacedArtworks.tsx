@@ -1,9 +1,9 @@
-import { memo, useEffect, useRef, useCallback, Suspense } from 'react';
+import { memo, useEffect, useRef, useCallback } from 'react';
 import * as THREE from 'three';
-import { useEditorStore, instanceRefMap, type ArtworkInstanceData } from '../store/editorStore';
+import { useEditorStore, instanceRefMap, markListLoadFailed, type ArtworkInstanceData } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { SelectableInstance } from './SelectableInstance';
-import { VideoInstance } from './VideoInstance';
+import { VideoInstance, VideoStillInstance } from './VideoInstance';
 import { ModelInstance } from './ModelInstance';
 import { SplatInstance } from './SplatInstance';
 import { BookInstance } from './book/BookInstance';
@@ -13,6 +13,8 @@ import { instanceOnFace, instanceOnRoomFace, openFaceOf } from '../lib/wallEdito
 import { useRoomCutaway } from '../store/roomCutawayStore';
 import { useWallEditorView } from '../store/wallEditorViewStore';
 import { displayArtworkTitle } from '../lib/artworkTitle';
+import { useExportMode } from '../lib/arExport/exportMode';
+import { ExportPart } from './arExport/ExportPart';
 
 interface PlacedArtworksProps {
     viewerInstances?: ArtworkInstanceData[];
@@ -59,8 +61,11 @@ const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProp
     });
     const refCallback = useCallback((el: THREE.Group | null) => registerRef(instance.id, el), [registerRef, instance.id]);
     const assetType = instance.artwork?.asset?.type || 'image';
+    // AR export: videos as their still, splats left out (no AR viewer renders them).
+    const exportMode = useExportMode().active;
+    if (exportMode && assetType === 'splat') return null;
     const Component =
-        assetType === 'video' ? VideoInstance :
+        assetType === 'video' ? (exportMode ? VideoStillInstance : VideoInstance) :
         assetType === 'model3d' ? ModelInstance :
         assetType === 'book' ? BookInstance :
         assetType === 'splat' ? SplatInstance :
@@ -68,9 +73,9 @@ const InstanceSlot = memo(({ instance, isEditor, registerRef }: InstanceSlotProp
 
     return (
         <group visible={!hidden && !cutAway}>
-            <Suspense fallback={null}>
+            <ExportPart part={`instance:${instance.id}`}>
                 <Component ref={refCallback} instance={instance} selected={selected} isEditor={isEditor} />
-            </Suspense>
+            </ExportPart>
         </group>
     );
 });
@@ -81,6 +86,8 @@ export const PlacedArtworks = ({ viewerInstances, isEditor = true }: PlacedArtwo
     const setLocalInstances = useEditorStore((state) => state.setLocalInstances);
     const version = useEditorStore((state) => state.instancesVersion);
     const plannerViewMode = useEditorStore((state) => state.plannerViewMode);
+    // Phone planning view: select and change frames only, no gizmo or marquee.
+    const mobilePlanner = useEditorStore((state) => state.mobilePlanner);
     const wallEditorOpen = useEditorStore((state) => !!state.wallEditor);
     // API-01: depend on "logged in", not on the token string — refreshAuth() issues a fresh
     // token on every mount/focus, which used to refetch all instances.
@@ -150,6 +157,7 @@ export const PlacedArtworks = ({ viewerInstances, isEditor = true }: PlacedArtwo
                 setLocalInstances(valid);
             } catch (err) {
                 console.error("Failed to load instances", err);
+                if (!cancelled) markListLoadFailed('instances', activeVersionId);
             }
         };
 
@@ -163,8 +171,8 @@ export const PlacedArtworks = ({ viewerInstances, isEditor = true }: PlacedArtwo
                 <InstanceSlot key={instance.id} instance={instance} isEditor={isEditor} registerRef={registerRef} />
             ))}
             {/* No transform gizmo while walking through the room in first-person preview */}
-            {isEditor && plannerViewMode !== 'firstPerson' && !wallEditorOpen && <InstanceTransformControls instanceRefs={instanceRefs} />}
-            {isEditor && <SelectionBridge />}
+            {isEditor && plannerViewMode !== 'firstPerson' && !wallEditorOpen && !mobilePlanner && <InstanceTransformControls instanceRefs={instanceRefs} />}
+            {isEditor && !mobilePlanner && <SelectionBridge />}
         </group>
     );
 };

@@ -35,8 +35,10 @@ RUN npm run build
 
 # Production Stage
 FROM node:20-alpine
-# Runtime dependencies — ffmpeg for video transcoding/thumbnails, poppler-utils (pdfinfo, pdftoppm) for book covers
-RUN apk add --no-cache openssl libc6-compat ca-certificates curl ffmpeg poppler-utils
+# Runtime dependencies — ffmpeg for video transcoding/thumbnails, poppler-utils (pdfinfo, pdftoppm) for book covers,
+# chromium + font-noto for the headless AR export; mesa-vulkan-swrast (lavapipe) + vulkan-loader give it
+# software WebGL, because Alpine's chromium ships no SwiftShader
+RUN apk add --no-cache openssl libc6-compat ca-certificates curl ffmpeg poppler-utils chromium font-noto mesa-vulkan-swrast vulkan-loader
 WORKDIR /app
 
 # Copy Frontend Build
@@ -52,6 +54,7 @@ COPY --from=build /app/server/node_modules ./node_modules
 # Environment
 ENV NODE_ENV=production
 ENV PORT=3000
+ENV CHROMIUM_PATH=/usr/bin/chromium
 
 # Ensure uploads directory exists
 RUN mkdir -p uploads
