@@ -17,9 +17,13 @@ import { scaleFiguresRouter } from './routes/scaleFigures';
 import { exhibitionsRouter } from './routes/exhibitions';
 import { publicRouter } from './routes/public';
 import { booksRouter } from './routes/books';
+import { arExportEditorRouter, arExportJobRouter } from './routes/arExport';
 import { adminRouter, setAdminSystemDeps } from './routes/admin';
 import { resumeVideoJobs } from './lib/videoJobs';
 import { resumeBookJobs } from './lib/bookJobs';
+import { configureArExportJobs, resumeArExports } from './lib/arExportJobs';
+import { chromiumBrowser } from './lib/headlessBrowser';
+import { publishVersionEventFromServer } from './live/broadcast';
 import { videoStreamHandler } from './lib/videoRanges';
 import { PrismaClient } from '@prisma/client';
 import { API_NAMESPACE_SEGMENTS, isFrontendExhibitionPath, NOINDEX_ROUTE_PATTERNS } from './lib/apiNamespaces';
@@ -37,6 +41,14 @@ import { setLiveHub } from './live/registry';
 const app = express();
 const prisma = new PrismaClient();
 const PORT = process.env.PORT || 3000;
+
+// AR export: Chromium opens this same process' frontend (/ar-export/:vid) and uploads the files to it.
+configureArExportJobs({
+    prisma,
+    browser: chromiumBrowser,
+    baseUrl: () => `http://127.0.0.1:${PORT}`,
+    onStatus: (exhibitionId, versionId) => publishVersionEventFromServer(exhibitionId, 'arExport', versionId),
+});
 
 // Apache (host) and cloudflared reach the container through the Docker bridge / loopback;
 // trust their X-Forwarded-* so req.ip and req.protocol are the client's.
@@ -115,6 +127,7 @@ app.use('/admin', adminRouter);
 app.use('/public', publicRouter);
 app.use('/books', booksRouter);
 app.use('/', versionsRouter);
+app.use('/', arExportEditorRouter);
 
 // --- API Routes (With /api prefix) ---
 app.use('/api/auth', authRouter);
@@ -131,6 +144,9 @@ app.use('/api/admin', adminRouter);
 app.use('/api/public', publicRouter);
 app.use('/api/books', booksRouter);
 app.use('/api', versionsRouter);
+app.use('/api', arExportEditorRouter);
+// Job-token routes only under /api: /ar-export/:vid without the prefix is the frontend page (SPA fallback).
+app.use('/api/ar-export', arExportJobRouter);
 
 // --- Production Frontend Serving & SPA Fallback ---
 if (process.env.NODE_ENV === 'production') {
@@ -232,6 +248,7 @@ async function start() {
         // VID-03: continue video jobs interrupted by a restart.
         resumeVideoJobs().catch((err) => console.error('[VideoJobs] Resume failed:', err));
         resumeBookJobs().catch((err) => console.error('[BookJobs] Resume failed:', err));
+        resumeArExports().catch((err) => console.error('[ArExport] Resume failed:', err));
     });
     // Presence (and later claims and live changes) over WebSockets, see src/live/.
     const liveHub = new LiveHub(prismaHubDeps(prisma));

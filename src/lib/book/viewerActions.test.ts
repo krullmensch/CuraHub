@@ -53,6 +53,13 @@ describe('closeBook', () => {
     closeBook('escape', env);
     expect(log).toEqual(['exit(book=set)', 'leave']);
   });
+  it('touch viewer (no pointer lock): closing keeps walking without requesting a lock', () => {
+    const { env, log } = fakeEnv(false);
+    openBook({ ...BOOK, publicView: true }, env);
+    closeBook('button', env);
+    expect(log).toEqual([]);
+    expect(isControlsLocked()).toBe(false);
+  });
   it('leaves re-entry to the entry overlay after ESC in the public viewer', () => {
     const { env, log } = fakeEnv(true);
     openBook({ ...BOOK, publicView: true }, env);

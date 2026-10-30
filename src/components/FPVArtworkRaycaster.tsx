@@ -1,10 +1,13 @@
-import { useRef, useMemo, useEffect } from 'react';
+import { useRef, useEffect } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { useEditorStore, instanceRefMap, type ArtworkInstanceData } from '../store/editorStore';
 import { useBookViewerStore } from '../store/bookViewerStore';
 import { bookInReach, installFirstPersonBookClick } from '../lib/book/viewerActions';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
+import { collectOccluders, pickArtworkAt } from '../lib/artworkPick';
+import { isWalking } from '../lib/touch/walking';
+import { useTouchViewer } from '../lib/touch/touchMode';
 
 interface FPVArtworkRaycasterProps {
     isEditor: boolean;
@@ -12,19 +15,8 @@ interface FPVArtworkRaycasterProps {
     instances?: ArtworkInstanceData[];
 }
 
-const MAX_DISTANCE = 12;
-// Surfaces that can hide an artwork: the room's wall mesh and modular walls.
-const OCCLUDER_NAMES = new Set(['Wall', 'ModularWall']);
 const OCCLUDER_REFRESH_MS = 1000;
-
-/** Walk ancestors to find a group carrying artworkInfo userData. */
-function findArtworkAncestor(obj: THREE.Object3D | null): THREE.Object3D | null {
-    while (obj) {
-        if (obj.userData.artworkInfo) return obj;
-        obj = obj.parent;
-    }
-    return null;
-}
+const CENTRE = { x: 0, y: 0 };
 
 export const FPVArtworkRaycaster = ({ isEditor, instances }: FPVArtworkRaycasterProps) => {
     const camera = useThree((state) => state.camera);
@@ -33,11 +25,12 @@ export const FPVArtworkRaycaster = ({ isEditor, instances }: FPVArtworkRaycaster
     // Created lazily inside the frame loop: its `far` is changed per cast, which the React
     // compiler lint does not allow on hook-returned values.
     const raycasterRef = useRef<THREE.Raycaster | null>(null);
-    const direction = useMemo(() => new THREE.Vector3(), []);
     const lastCast = useRef(-Infinity);
     const lastInstanceId = useRef<number | null>(null);
     const occluders = useRef<THREE.Object3D[]>([]);
     const occludersRefreshedAt = useRef(-Infinity);
+    // Touch viewer: artworks are picked on tap (TouchTapHandler), not every frame from the centre.
+    const touch = useTouchViewer();
 
     useEffect(() => {
         return () => {
@@ -68,7 +61,8 @@ export const FPVArtworkRaycaster = ({ isEditor, instances }: FPVArtworkRaycaster
         }
         // RND-05: the info overlay only matters while walking — no raycasts behind the
         // viewer's entry overlay or before the editor preview captured the mouse.
-        if (!document.pointerLockElement) {
+        if (touch && !isEditor) return;
+        if (!isWalking()) {
             clearHover();
             return;
         }
@@ -78,44 +72,17 @@ export const FPVArtworkRaycaster = ({ isEditor, instances }: FPVArtworkRaycaster
         lastCast.current = now;
 
         raycasterRef.current ??= new THREE.Raycaster();
-        const raycaster = raycasterRef.current;
-        camera.getWorldDirection(direction);
-        raycaster.set(camera.position, direction);
-        raycaster.far = MAX_DISTANCE;
-
-        // 1) Artworks only (picture planes, video screens, models) — a few dozen small meshes
-        //    instead of the whole scene with the room model (≈20k mesh raycasts/s before).
-        let artworkGroup: THREE.Object3D | null = null;
-        let hitDistance = 0;
-        let firstHit: THREE.Intersection | null = null;
-        for (const hit of raycaster.intersectObjects(Array.from(instanceRefMap.values()), true)) {
-            if (!hit.object.visible) continue;
-            artworkGroup = findArtworkAncestor(hit.object);
-            firstHit = hit;
-            hitDistance = hit.distance;
-            break;
-        }
-        if (!artworkGroup) {
-            clearHover();
-            return;
-        }
-
-        // 2) Occlusion: only walls in front of the artwork count.
         if (now - occludersRefreshedAt.current > OCCLUDER_REFRESH_MS) {
             occludersRefreshedAt.current = now;
-            const found: THREE.Object3D[] = [];
-            scene.traverse((obj) => {
-                if ((obj as THREE.Mesh).isMesh && OCCLUDER_NAMES.has(obj.name)) found.push(obj);
-            });
-            occluders.current = found;
+            occluders.current = collectOccluders(scene);
         }
-        raycaster.far = hitDistance;
-        const blocked = raycaster.intersectObjects(occluders.current, false).some((hit) => hit.object.visible);
-        raycaster.far = MAX_DISTANCE;
-        if (blocked) {
+        const pick = pickArtworkAt(CENTRE, camera, Array.from(instanceRefMap.values()), occluders.current, raycasterRef.current);
+        if (!pick) {
             clearHover();
             return;
         }
+        const artworkGroup = pick.group;
+        const firstHit = pick.hit;
 
         const id = artworkGroup.userData.instanceId as number;
         const info = artworkGroup.userData.artworkInfo as { assetType: string; publicReadable?: boolean };

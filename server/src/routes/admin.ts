@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { authenticate, requireAdmin } from '../lib/middleware';
 import { runSystemChecks, requestInfo, type CheckDeps } from '../lib/systemChecks';
 import { getSetupState } from '../lib/setupState';
+import { onVersionsDeleted } from '../lib/arExportJobs';
 
 export const adminRouter = Router();
 const prisma = new PrismaClient();
@@ -62,6 +63,9 @@ adminRouter.delete('/users/:id', async (req, res) => {
 
     const user = await prisma.user.findUnique({ where: { id: targetId } });
     if (!user) return res.status(404).json({ error: 'Benutzer nicht gefunden' });
+
+    // The export rows cascade with the projects, their files don't.
+    await onVersionsDeleted({ exhibition: { project: { ownerId: targetId } } });
 
     await prisma.$transaction(async (tx) => {
       // 1. Clear non-cascading invitedById FK
@@ -126,6 +130,7 @@ adminRouter.delete('/exhibitions/:id', async (req, res) => {
     const exhibition = await prisma.exhibition.findUnique({ where: { id } });
     if (!exhibition) return res.status(404).json({ error: 'Ausstellung nicht gefunden' });
 
+    await onVersionsDeleted({ exhibition_id: id });
     await prisma.exhibition.delete({ where: { id } });
     res.json({ success: true });
   } catch {

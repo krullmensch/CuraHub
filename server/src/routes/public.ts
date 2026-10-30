@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
+import { arDir, arFilePath } from '../lib/arExportFiles';
+import { arPublicInfo, buildPublicScenePayload } from '../lib/publicScene';
 
 const prisma = new PrismaClient();
 export const publicRouter = Router();
@@ -77,39 +79,60 @@ publicRouter.get('/exhibition/:slug', async (req, res) => {
             return res.status(404).json({ error: 'Diese Ausstellung existiert nicht.' });
         }
 
-        const version = await prisma.exhibitionVersion.findFirst({
+        const published = await prisma.exhibitionVersion.findFirst({
             where: { exhibition_id: exhibition.id, is_published: true },
-            include: {
-                instances: {
-                    include: {
-                        artwork: { include: { asset: true } },
-                    },
-                },
-                walls: true,
-                // Only figures the curator switched on for the viewer
-                scaleFigures: { where: { isPublic: true } },
-            },
+            select: { id: true, arExport: true },
         });
-        if (!version) {
+        if (!published) {
             return res.status(404).json({ error: 'Diese Ausstellung ist aktuell nicht öffentlich.' });
         }
 
-        res.json({
-            exhibition: { id: exhibition.id, title: exhibition.title, slug: exhibition.slug },
-            version: { id: version.id, comment: version.comment, published_at: version.published_at },
-            // Books: the PDF name stays server-side; the viewer asks /api/books/:id/pdf.
-            instances: version.instances.map((inst) => {
-                const asset = inst.artwork?.asset;
-                if (asset?.type !== 'book' || !asset.metadata || typeof asset.metadata !== 'object' || Array.isArray(asset.metadata)) return inst;
-                // eslint-disable-next-line @typescript-eslint/no-unused-vars
-                const { pdfFile: _pdfFile, ...metadata } = asset.metadata as Record<string, unknown>;
-                return { ...inst, artwork: { ...inst.artwork, asset: { ...asset, metadata } } };
-            }),
-            walls: version.walls,
-            scaleFigures: version.scaleFigures,
-        });
+        const scene = await buildPublicScenePayload(prisma, published.id);
+        if (!scene) {
+            return res.status(404).json({ error: 'Diese Ausstellung ist aktuell nicht öffentlich.' });
+        }
+        res.json({ ...scene, ar: arPublicInfo(exhibition.slug, published.arExport) });
     } catch (err) {
         console.error('Error fetching exhibition by slug:', err);
         res.status(500).json({ error: 'Failed to load exhibition' });
+    }
+});
+
+const AR_MIME = { glb: 'model/gltf-binary', usdz: 'model/vnd.usdz+zip' } as const;
+
+// GET /public/ar/:slug.glb|.usdz — the AR files of the published version. The file name changes with
+// every export, so the versioned URL (?v=<file stem>) can be cached for good; Range works through sendFile.
+publicRouter.get('/ar/:file', async (req, res) => {
+    const match = /^(.+)\.(glb|usdz)$/.exec(req.params.file);
+    if (!match) return res.status(404).json({ error: 'Datei nicht gefunden' });
+    const [, slug, format] = match as unknown as [string, string, 'glb' | 'usdz'];
+    try {
+        const version = await prisma.exhibitionVersion.findFirst({
+            where: { is_published: true, exhibition: { slug } },
+            select: { arExport: true },
+        });
+        const row = version?.arExport;
+        const name = row?.status === 'done' ? (format === 'glb' ? row.glb_file : row.usdz_file) : null;
+        if (!name) return res.status(404).json({ error: 'Datei nicht gefunden' });
+        arFilePath(name); // rejects names that could leave the directory
+
+        // Immutable only for the versioned URL of the current file; a bare or stale ?v= may point at a newer export later.
+        const stem = name.replace(/\.[^.]+$/, '');
+        const cacheControl = req.query.v === stem ? 'public, max-age=31536000, immutable' : 'no-cache';
+
+        res.sendFile(name, {
+            root: arDir(),
+            cacheControl: false,
+            headers: {
+                'Content-Type': AR_MIME[format],
+                'Accept-Ranges': 'bytes',
+                'Cache-Control': cacheControl,
+            },
+        }, (err) => {
+            if (err && !res.headersSent) res.status(404).json({ error: 'Datei nicht gefunden' });
+        });
+    } catch (err) {
+        console.error('Error serving AR file:', err);
+        res.status(500).json({ error: 'Failed to load AR file' });
     }
 });

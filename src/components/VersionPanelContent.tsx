@@ -16,6 +16,7 @@ import { ChevronDown, Layers, Save, LayoutDashboard } from 'lucide-react';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { SaveVersionDialog } from './SaveVersionDialog';
+import { ArExportStatus } from './versions/ArExportStatus';
 import { VersionNode } from './version-graph/VersionNode';
 import { BranchContextMenu } from './version-graph/BranchContextMenu';
 import { NewBranchDialog } from './version-graph/NewBranchDialog';
@@ -79,6 +80,7 @@ export const VersionPanelContent = ({
   const triggerRefresh = useEditorStore((state) => state.triggerInstancesRefresh);
 
   const canCurate = isCurator;
+  const publishedVersion = versions.find((v) => v.is_published) ?? null;
 
   // Keep refs in sync so effects can read latest values without re-triggering
   // (layout effects run before the passive effects below)
@@ -356,6 +358,14 @@ export const VersionPanelContent = ({
             </button>
           </div>
         </div>
+
+        {publishedVersion && activeExhibitionId && (
+          <ArExportStatus
+            exhibitionId={activeExhibitionId}
+            versionId={publishedVersion.id}
+            canRegenerate={canCurate}
+          />
+        )}
 
         {/* Graph area */}
         <div className="flex-1 relative overflow-hidden">

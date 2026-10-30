@@ -16,6 +16,8 @@ export class BoxHitProxy extends THREE.Object3D {
     constructor() {
         super();
         this.name = 'BoxHitProxy';
+        // Left out of the AR export (prepareExportScene drops hit proxies).
+        this.userData.hitProxy = true;
     }
 
     raycast(raycaster: THREE.Raycaster, intersects: THREE.Intersection[]): void {

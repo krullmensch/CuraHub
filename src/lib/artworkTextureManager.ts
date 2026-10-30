@@ -57,6 +57,8 @@ interface Entry extends ArtworkTextureSource {
     maxUsefulTier: number;
     thumbnailFailed: boolean;
     failedKeys: Set<string>;
+    /** wantedTier was computed at least once (export mode waits for it). */
+    evaluated: boolean;
 }
 
 interface CacheItem {
@@ -64,6 +66,16 @@ interface CacheItem {
     bytes: number;
     refs: number;
     releasedAt: number;
+}
+
+export interface ArtworkTextureManagerOptions {
+    /**
+     * AR export: every source loads straight at its top tier (no thumbnail first, no downgrades),
+     * textures keep their decoded image (the exporters read pixels, not the GPU) in three's usual
+     * flipY orientation, and nothing is uploaded to the GPU. Thumbnails are only a fallback when
+     * the top tier fails.
+     */
+    topTierOnly?: boolean;
 }
 
 interface DecodedTexture {
@@ -90,6 +102,7 @@ async function decodeArtworkTexture(
     maxDim: number,
     anisotropy: number,
     signal: AbortSignal,
+    forExport = false,
 ): Promise<{ texture: THREE.Texture; bytes: number; naturalMax: number }> {
     if (typeof createImageBitmap !== 'function') {
         // Very old browsers: main-thread decode via three's loader, no resizing.
@@ -126,6 +139,14 @@ async function decodeArtworkTexture(
 
     const texture = new THREE.Texture(bitmap);
     texture.colorSpace = THREE.SRGBColorSpace;
+    const bytes = bitmap.width * bitmap.height * 4 * (4 / 3);
+    if (forExport) {
+        // Read by GLTFExporter/USDZExporter, never shown: three's default orientation (flipY, no UV
+        // transform — both exporters flip the image themselves), the bitmap kept, JPEG in the files.
+        texture.flipY = true;
+        texture.userData.mimeType = 'image/jpeg';
+        return { texture, bytes, naturalMax };
+    }
     // WebGL ignores UNPACK_FLIP_Y for ImageBitmaps, and createImageBitmap's
     // `imageOrientation: 'flipY'` is not supported everywhere — flip via the UV transform.
     texture.flipY = false;
@@ -133,7 +154,6 @@ async function decodeArtworkTexture(
     texture.offset.set(0, 1);
     texture.anisotropy = anisotropy;
     texture.needsUpdate = true;
-    const bytes = bitmap.width * bitmap.height * 4 * (4 / 3);
     // The GPU holds the pixels after the upload; free the decoded copy in this process.
     // After a context loss the manager reloads every texture (handleContextRestored).
     texture.onUpdate = () => {
@@ -164,8 +184,10 @@ export class ArtworkTextureManager {
     private readonly lastProjection: [number, number] = [NaN, NaN];
     private readonly objectPos = new THREE.Vector3();
     readonly placeholder: THREE.DataTexture;
+    private readonly topTierOnly: boolean;
 
-    constructor() {
+    constructor({ topTierOnly = false }: ArtworkTextureManagerOptions = {}) {
+        this.topTierOnly = topTierOnly;
         this.placeholder = new THREE.DataTexture(new Uint8Array([232, 232, 232, 255]), 1, 1);
         this.placeholder.colorSpace = THREE.SRGBColorSpace;
         this.placeholder.needsUpdate = true;
@@ -199,6 +221,7 @@ export class ArtworkTextureManager {
             maxUsefulTier: MAX_TIER,
             thumbnailFailed: false,
             failedKeys: new Set(),
+            evaluated: false,
         };
         this.entries.set(id, entry);
         if (material) material.map = this.placeholder;
@@ -286,6 +309,46 @@ export class ArtworkTextureManager {
         return { settled, total: this.entries.size };
     }
 
+    /**
+     * Export mode: artworks at their top tier, plus those whose top tier failed and that show the
+     * thumbnail instead or have nothing left to try. Before the first evaluation nothing counts.
+     */
+    get exportProgress(): { settled: number; total: number } {
+        let settled = 0;
+        for (const entry of this.entries.values()) {
+            if (this.exportState(entry) !== 'loading') settled++;
+        }
+        return { settled, total: this.entries.size };
+    }
+
+    /** Export mode: ids of artworks without any picture after every source failed. */
+    get exportFailedIds(): number[] {
+        return [...this.entries.values()].filter((e) => this.exportState(e) === 'failed').map((e) => e.id);
+    }
+
+    /** Export mode: ids of artworks still waiting for their top tier. */
+    get exportPendingIds(): number[] {
+        return [...this.entries.values()].filter((e) => this.exportState(e) === 'loading').map((e) => e.id);
+    }
+
+    private exportState(entry: Entry): 'done' | 'failed' | 'loading' {
+        const settings = this.settings;
+        if (!settings || !entry.evaluated) return 'loading';
+        if (entry.currentTier >= 0 && entry.currentTier >= entry.wantedTier) return 'done';
+        if (!this.topFailed(entry, settings)) return 'loading';
+        if (entry.currentTier >= 0) return 'done';
+        return this.thumbnailExhausted(entry) ? 'failed' : 'loading';
+    }
+
+    private topFailed(entry: Entry, settings: RenderQualitySettings): boolean {
+        const { key, isThumbnail } = this.sourceFor(entry, entry.wantedTier, settings);
+        return isThumbnail ? entry.thumbnailFailed : entry.failedKeys.has(key);
+    }
+
+    private thumbnailExhausted(entry: Entry): boolean {
+        return !entry.thumbnailPath || entry.thumbnailFailed;
+    }
+
     handleContextRestored(): void {
         this.abortAll();
         for (const item of this.cache.values()) item.texture.dispose();
@@ -364,7 +427,12 @@ export class ArtworkTextureManager {
         let totalBytes = 0;
         for (const entry of this.entries.values()) {
             const maxTier = Math.min(cap, entry.maxUsefulTier);
-            if (entry.forceMax) {
+            entry.evaluated = true;
+            if (this.topTierOnly) {
+                // Never downgrade: a loaded tier above maxUsefulTier is the same picture.
+                entry.projectedPx = Infinity;
+                entry.wantedTier = Math.max(maxTier, entry.currentTier);
+            } else if (entry.forceMax) {
                 entry.projectedPx = Infinity;
                 entry.wantedTier = maxTier;
             } else if (entry.object && ortho) {
@@ -431,7 +499,8 @@ export class ArtworkTextureManager {
             // Nothing visible yet: show the smallest tier (the thumbnail) first, however big the
             // artwork is on screen — an empty frame is worse than a soft picture, and the viewer
             // waits for all of them before letting the player in. The upgrade follows right after.
-            const tier = entry.currentTier === -1 ? 0 : entry.wantedTier;
+            const tier = this.topTierOnly ? this.exportTier(entry, settings) : entry.currentTier === -1 ? 0 : entry.wantedTier;
+            if (tier < 0) continue;
             if (entry.loadingTier === tier) continue;
             // Let the running load finish instead of switching to a larger, slower download.
             if (entry.currentTier === -1 && entry.loadingKey) continue;
@@ -446,6 +515,13 @@ export class ArtworkTextureManager {
             this.request(entry, tier, settings);
         }
         this.queue = waiting;
+    }
+
+    /** Export mode: the top tier, the thumbnail once that failed, -1 when nothing is left. */
+    private exportTier(entry: Entry, settings: RenderQualitySettings): number {
+        if (!this.topFailed(entry, settings)) return entry.wantedTier;
+        if (entry.currentTier >= 0 || this.thumbnailExhausted(entry)) return -1;
+        return 0;
     }
 
     private request(entry: Entry, tier: number, settings: RenderQualitySettings): void {
@@ -466,7 +542,7 @@ export class ArtworkTextureManager {
         const controller = new AbortController();
         this.controllers.add(controller);
 
-        decodeArtworkTexture(url, this.maxDimFor(tier, settings), settings.anisotropy, controller.signal)
+        decodeArtworkTexture(url, this.maxDimFor(tier, settings), settings.anisotropy, controller.signal, this.topTierOnly)
             .then(({ texture, bytes, naturalMax }) => {
                 if (generation !== this.generation) {
                     texture.dispose();
@@ -500,7 +576,7 @@ export class ArtworkTextureManager {
         while (this.ready.length > 0) {
             const item = this.ready.shift()!;
             this.pendingKeys.delete(item.key);
-            gl.initTexture(item.texture);
+            if (!this.topTierOnly) gl.initTexture(item.texture);
             this.cache.set(item.key, { texture: item.texture, bytes: item.bytes, refs: 0, releasedAt: now });
 
             for (const entry of this.entries.values()) {

@@ -5,6 +5,9 @@ import { RigidBody, CapsuleCollider, RapierRigidBody } from '@react-three/rapier
 import * as THREE from 'three';
 import { useControlsLocked } from '../lib/controlsLock';
 import { firstPersonTransition } from '../lib/cameraTransition';
+import { touchInput, syncLock, installTouchInputGuards } from '../lib/touch/touchInput';
+import { useTouchViewer } from '../lib/touch/touchMode';
+import { TouchLook } from './touch/TouchLook';
 import { PLAYER_BODY_CENTER, PLAYER_CAPSULE_HALF_HEIGHT, PLAYER_CAPSULE_RADIUS, PLAYER_EYE_OFFSET } from '../lib/playerDimensions';
 
 const SPEED = 3.5;
@@ -72,10 +75,14 @@ export const PlayerController = ({ paused, spawn = DEFAULT_SPAWN, initialRotatio
         if (right) direction.add(sideVector);
         if (left) direction.sub(sideVector);
 
-        const isMoving = direction.lengthSq() > 0;
-        if (isMoving) {
+        if (direction.lengthSq() > 0) {
             direction.normalize();
+        } else {
+            // Touch viewer's left stick: its deflection (≤ 1) sets the speed, full = SPEED.
+            const { x, y } = touchInput.move;
+            direction.addScaledVector(frontVector, y).addScaledVector(sideVector, x);
         }
+        const isMoving = direction.lengthSq() > 0;
 
         // Smooth acceleration / deceleration
         const targetX = direction.x * SPEED;
@@ -132,6 +139,19 @@ export const PlayerController = ({ paused, spawn = DEFAULT_SPAWN, initialRotatio
 
 export const Player = () => {
     const locked = useControlsLocked();
+    const touch = useTouchViewer();
+
+    useEffect(() => {
+        if (touch) syncLock(locked);
+    }, [touch, locked]);
+    useEffect(() => {
+        if (!touch) return;
+        const off = installTouchInputGuards();
+        return () => {
+            off();
+            touchInput.reset();
+        };
+    }, [touch]);
 
     const map = [
         { name: 'forward', keys: ['ArrowUp', 'w', 'W'] },
@@ -146,7 +166,9 @@ export const Player = () => {
     return (
         <KeyboardControls map={map}>
             <PlayerController paused={locked} />
-            {!locked && <PointerLockControls selector="#root" />}
+            {touch
+                ? <TouchLook paused={locked} />
+                : !locked && <PointerLockControls selector="#root" />}
         </KeyboardControls>
     );
 };

@@ -21,6 +21,8 @@ interface LiveState {
   claims: ClaimEntry[];
   /** Bumped whenever another tab created, deleted, published or featured a version (VersionPanel refetches). */
   versionsRevision: number;
+  /** Bumped when the AR export of a published version changed state (ArExportStatus refetches). */
+  arExportRevision: number;
 }
 
 export const useLiveStore = create<LiveState>()(() => ({
@@ -32,4 +34,5 @@ export const useLiveStore = create<LiveState>()(() => ({
   visitorCount: 0,
   claims: [],
   versionsRevision: 0,
+  arExportRevision: 0,
 }));

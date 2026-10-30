@@ -165,6 +165,12 @@ let worker: Worker | null = null;
 let nextRequest = 0;
 const waiting = new Map<number, (textures: FinishTextures | null) => void>();
 const listeners = new Set<() => void>();
+let pendingTextures = 0;
+
+/** Finishes whose generated textures were requested and have not arrived (or failed) yet. */
+export function frameTexturesPending(): number {
+    return pendingTextures;
+}
 
 /** Called whenever a finish's textures arrived — frame meshes rendered on demand invalidate. */
 export function onFrameTexturesReady(listener: () => void): () => void {
@@ -207,9 +213,11 @@ export function getFrameMaterial(id: FrameFinishId): THREE.Material {
     material.name = `frame-${id}`;
     cache.set(id, material);
     if (finishHasTextures(id)) {
+        pendingTextures++;
         requestTextures(id)
             .then((textures) => { if (textures) attachTextures(id, material, textures); })
-            .catch((err) => console.warn(`Rahmen-Textur ${id} konnte nicht erzeugt werden:`, err));
+            .catch((err) => console.warn(`Rahmen-Textur ${id} konnte nicht erzeugt werden:`, err))
+            .finally(() => { pendingTextures--; });
     }
     return material;
 }

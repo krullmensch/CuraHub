@@ -4,6 +4,7 @@ import path from 'path';
 import { execFile } from 'child_process';
 import type { Request } from 'express';
 import type { PrismaClient } from '@prisma/client';
+import { chromiumBrowser } from './headlessBrowser';
 
 /** Health of an installation — shown by the setup wizard and on the admin page. */
 export type CheckStatus = 'ok' | 'warn' | 'fail';
@@ -25,6 +26,7 @@ export interface CheckDeps {
     run(cmd: string, args: string[]): Promise<void>;
     freeBytes(dir: string): Promise<number>;
     reachHsbi(): Promise<void>;
+    chromiumAvailable(): Promise<boolean>;
     backups(): Promise<BackupState | null>;
     now?: () => number;
     timeoutMs?: number;
@@ -115,6 +117,11 @@ export async function runSystemChecks(deps: CheckDeps, info: CheckRequestInfo): 
             await deps.run('pdftoppm', ['-v']);
             return { status: 'ok', detail: 'pdfinfo und pdftoppm vorhanden.' };
         }),
+        attempt('arExport', 'AR-Export (Chromium)', 'warn', async () => (
+            await deps.chromiumAvailable()
+                ? { status: 'ok', detail: 'Chromium vorhanden.' }
+                : { status: 'warn', detail: 'Chromium nicht installiert: Der AR-Export ist nicht verfügbar.' }
+        )),
         attempt('disk', 'Freier Speicher', 'warn', async () => {
             const free = await deps.freeBytes(deps.uploadsDir);
             return free < MIN_FREE_BYTES
@@ -165,6 +172,7 @@ export function defaultCheckDeps(prisma: PrismaClient, uploadsDir: string): Chec
         reachHsbi: async () => {
             await fetch('https://www.hsbi.de/login', { method: 'HEAD', signal: AbortSignal.timeout(5_000) });
         },
+        chromiumAvailable: () => chromiumBrowser.available(),
         backups: () => readBackupState(BACKUPS_DIR),
     };
 }

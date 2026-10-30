@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { TouchArtworkInfo } from './touch/TouchArtworkInfo';
 import { useEditorStore, videoRefMap } from '../store/editorStore';
 import { BookOpen, Volume2, VolumeX } from 'lucide-react';
 import { useBookViewerStore } from '../store/bookViewerStore';
@@ -44,7 +45,7 @@ const Kbd = ({ children }: { children: React.ReactNode }) => (
  * Left-click toggles the panel hidden while still looking at the artwork.
  * Looking at a different artwork resets visibility.
  */
-export const ArtworkInfoOverlay = () => {
+const DesktopArtworkInfoOverlay = () => {
     const fpvHoveredInfo = useEditorStore((s) => s.fpvHoveredInfo);
     const bookInReachId = useBookViewerStore((s) => s.bookInReachId);
 
@@ -365,4 +366,9 @@ export const ArtworkInfoOverlay = () => {
             </div>
         </div>
     );
+};
+
+/** Desktop: crosshair + automatic info. Touch viewer: info for the tapped artwork (TouchArtworkInfo). */
+export const ArtworkInfoOverlay = ({ touch = false }: { touch?: boolean }) => {
+    return touch ? <TouchArtworkInfo /> : <DesktopArtworkInfoOverlay />;
 };

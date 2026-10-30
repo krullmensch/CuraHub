@@ -50,6 +50,7 @@ import {
 import type { LucideIcon } from 'lucide-react';
 import { NumericInput } from './properties/NumericInput';
 import { FrameControls } from './properties/FrameControls';
+import { withFrameStyle, withPassepartout } from '@/lib/frameEdits';
 import { BeamerOpacityControl } from './properties/BeamerOpacityControl';
 import { MultiSelectionPanel } from './MultiSelectionPanel';
 import { NO_PASSEPARTOUT, passepartoutOf, type PassepartoutValue } from '@/lib/passepartout';
@@ -328,9 +329,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
             setDefaultFrameStyle(frameStyle);
         }
         const store = useEditorStore.getState();
-        store.commitLocalChange(store.localInstances.map(inst =>
-            inst.id === selectedId ? { ...inst, frameStyle } : inst
-        ));
+        store.commitLocalChange(withFrameStyle(store.localInstances, selectedId, frameStyle));
     }, [selectedId, setDefaultFrameStyle]);
 
     // Restoring the previous style lives in the handler so the panel body never reads a ref
@@ -349,9 +348,7 @@ export const PropertiesPanel = ({ isOpen, onToggle }: PropertiesPanelProps) => {
         // New drops follow the passepartout last set here.
         setDefaultPassepartout(value);
         const store = useEditorStore.getState();
-        store.commitLocalChange(store.localInstances.map(inst =>
-            inst.id === selectedId ? { ...inst, passepartoutWidth: width, passepartoutPlacement: value.placement } : inst
-        ));
+        store.commitLocalChange(withPassepartout(store.localInstances, selectedId, value));
     }, [selectedId, setDefaultPassepartout]);
 
     const handlePassepartoutToggle = useCallback((on: boolean) => {

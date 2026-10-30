@@ -1,8 +1,9 @@
+import { scaleFigureFlags } from '../lib/mobilePlanner/figureFlags';
 import { memo, useCallback, useEffect, useState } from 'react';
 import * as THREE from 'three';
 import { useThree, type ThreeEvent } from '@react-three/fiber';
 import { TransformControls, useGLTF } from '@react-three/drei';
-import { useEditorStore, type ScaleFigureData } from '@/store/editorStore';
+import { markListLoadFailed, useEditorStore, type ScaleFigureData } from '@/store/editorStore';
 import { useAuthStore } from '@/store/authStore';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
 import { SCALE_FIGURE_MESH, SCALE_FIGURE_URL, scaleFigureBridge, spawnPoseFromCamera, spawnPoseFromHit, type FigurePose } from '@/lib/scaleFigure';
@@ -119,13 +120,14 @@ export const ScaleFigures = ({ viewerFigures, isEditor = true }: ScaleFiguresPro
     const setLocalScaleFigures = useEditorStore((s) => s.setLocalScaleFigures);
     const hasToken = useAuthStore((s) => !!s.token);
 
-    const interactive = isEditor && !viewerFigures;
+    const mobilePlanner = useEditorStore((s) => s.mobilePlanner);
+    const { load, interactive } = scaleFigureFlags(isEditor, !!viewerFigures, mobilePlanner);
     // The selected figure's group, set through its ref (null when nothing is selected)
     const [selectedObject, setSelectedObject] = useState<THREE.Group | null>(null);
 
     // Editor: load the version's figures
     useEffect(() => {
-        if (!interactive) return;
+        if (!load) return;
         if (!hasToken || !activeVersionId) {
             setLocalScaleFigures([]);
             return;
@@ -141,10 +143,11 @@ export const ScaleFigures = ({ viewerFigures, isEditor = true }: ScaleFiguresPro
                 if (!cancelled) setLocalScaleFigures(data);
             } catch (err) {
                 console.error('Failed to load scale figures:', err);
+                if (!cancelled) markListLoadFailed('figures', activeVersionId);
             }
         })();
         return () => { cancelled = true; };
-    }, [interactive, hasToken, activeVersionId, setLocalScaleFigures]);
+    }, [load, hasToken, activeVersionId, setLocalScaleFigures]);
 
     // Editor: the toolbar asks here where a new figure goes
     useEffect(() => {

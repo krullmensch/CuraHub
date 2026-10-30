@@ -26,17 +26,20 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
         const openWallEditor = useEditorStore((state) => state.openWallEditor);
         const inWallEditor = hidden || flat;
         const isSelectedWall = useEditorStore((state) => state.selectedWallId === wall.id);
+        // Phone planning view: a wall only stops the tap (artworks behind it are not picked).
+        const mobilePlanner = useEditorStore((state) => state.mobilePlanner);
 
         const handleClick = isEditor ? (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
             // The pointer-up of a ⇧-drag marquee over a wall must not replace its result.
-            if (consumeMarqueeClick()) return;
+            if (consumeMarqueeClick() || mobilePlanner) return;
             selectWall(wall.id);
         } : undefined;
 
         // Double-click opens the 2D wall editor on the face that was clicked (incl. the narrow ends).
         const handleDoubleClick = isEditor ? (e: ThreeEvent<MouseEvent>) => {
             e.stopPropagation();
+            if (mobilePlanner) return;
             let side;
             if (e.face) {
                 _faceNormal.copy(e.face.normal).transformDirection(e.object.matrixWorld);
@@ -95,8 +98,8 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
                     </mesh>
                 )}
 
-                {/* Lock indicator (editor only) */}
-                {isEditor && !inWallEditor && wall.isLocked && (
+                {/* Lock indicator (editor only; not on the phone — drei's Html sits above every dialog) */}
+                {isEditor && !inWallEditor && !mobilePlanner && wall.isLocked && (
                     <Html
                         position={[0, wall.height / 2 + 0.15, 0]}
                         center
@@ -116,7 +119,7 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
                 )}
 
                 {/* Wall label (editor only) */}
-                {isEditor && !inWallEditor && isSelectedWall && wall.label && (
+                {isEditor && !inWallEditor && !mobilePlanner && isSelectedWall && wall.label && (
                     <Html
                         position={[0, -wall.height / 2 - 0.15, 0]}
                         center

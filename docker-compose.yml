@@ -49,6 +49,8 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: always
+    # Chromium (AR export) leaves child processes behind; PID 1 must reap them.
+    init: true
     # SEC-08: Docker port publishing bypasses ufw. Loopback by default — Apache on the host proxies to it.
     ports:
       - "${APP_BIND_ADDRESS:-127.0.0.1}:${APP_EXTERNAL_PORT:-3000}:3000"

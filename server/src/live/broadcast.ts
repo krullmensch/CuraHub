@@ -26,3 +26,8 @@ export function publishVersionEvent(
 ): void {
     getLiveHub()?.publishVersionEvent(exhibitionId, liveSessionOf(req), event, versionId, fallbackVersionId);
 }
+
+/** For jobs without a request (AR export): no session, so every tab of the exhibition gets it. */
+export function publishVersionEventFromServer(exhibitionId: number, event: VersionEvent, versionId: number): void {
+    getLiveHub()?.publishVersionEvent(exhibitionId, null, event, versionId);
+}

@@ -1,6 +1,7 @@
 import { Router, type Request } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { ensureNotClaimed } from '../live/claimGuard';
+import { ensureVersionWritable } from '../lib/versionWritable';
 import { z } from 'zod';
 import { authenticate, exhibitionAccessFilter } from '../lib/middleware';
 import { idempotency } from '../lib/idempotency';
@@ -36,6 +37,7 @@ const findAccessibleFigure = (req: Request, id: number) => prisma.scaleFigure.fi
         id,
         version: { exhibition: exhibitionAccessFilter(req.user!.userId, req.user!.role === 'admin') },
     },
+    include: { version: { select: { is_published: true } } },
 });
 
 // GET /scale-figures?versionId=:id — all figures of a version
@@ -69,6 +71,7 @@ scaleFiguresRouter.post('/', authenticate, idempotency, async (req: Request, res
             where: { id: data.versionId, exhibition: exhibitionAccessFilter(req.user!.userId, req.user!.role === 'admin') },
         });
         if (!version) return res.status(404).json({ error: 'Version not found' });
+        if (!ensureVersionWritable(res, version)) return;
 
         const count = await prisma.scaleFigure.count({ where: { versionId: data.versionId } });
         if (count >= MAX_FIGURES_PER_VERSION) {
@@ -94,7 +97,9 @@ scaleFiguresRouter.patch('/:id', authenticate, async (req: Request, res) => {
         if (isNaN(id)) return res.status(400).json({ error: 'Invalid scale figure ID' });
 
         const data = updateScaleFigureSchema.parse(req.body);
-        if (!(await findAccessibleFigure(req, id))) return res.status(404).json({ error: 'Scale figure not found' });
+        const existing = await findAccessibleFigure(req, id);
+        if (!existing) return res.status(404).json({ error: 'Scale figure not found' });
+        if (!ensureVersionWritable(res, existing.version)) return;
         if (!ensureNotClaimed(req, res, 'figure', id)) return;
 
         const figure = await prisma.scaleFigure.update({ where: { id }, data });
@@ -117,6 +122,7 @@ scaleFiguresRouter.delete('/:id', authenticate, async (req: Request, res) => {
 
         const existing = await findAccessibleFigure(req, id);
         if (!existing) return res.status(404).json({ error: 'Scale figure not found' });
+        if (!ensureVersionWritable(res, existing.version)) return;
         if (!ensureNotClaimed(req, res, 'figure', id)) return;
 
         await prisma.scaleFigure.delete({ where: { id } });

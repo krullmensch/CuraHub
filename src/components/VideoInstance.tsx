@@ -8,6 +8,7 @@ import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, t
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { pickVideoSource, videoStreamUrl } from '../lib/videoSource';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
+import { useArtworkTexture } from '../hooks/use-artwork-texture';
 
 // Monitor GLB preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing
 // this component no longer downloads the model on every route, including the home page
@@ -399,3 +400,118 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
 );
 
 VideoInstance.displayName = 'VideoInstance';
+
+/**
+ * AR export: a video as its still (`asset.thumbnailPath`) — AR viewers play no video. Same
+ * geometry as VideoInstance for every medium; the still goes through the artwork texture manager,
+ * so the export page waits for it and counts it as skipped when it fails.
+ */
+export const VideoStillInstance = forwardRef<THREE.Group, VideoInstanceProps>(({ instance }, ref) => {
+    const asset = instance.artwork.asset;
+    const medium = instance.medium || 'display';
+    const aspect = asset.width && asset.height ? asset.width / asset.height : 16 / 9;
+    const isPortrait = aspect < 1;
+    const dpi = asset.dpi || 72;
+    const width = (asset.width / dpi) * 0.0254;
+    const height = (asset.height / dpi) * 0.0254;
+
+    const objectRef = useRef<THREE.Group>(null);
+    // Without a still the video itself is tried, fails to decode and the work counts as skipped.
+    const bindStill = useArtworkTexture(instance.id, {
+        path: asset.thumbnailPath || asset.path,
+        thumbnailPath: null,
+        pixelWidth: asset.width || 1,
+        pixelHeight: asset.height || 1,
+        sizeM: Math.max(width, height),
+        forceMax: false,
+    }, objectRef);
+    const setRefs = useCallback((group: THREE.Group | null) => {
+        objectRef.current = group;
+        if (typeof ref === 'function') ref(group);
+        else if (ref) ref.current = group;
+    }, [ref]);
+
+    const { scene: monitorGltfScene } = useGLTF('/models/Monitor65.glb');
+    const { monitorScene, monitorMaxZ, screenMaterial } = useMemo(() => {
+        const cloned = monitorGltfScene.clone(true);
+        const material = new THREE.MeshBasicMaterial({ toneMapped: false, side: THREE.FrontSide });
+        cloned.traverse((child) => {
+            const mesh = child as THREE.Mesh;
+            if (!mesh.isMesh || mesh.name !== 'Display') return;
+            mesh.material = material;
+            if (isPortrait) {
+                // VideoInstance turns the texture for a portrait monitor; the still's texture is
+                // shared through the manager's cache, so turn this screen's UVs instead.
+                mesh.geometry = mesh.geometry.clone();
+                const uv = mesh.geometry.getAttribute('uv');
+                if (uv instanceof THREE.BufferAttribute) {
+                    uv.applyMatrix3(new THREE.Matrix3().setUvTransform(0, 0, 1, 1, -Math.PI / 2, 0.5, 0.5));
+                }
+            }
+        });
+        cloned.updateMatrixWorld(true);
+        const bbox = new THREE.Box3().setFromObject(cloned);
+        return { monitorScene: cloned, monitorMaxZ: bbox.max.z, screenMaterial: material };
+    }, [monitorGltfScene, isPortrait]);
+
+    useEffect(() => {
+        if (medium !== 'monitor') return;
+        bindStill(screenMaterial);
+        return () => {
+            bindStill(null);
+            screenMaterial.dispose();
+        };
+    }, [medium, bindStill, screenMaterial]);
+
+    const transform = {
+        position: [instance.position_x, instance.position_y, instance.position_z] as [number, number, number],
+        rotation: [instance.rotation_x, instance.rotation_y, instance.rotation_z] as [number, number, number],
+    };
+
+    if (medium === 'monitor') {
+        return (
+            <group ref={setRefs} {...transform} scale={[1, 1, 1]}>
+                <group position={[0, 0, monitorMaxZ - WALL_PLACEMENT_OFFSET]} rotation={[0, Math.PI, isPortrait ? -Math.PI / 2 : 0]}>
+                    <primitive object={monitorScene} />
+                </group>
+            </group>
+        );
+    }
+
+    if (medium === 'beamer') {
+        const opacity = Math.min(Math.max(instance.opacity ?? 1, 0), 1);
+        const translucent = opacity < 1;
+        return (
+            <group ref={setRefs} {...transform} scale={[instance.scale_x, instance.scale_y, instance.scale_z]}>
+                <mesh position={[0, 0, 0.001]}>
+                    <planeGeometry args={[aspect * height, height]} />
+                    <meshBasicMaterial
+                        ref={bindStill}
+                        side={THREE.DoubleSide}
+                        toneMapped={false}
+                        transparent={translucent}
+                        opacity={opacity}
+                        depthWrite={!translucent}
+                    />
+                </mesh>
+            </group>
+        );
+    }
+
+    // Legacy media (display, projector, frame): picture plane + bezel, as in VideoInstance.
+    const frameSize = medium === 'projector' ? 0.01 : medium === 'display' ? 0.03 : 0.04;
+    return (
+        <group ref={setRefs} {...transform} scale={[instance.scale_x, instance.scale_y, instance.scale_z]}>
+            <mesh position={[0, 0, 0.02]}>
+                <planeGeometry args={[width, height]} />
+                <meshStandardMaterial ref={bindStill} side={THREE.DoubleSide} roughness={1} metalness={0} />
+            </mesh>
+            <mesh>
+                <boxGeometry args={[width + frameSize * 2, height + frameSize * 2, 0.02]} />
+                <meshStandardMaterial color={medium === 'frame' ? '#222' : '#111'} roughness={0.8} metalness={0} />
+            </mesh>
+        </group>
+    );
+});
+
+VideoStillInstance.displayName = 'VideoStillInstance';
