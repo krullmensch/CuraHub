@@ -8,6 +8,7 @@ import { useSettledExport } from '@/components/arExport/useSettledExport';
 import { ExportModeContext, ExportSession, type ExportModeValue } from '@/lib/arExport/exportMode';
 import { prepareExportScene } from '@/lib/arExport/prepareScene';
 import { exportGlb, exportUsdz } from '@/lib/arExport/exportScene';
+import { addBackPanel } from '@/lib/mobilePlanner/backPanel';
 import type { ArtworkInstanceData } from '@/store/editorStore';
 
 const MAX_TEXTURE = 2048;
@@ -38,6 +39,8 @@ const Runner = ({ session, withUsdz, onDone, onError }: RunnerProps) => {
   const run = useCallback(async (_deadline: boolean, skipped: Set<number>, scene: THREE.Scene) => {
     if (skipped.size > 0) throw new Error('Bild konnte nicht geladen werden');
     const prepared = prepareExportScene(scene, { maxTexture: MAX_TEXTURE });
+    // Seen from behind (walked around in AR), the artwork shows its back board, not the photo.
+    addBackPanel(prepared);
     const glb = await exportGlb(prepared);
     const usdz = withUsdz ? await exportUsdz(prepared, 'wall') : null;
     onDone({ glb, usdz });
