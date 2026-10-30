@@ -98,8 +98,8 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
                     </mesh>
                 )}
 
-                {/* Lock indicator (editor only) */}
-                {isEditor && !inWallEditor && wall.isLocked && (
+                {/* Lock indicator (editor only; not on the phone — drei's Html sits above every dialog) */}
+                {isEditor && !inWallEditor && !mobilePlanner && wall.isLocked && (
                     <Html
                         position={[0, wall.height / 2 + 0.15, 0]}
                         center
@@ -119,7 +119,7 @@ export const ModularWallMesh = forwardRef<THREE.Group, ModularWallMeshProps>(
                 )}
 
                 {/* Wall label (editor only) */}
-                {isEditor && !inWallEditor && isSelectedWall && wall.label && (
+                {isEditor && !inWallEditor && !mobilePlanner && isSelectedWall && wall.label && (
                     <Html
                         position={[0, -wall.height / 2 - 0.15, 0]}
                         center

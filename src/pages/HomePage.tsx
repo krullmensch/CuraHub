@@ -127,18 +127,18 @@ export const HomePage = () => {
       <div className="fixed inset-0 bg-black/70 pointer-events-none z-0" />
 
       {/* ── Nav ── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 bg-black/80 backdrop-blur-md border-b border-white/5">
+      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-5 bg-black/80 backdrop-blur-md border-b border-white/5">
         <Link to="/" className="font-display text-xl font-light tracking-wide text-white">
           Cura<span className="font-semibold">Hub</span>
         </Link>
-        <div className="flex items-center gap-6 text-sm">
+        <div className="flex items-center gap-3 sm:gap-6 text-sm">
           <Link to="/exhibition" className="text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
             Ausstellungen
           </Link>
           {isAdmin && (
             <Link
               to="/users"
-              className="text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
+              className="hidden sm:inline text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
             >
               Benutzerverwaltung
             </Link>
@@ -146,7 +146,7 @@ export const HomePage = () => {
           {isAuthenticated ? (
             <Link
               to="/project"
-              className="text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
+              className="rounded-full border border-zinc-600 px-4 py-2 text-zinc-200 sm:rounded-none sm:border-0 sm:px-0 sm:py-0 sm:text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
             >
               Dashboard
             </Link>
@@ -162,7 +162,7 @@ export const HomePage = () => {
       </nav>
 
       {/* ── Hero ── */}
-      <section className="relative z-10 min-h-screen flex flex-col items-center justify-center px-8 pt-20 homepage-fade-up">
+      <section className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6 sm:px-8 pt-20 homepage-fade-up">
         {loading ? (
           <div className="flex flex-col items-center gap-6 w-full max-w-xl">
             <Skeleton className="h-4 w-32 bg-zinc-800" />
@@ -247,7 +247,7 @@ export const HomePage = () => {
 
       {/* ── Past Exhibitions ── */}
       {!loading && !error && exhibitions.length > 0 && (
-        <section className="relative z-10 px-8 pb-24 pt-12">
+        <section className="relative z-10 px-4 sm:px-8 pb-24 pt-12">
           <div className="max-w-5xl mx-auto">
             <div className="flex items-center gap-4 mb-12 homepage-fade-up" style={{ animationDelay: '0.7s' }}>
               <div className="h-px flex-1 bg-zinc-800" />

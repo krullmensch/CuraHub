@@ -7,24 +7,41 @@ import { ExportPart } from '@/components/arExport/ExportPart';
 import { useSettledExport } from '@/components/arExport/useSettledExport';
 import { ExportModeContext, ExportSession, type ExportModeValue } from '@/lib/arExport/exportMode';
 import { prepareExportScene } from '@/lib/arExport/prepareScene';
-import { exportGlb } from '@/lib/arExport/exportScene';
+import { exportGlb, exportUsdz } from '@/lib/arExport/exportScene';
 import type { ArtworkInstanceData } from '@/store/editorStore';
 
 const MAX_TEXTURE = 2048;
 /** A single picture loads in seconds; give up well before the visitor does. */
 const DEADLINE_MS = 30_000;
 
+export interface ArModels {
+  glb: Blob;
+  /** iOS only: Quick Look needs USDZ (anchored to a wall). */
+  usdz: Blob | null;
+}
+
 interface BuilderProps {
   instance: ArtworkInstanceData;
-  onDone: (glb: Blob) => void;
+  withUsdz: boolean;
+  onDone: (models: ArModels) => void;
   onError: (err: unknown) => void;
 }
 
-const Runner = ({ session, onDone, onError }: { session: ExportSession; onDone: (glb: Blob) => void; onError: (err: unknown) => void }) => {
+interface RunnerProps {
+  session: ExportSession;
+  withUsdz: boolean;
+  onDone: (models: ArModels) => void;
+  onError: (err: unknown) => void;
+}
+
+const Runner = ({ session, withUsdz, onDone, onError }: RunnerProps) => {
   const run = useCallback(async (_deadline: boolean, skipped: Set<number>, scene: THREE.Scene) => {
     if (skipped.size > 0) throw new Error('Bild konnte nicht geladen werden');
-    onDone(await exportGlb(prepareExportScene(scene, { maxTexture: MAX_TEXTURE })));
-  }, [onDone]);
+    const prepared = prepareExportScene(scene, { maxTexture: MAX_TEXTURE });
+    const glb = await exportGlb(prepared);
+    const usdz = withUsdz ? await exportUsdz(prepared, 'wall') : null;
+    onDone({ glb, usdz });
+  }, [onDone, withUsdz]);
   useSettledExport(session, run, onError, { requireRoom: false, deadlineMs: DEADLINE_MS });
   return null;
 };
@@ -34,7 +51,7 @@ const Runner = ({ session, onDone, onError }: { session: ExportSession; onDone: 
  * components as the editor, in the AR export mode, without the room. Renders its own instance —
  * never the editor's list, so nothing reaches auto-sync.
  */
-export function ArtworkArBuilder({ instance, onDone, onError }: BuilderProps) {
+export function ArtworkArBuilder({ instance, withUsdz, onDone, onError }: BuilderProps) {
   const session = useMemo(() => new ExportSession(), []);
   const exportMode = useMemo<ExportModeValue>(() => ({ active: true, maxTexture: MAX_TEXTURE, session }), [session]);
   const glConfig = useMemo(() => createRendererFactory({ backend: 'webgl' }, { antialias: false, toneMappingExposure: 1.1 }), []);
@@ -52,7 +69,7 @@ export function ArtworkArBuilder({ instance, onDone, onError }: BuilderProps) {
           <ExportPart part="artwork">
             <Scene isEditor={false} roomless viewerInstances={instances} viewerWalls={[]} viewerScaleFigures={[]} />
           </ExportPart>
-          <Runner session={session} onDone={onDone} onError={onError} />
+          <Runner session={session} withUsdz={withUsdz} onDone={onDone} onError={onError} />
         </ExportModeContext.Provider>
       </Canvas>
     </div>

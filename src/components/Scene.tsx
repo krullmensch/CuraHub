@@ -38,6 +38,7 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
     const [windowViewReady, setWindowViewReady] = useState(false);
     // AR export page: no camera system, player, street view, info raycast or shader warmup.
     const exportMode = useExportMode().active;
+    const mobilePlanner = useEditorStore(state => state.mobilePlanner);
 
     // In Viewer mode (not editor), always force First Person. The AR export takes the orbit
     // view's room: no ceiling (a model seen from outside), no street behind the windows.
@@ -104,7 +105,8 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                 {isEditor && <WallEditorRoomFace />}
 
                 {/* Hanging line, heights above floor and gaps on the walls (orbit view only) */}
-                {isEditor && <WallMeasurements3D />}
+                {/* Phone planning view: no hanging lines or distances */}
+                {isEditor && !mobilePlanner && <WallMeasurements3D />}
 
                 {/* Street outside the windows — first person only; loads when entering it. */}
                 {showWindowView && (

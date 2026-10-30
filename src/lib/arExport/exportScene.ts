@@ -8,7 +8,7 @@ import { USDZExporter } from 'three/examples/jsm/exporters/USDZExporter.js'
  */
 export async function exportScene(root: THREE.Group): Promise<{ glb: Blob; usdz: Blob }> {
   const glbData = await new GLTFExporter().parseAsync(root, { binary: true, onlyVisible: true })
-  const usdzData = await new USDZExporter().parseAsync(root, { maxTextureSize: Infinity })
+  const usdzData = await new USDZExporter().parseAsync(root, usdzExportOptions('floor'))
   return {
     glb: new Blob([glbData as ArrayBuffer], { type: 'model/gltf-binary' }),
     usdz: new Blob([usdzData as BlobPart], { type: 'model/vnd.usdz+zip' }),
@@ -19,4 +19,25 @@ export async function exportScene(root: THREE.Group): Promise<{ glb: Blob; usdz:
 export async function exportGlb(root: THREE.Group): Promise<Blob> {
   const data = await new GLTFExporter().parseAsync(root, { binary: true, onlyVisible: true })
   return new Blob([data as ArrayBuffer], { type: 'model/gltf-binary' })
+}
+
+/**
+ * USDZExporter options: textures are capped in prepareExportScene already; the AR anchoring tells
+ * Quick Look where the model goes — the room on the floor, a single artwork on a wall (the model
+ * faces +Z, which Quick Look turns away from the wall).
+ */
+export function usdzExportOptions(placement: 'floor' | 'wall') {
+  return {
+    maxTextureSize: Infinity,
+    ar: {
+      anchoring: { type: 'plane' as const },
+      planeAnchoring: { alignment: placement === 'wall' ? ('vertical' as const) : ('horizontal' as const) },
+    },
+  }
+}
+
+/** USDZ for iOS Quick Look, built on the device (the mobile planner's single artwork). */
+export async function exportUsdz(root: THREE.Group, placement: 'floor' | 'wall'): Promise<Blob> {
+  const data = await new USDZExporter().parseAsync(root, usdzExportOptions(placement))
+  return new Blob([data as BlobPart], { type: 'model/vnd.usdz+zip' })
 }

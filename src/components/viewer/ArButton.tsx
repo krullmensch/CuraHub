@@ -24,7 +24,7 @@ interface ArButtonProps {
 const QUICK_LOOK_IMG = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 
 const BASE =
-  'inline-flex items-center gap-2 text-white/70 hover:text-white text-sm font-medium uppercase tracking-[0.15em] bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 backdrop-blur-sm px-4 py-2 rounded-lg transition-all duration-200';
+  'inline-flex items-center gap-2 whitespace-nowrap text-white/70 hover:text-white text-xs sm:text-sm font-medium uppercase tracking-[0.1em] sm:tracking-[0.15em] bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 backdrop-blur-sm px-3 sm:px-4 py-2 rounded-lg transition-all duration-200';
 const LARGE = 'text-base px-8 py-4 text-white bg-white/15 border-white/30';
 
 export function ArButton({ ar, slug, title, large = false, label = 'In AR ansehen' }: ArButtonProps) {

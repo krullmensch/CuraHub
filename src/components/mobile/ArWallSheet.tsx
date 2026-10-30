@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Grid } from 'ldrs/react';
 import 'ldrs/react/Grid.css';
-import { ArtworkArBuilder } from './ArtworkArBuilder';
+import { ArtworkArBuilder, type ArModels } from './ArtworkArBuilder';
+import { detectArPlatform } from '@/lib/arExport/launch';
 import { ArRequests } from '@/lib/mobilePlanner/arRequest';
 import { useEditorStore, type ArtworkInstanceData } from '@/store/editorStore';
 import { toast } from '@/hooks/use-toast';
@@ -22,6 +23,10 @@ interface ArWallSheetProps {
  */
 export default function ArWallSheet({ instance, title, sizeLabel, onClose }: ArWallSheetProps) {
   const [url, setUrl] = useState<string | null>(null);
+  const [usdzUrl, setUsdzUrl] = useState<string | null>(null);
+  // iOS: Quick Look opens a USDZ built here (model-viewer's own Quick Look path isn't offered in
+  // every iOS browser); Android: model-viewer's WebXR.
+  const [ios] = useState(() => detectArPlatform(navigator.userAgent, navigator.maxTouchPoints) === 'ios');
   const [viewerReady, setViewerReady] = useState(false);
   const [arSupported, setArSupported] = useState(true);
   const requests = useRef(new ArRequests());
@@ -52,11 +57,23 @@ export default function ArWallSheet({ instance, title, sizeLabel, onClose }: ArW
   }, []);
 
   useEffect(() => () => { if (url) URL.revokeObjectURL(url); }, [url]);
+  useEffect(() => () => { if (usdzUrl) URL.revokeObjectURL(usdzUrl); }, [usdzUrl]);
 
-  const onDone = useCallback((glb: Blob) => {
+  const onDone = useCallback(({ glb, usdz }: ArModels) => {
     if (!requests.current.isCurrent(token)) return;
     setUrl(URL.createObjectURL(glb));
+    if (usdz) setUsdzUrl(URL.createObjectURL(usdz));
   }, [token]);
+
+  // Quick Look needs a real click on an <a rel="ar"> with an <img> child, inside the user's tap.
+  const openQuickLook = () => {
+    if (!usdzUrl) return;
+    const a = document.createElement('a');
+    a.rel = 'ar';
+    a.href = `${usdzUrl}#allowsContentScaling=0`;
+    a.appendChild(document.createElement('img'));
+    a.click();
+  };
 
   const onError = useCallback((err: unknown) => {
     if (!requests.current.isCurrent(token)) return;
@@ -86,7 +103,7 @@ export default function ArWallSheet({ instance, title, sizeLabel, onClose }: ArW
       </div>
 
       <div className="relative flex-1">
-        {!url && <ArtworkArBuilder instance={instance} onDone={onDone} onError={onError} />}
+        {!url && <ArtworkArBuilder instance={instance} withUsdz={ios} onDone={onDone} onError={onError} />}
         {(!url || !viewerReady) && (
           <div className="absolute inset-0 flex items-center justify-center">
             <Grid size="48" speed="1.5" color="white" />
@@ -110,7 +127,16 @@ export default function ArWallSheet({ instance, title, sizeLabel, onClose }: ArW
       </div>
 
       <div className="border-t border-zinc-800 px-4 py-3" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom) + 12px)' }}>
-        {arSupported ? (
+        {ios ? (
+          <button
+            type="button"
+            disabled={!usdzUrl}
+            onClick={openQuickLook}
+            className="w-full rounded-lg bg-blue-600 py-3 text-sm font-semibold disabled:opacity-50"
+          >
+            In AR an Wand starten
+          </button>
+        ) : arSupported ? (
           <button
             type="button"
             disabled={!url || !viewerReady}
