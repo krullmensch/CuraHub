@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectArPlatform, sceneViewerIntent } from './launch';
+import { detectArPlatform } from './launch';
 
 const IPHONE = 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148';
 const MAC = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 Safari/605.1.15';
@@ -12,13 +12,3 @@ describe('detectArPlatform', () => {
   it('Android UA is android', () => expect(detectArPlatform(ANDROID, 5)).toBe('android'));
 });
 
-describe('sceneViewerIntent', () => {
-  const intent = sceneViewerIntent('https://x.de/api/public/ar/a.glb?v=1', 'Licht & Landschaft', 'https://x.de/exhibition/a');
-  it('has the Scene Viewer shape', () => {
-    expect(intent.startsWith('intent://arvr.google.com/scene-viewer/1.2?file=https%3A%2F%2F')).toBe(true);
-    expect(intent).toContain('mode=ar_preferred');
-    expect(intent).toContain('title=Licht%20%26%20Landschaft');
-    expect(intent).toContain('S.browser_fallback_url=https%3A%2F%2Fx.de%2Fexhibition%2Fa');
-    expect(intent.endsWith(';end;')).toBe(true);
-  });
-});

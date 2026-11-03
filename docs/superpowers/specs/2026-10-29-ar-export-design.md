@@ -140,7 +140,7 @@ Button „In AR ansehen" in the viewer header, behaviour from `arLaunch(platform
 | Platform | Behaviour |
 |---|---|
 | iOS / iPadOS | `<a rel="ar" href="…usdz">` with a child `<img>` (Quick Look requires it) |
-| Android | `intent://arvr.google.com/scene-viewer/1.2?file=<glb>&mode=ar_preferred&title=<exhibition>#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;S.browser_fallback_url=<viewer url>;end;` — without ARCore Scene Viewer falls back to 3D |
+| Android | **Replaced 2026-11-03:** `ArSceneSheet` loads the GLB in `<model-viewer>` (`ar-modes="webxr scene-viewer"`), because Scene Viewer rejects files over 15 MB (Yol: 41 MB). Before: `intent://arvr.google.com/scene-viewer/1.2?file=<glb>&mode=ar_preferred&title=<exhibition>#Intent;scheme=https;package=com.google.android.googlequicksearchbox;action=android.intent.action.VIEW;S.browser_fallback_url=<viewer url>;end;` — without ARCore Scene Viewer falls back to 3D |
 | Desktop | dialog „Auf dem Handy öffnen" with a QR code for `/exhibition/:slug?ar=1` (generated in the browser, small dependency, no server) and the line „Scanne den Code mit dem Handy, um die Ausstellung in echter Größe in deinem Raum zu sehen." |
 
 - `?ar=1` on a phone: an extra large button „In AR öffnen" over the loading screen (iOS needs a tap; no auto-launch).

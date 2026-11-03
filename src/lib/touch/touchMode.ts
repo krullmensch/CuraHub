@@ -11,10 +11,13 @@ export interface TouchEnv {
 /**
  * Touch mode: a coarse pointer and no fine one (phones, tablets). Touch laptops have a mouse too and
  * keep the desktop controls. iPadOS reports a Mac UA (and can report a fine pointer after a trackpad
- * was connected), so a Mac UA with touch points counts as touch.
+ * was connected), so a Mac UA with touch points counts as touch. Chrome on many Android phones
+ * reports `any-pointer: fine` too (stylus digitisers, Samsung), so an Android UA with touch points
+ * counts as touch as well.
  */
 export function isTouchViewer(env: TouchEnv): boolean {
   if (/Macintosh/.test(env.ua) && env.maxTouchPoints > 1) return true;
+  if (/Android/.test(env.ua) && env.maxTouchPoints > 0) return true;
   return env.coarse && !env.fine;
 }
 

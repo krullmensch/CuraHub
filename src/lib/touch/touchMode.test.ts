@@ -15,6 +15,11 @@ describe('isTouchViewer', () => {
         expect(isTouchViewer({ coarse: true, fine: false, maxTouchPoints: 5, ua: ANDROID })).toBe(true);
     });
 
+    it('Android phone whose Chrome also reports a fine pointer', () => {
+        expect(isTouchViewer({ coarse: true, fine: true, maxTouchPoints: 5, ua: ANDROID })).toBe(true);
+        expect(isTouchViewer({ coarse: false, fine: true, maxTouchPoints: 5, ua: ANDROID })).toBe(true);
+    });
+
     it('iPadOS desktop UA with touch', () => {
         expect(isTouchViewer({ coarse: true, fine: false, maxTouchPoints: 5, ua: MAC })).toBe(true);
         // iPadOS can report a fine pointer when a trackpad was ever connected; the Mac UA with touch points still wins
