@@ -1,8 +1,9 @@
 import { lazy, Suspense, useMemo, useState } from 'react';
 import { Box } from 'lucide-react';
-import { detectArPlatform, sceneViewerIntent } from '../../lib/arExport/launch';
+import { detectArPlatform } from '../../lib/arExport/launch';
 
 const ArQrDialog = lazy(() => import('./ArQrDialog').then((m) => ({ default: m.ArQrDialog })));
+const ArSceneSheet = lazy(() => import('./ArSceneSheet'));
 
 export interface PublicArInfo {
   status: 'queued' | 'running' | 'done' | 'none';
@@ -30,6 +31,7 @@ const LARGE = 'text-base px-8 py-4 text-white bg-white/15 border-white/30';
 export function ArButton({ ar, slug, title, large = false, label = 'In AR ansehen' }: ArButtonProps) {
   const platform = useMemo(() => detectArPlatform(navigator.userAgent, navigator.maxTouchPoints), []);
   const [qrOpen, setQrOpen] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);
 
   if (!ar || ar.status === 'none') return null;
   const className = `${BASE} ${large ? LARGE : ''}`;
@@ -57,10 +59,17 @@ export function ArButton({ ar, slug, title, large = false, label = 'In AR ansehe
   }
   if (platform === 'android' && ar.glbUrl) {
     return (
-      <a href={sceneViewerIntent(`${origin}${ar.glbUrl}`, title, viewerUrl)} className={className}>
-        <Box className="h-4 w-4" />
-        {label}
-      </a>
+      <>
+        <button type="button" onClick={() => setSheetOpen(true)} className={className}>
+          <Box className="h-4 w-4" />
+          {label}
+        </button>
+        {sheetOpen && (
+          <Suspense fallback={null}>
+            <ArSceneSheet glbUrl={ar.glbUrl} title={title} onClose={() => setSheetOpen(false)} />
+          </Suspense>
+        )}
+      </>
     );
   }
   if (platform !== 'desktop') return null;

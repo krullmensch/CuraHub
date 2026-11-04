@@ -1,6 +1,6 @@
 #!/bin/sh
-# Runs as the compose `init` service before the database starts: creates the folders in ./data
-# and the random secrets on the very first start, and never touches existing ones.
+# Runs in the compose `db` service (as root, before MariaDB's own entrypoint): creates the folders
+# in ./data and the random secrets on the very first start, and never touches existing ones.
 set -eu
 umask 077
 mkdir -p /data/db /data/uploads /data/secrets /data/backups

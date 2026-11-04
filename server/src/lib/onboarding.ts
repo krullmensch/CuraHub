@@ -1,12 +1,13 @@
 import type { PrismaClient, User } from '@prisma/client';
 
 /** The user object every auth response sends (login, local login, /auth/me). */
-export function publicUser(user: Pick<User, 'id' | 'email' | 'role' | 'onboarding_completed_at'>) {
+export function publicUser(user: Pick<User, 'id' | 'email' | 'role' | 'onboarding_completed_at' | 'must_change_password'>) {
     return {
         id: user.id,
         email: user.email,
         role: user.role,
         onboardingCompletedAt: user.onboarding_completed_at ? user.onboarding_completed_at.toISOString() : null,
+        mustChangePassword: user.must_change_password,
     };
 }
 

@@ -3,12 +3,14 @@ import { persist } from 'zustand/middleware';
 
 export type AppRole = 'user' | 'curator' | 'prof' | 'admin';
 
-interface User {
+export interface User {
   id: number;
   email: string;
   role: AppRole;
   /** When the dashboard tour was finished or skipped; null = not yet. Missing on users persisted before the field existed. */
   onboardingCompletedAt?: string | null;
+  /** Local account with a start password from an admin; the login page asks for a new one first. */
+  mustChangePassword?: boolean;
 }
 
 interface AuthState {

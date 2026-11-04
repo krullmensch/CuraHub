@@ -7,6 +7,7 @@ import { loginRateLimit, resetLoginAttempts } from '../lib/loginRateLimit';
 import { createRateLimit } from '../lib/rateLimit';
 import { verifyLocalLogin } from '../lib/localLogin';
 import { publicUser, completeOnboarding, prismaOnboardingStore } from '../lib/onboarding';
+import { changeOwnPassword, prismaLocalAccountStore } from '../lib/localAccounts';
 
 export const authRouter = Router();
 const prisma = new PrismaClient();
@@ -157,6 +158,31 @@ authRouter.post('/me/onboarding', authenticate, async (req: Request, res) => {
     } catch (error) {
         console.error('[Auth Error] onboarding:', error);
         res.status(500).json({ error: 'Speichern fehlgeschlagen' });
+    }
+});
+
+// POST /auth/me/password — a local account sets its own password (also the forced change of a start password)
+
+const changePasswordSchema = z.object({
+    current: z.string().min(1).max(200),
+    next: z.string().min(1).max(200),
+});
+
+// Same limits as the local login: the current password is checked here too.
+const passwordChangeLimiter = createRateLimit([
+  { windowMs: 15 * 60_000, max: 10, key: (ip) => `password-change:${ip}` },
+], 'Zu viele Versuche. Bitte in 15 Minuten erneut versuchen.');
+
+authRouter.post('/me/password', authenticate, passwordChangeLimiter.middleware, async (req: Request, res) => {
+    const parsed = changePasswordSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: 'Aktuelles und neues Passwort sind erforderlich.' });
+    try {
+        const result = await changeOwnPassword(prismaLocalAccountStore(prisma), req.user!.userId, parsed.data.current, parsed.data.next);
+        if (!result.ok) return res.status(result.status).json({ error: result.error });
+        res.json({ ok: true });
+    } catch (error) {
+        console.error('[Auth Error] password change:', error);
+        res.status(500).json({ error: 'Passwort konnte nicht geändert werden.' });
     }
 });
 

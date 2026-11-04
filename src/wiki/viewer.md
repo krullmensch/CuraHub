@@ -22,7 +22,7 @@ Sobald ein Besucher ein Kunstwerk fokussiert und interagiert (Klick), öffnet si
 Liegt ein Buch auf einem Sockel und ist es als **im öffentlichen Viewer lesbar** freigegeben, erscheint beim Näherkommen (etwa 2,5 m) der Hinweis **Klicken zum Lesen**. Ein Klick schlägt das Buch auf; geblättert wird mit der Maus oder den Pfeiltasten, **Esc** schließt es wieder.
 
 ## In AR ansehen
-Ist für die veröffentlichte Version ein AR-Export fertig, erscheint im Viewer der Knopf **In AR ansehen**. Auf dem iPhone und iPad öffnet sich die Ausstellung in der AR-Ansicht von iOS, auf Android im Scene Viewer. Am Computer zeigt der Knopf einen QR-Code, den man mit dem Handy scannt. Das Modell startet in echter Größe und lässt sich im Raum verschieben und skalieren. Gaussian Splats sind im AR-Export nicht enthalten.
+Ist für die veröffentlichte Version ein AR-Export fertig, erscheint im Viewer der Knopf **In AR ansehen**. Auf dem iPhone und iPad öffnet sich die Ausstellung in der AR-Ansicht von iOS, auf Android lädt sie in einer Vorschau, aus der **In AR starten** sie im Raum platziert. Am Computer zeigt der Knopf einen QR-Code, den man mit dem Handy scannt. Das Modell startet in echter Größe und lässt sich im Raum verschieben und skalieren. Gaussian Splats sind im AR-Export nicht enthalten.
 
 ## Andere Besucher*innen
 
