@@ -5,21 +5,17 @@
 # Everything that has to survive lives in ./data next to this file:
 #   data/uploads  uploaded images, videos, models, PDFs                       → back up
 #   data/backups  daily database dumps (service `backup`), restores use these → back up
-#   data/secrets  database passwords and JWT secret (written once by `init`)  → not needed: a
+#   data/secrets  database passwords and JWT secret (written once by `db`)    → not needed: a
 #                 restore starts with new ones, the dumps hold no database users
 #   data/db       MariaDB's live files (a copy taken while it runs is not consistent)
 services:
-  init:
-    image: alpine:3.20
-    restart: "no"
-    command: ["sh", "/init-secrets.sh"]
-    volumes:
-      - ./data:/data
-      - ./deploy/init-secrets.sh:/init-secrets.sh:ro
-
   db:
     image: mariadb:10.6
     restart: always
+    # Creates the folders in ./data and the secrets on the very first start (deploy/init-secrets.sh),
+    # then hands over to the image's own entrypoint. No separate one-shot service: a stack with an
+    # exited container shows as stopped in Dockge.
+    entrypoint: ["sh", "-c", "sh /init-secrets.sh && exec docker-entrypoint.sh mariadbd"]
     environment:
       # Only the *_FILE variants: the mariadb entrypoint aborts when a variable and its _FILE are both set.
       # An already initialised datadir ignores these (existing installations keep their passwords).
@@ -30,11 +26,10 @@ services:
       # Creates the healthcheck user on older datadirs and upgrades system tables after image updates.
       MARIADB_AUTO_UPGRADE: "1"
     volumes:
+      - ./data:/data
+      - ./deploy/init-secrets.sh:/init-secrets.sh:ro
       - ./data/db:/var/lib/mysql
       - ./data/secrets:/run/curahub-secrets:ro
-    depends_on:
-      init:
-        condition: service_completed_successfully
     networks:
       - curahub-network
     healthcheck:

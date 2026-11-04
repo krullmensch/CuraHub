@@ -2,7 +2,7 @@ import fs from 'fs';
 import path from 'path';
 
 /**
- * Fresh installs: the compose `init` service writes random secrets into a volume mounted here.
+ * Fresh installs: the compose `db` service writes random secrets into a volume mounted here.
  * The server (and every script run with `docker compose exec`) reads them itself when
  * DATABASE_URL / JWT_SECRET are not set, so no .env is needed. Values set in the
  * environment always win (existing installations keep their .env).

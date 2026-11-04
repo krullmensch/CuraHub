@@ -10,7 +10,7 @@
 ## Neuinstallation
 
 1. Code holen: `git clone <repo-url> /opt/curahub && cd /opt/curahub`
-2. Starten: `docker compose up -d --build` (der erste Build dauert einige Minuten). Eine `.env` ist nicht nötig; Datenbank-Passwörter und JWT-Secret erzeugt der `init`-Container.
+2. Starten: `docker compose up -d --build` (der erste Build dauert einige Minuten). Eine `.env` ist nicht nötig; Datenbank-Passwörter und JWT-Secret erzeugt der `db`-Container beim ersten Start.
 3. Apache: `deploy/apache/curahub.conf` im `<VirtualHost *:443>` der Domain einbinden, dann `apachectl configtest && systemctl reload apache2`.
 4. Setup-Code anzeigen: `docker compose logs app | grep Setup-Code`
 5. `https://<domain>/setup` öffnen und den Assistenten durchgehen: Setup-Code, Systemcheck, öffentliche Adresse, Notfall-Admin, HSBI-Admin.
@@ -27,12 +27,12 @@ Alles, was bleiben muss, liegt im Ordner `data/` des Stack-Verzeichnisses.
 |---|---|---|
 | `data/uploads` | hochgeladene Bilder, Videos, 3D-Modelle und PDFs | ja |
 | `data/backups` | tägliche Datenbank-Dumps (`curahub-<Datum>.sql.gz`, 14 Tage) | ja |
-| `data/secrets` | Datenbank-Passwörter und JWT-Secret, vom `init`-Container erzeugt | nein |
+| `data/secrets` | Datenbank-Passwörter und JWT-Secret, vom `db`-Container erzeugt | nein |
 | `data/db` | die laufenden Dateien der MariaDB | nein |
 
 Der Dienst `backup` schreibt einmal am Tag einen Dump nach `data/backups`, außerdem gleich beim Start, wenn der letzte älter als einen Tag ist. Wiederhergestellt wird aus diesen Dumps: eine Kopie von `data/db`, die bei laufender Datenbank entsteht, ist nicht in sich stimmig. Ob die Dumps laufen, zeigt der Systemcheck unter „Benutzerverwaltung" → „System".
 
-`data/secrets` gehört nicht ins Backup: Die Passwörter darin braucht nur dieser Server, und bei einer Wiederherstellung erzeugt `init` neue. Die Dumps enthalten keine Datenbank-Benutzer und keine Klartext-Passwörter (Notfall-Konten nur als bcrypt-Hash), aber personenbezogene Daten wie E-Mail-Adressen; das Backup braucht entsprechenden Schutz. `data/secrets` und `data/backups` sind auf dem Server nur für root lesbar.
+`data/secrets` gehört nicht ins Backup: Die Passwörter darin braucht nur dieser Server, und bei einer Wiederherstellung erzeugt der `db`-Container neue. Die Dumps enthalten keine Datenbank-Benutzer und keine Klartext-Passwörter (Notfall-Konten nur als bcrypt-Hash), aber personenbezogene Daten wie E-Mail-Adressen; das Backup braucht entsprechenden Schutz. `data/secrets` und `data/backups` sind auf dem Server nur für root lesbar.
 
 Dump von Hand:
 
@@ -43,7 +43,7 @@ docker compose exec backup bash /db-backup.sh now
 ### Wiederherstellen oder auf einen neuen Server umziehen
 
 1. Stack-Verzeichnis mit `data/uploads` und `data/backups` auf den Server kopieren; `data/secrets` und `data/db` gibt es dort nicht (oder sie sind leer).
-2. Nur die Datenbank starten: `docker compose up -d db`. `init` erzeugt neue Passwörter, die Datenbank legt den Benutzer `curahub` damit an.
+2. Nur die Datenbank starten: `docker compose up -d db`. Sie erzeugt neue Passwörter, die Datenbank legt den Benutzer `curahub` damit an.
 3. Dump einspielen:
 
 ```bash
@@ -67,6 +67,7 @@ Eine vorhandene `.env` mit `DATABASE_URL`, `JWT_SECRET`, `APP_EXTERNAL_PORT` und
 - Hinter Cloudflare zusätzlich `BEHIND_CLOUDFLARE=true` setzen.
 - Eigene Apache-Konfiguration: `ProxyPass` braucht `upgrade=websocket` (siehe `deploy/apache/curahub.conf`). Ohne bleibt die Live-Anwesenheit „Offline“; Editor und Viewer funktionieren trotzdem.
 - Der Datenbank-Port wird nicht mehr auf dem Host veröffentlicht.
+- Den Dienst `init` gibt es nicht mehr (die Secrets legt jetzt `db` an). Nach dem Update einmal `docker compose up -d --remove-orphans`, sonst bleibt der alte, beendete `init`-Container liegen und Dockge zeigt den Stack als „beendet".
 
 ### Umzug aus Docker-Volumes nach `data/`
 
