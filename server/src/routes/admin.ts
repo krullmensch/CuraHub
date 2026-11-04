@@ -1,9 +1,11 @@
 import { Router } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 import { authenticate, requireAdmin } from '../lib/middleware';
 import { runSystemChecks, requestInfo, type CheckDeps } from '../lib/systemChecks';
 import { getSetupState } from '../lib/setupState';
 import { onVersionsDeleted } from '../lib/arExportJobs';
+import { z } from 'zod';
+import { createLocalAccount, prismaLocalAccountStore, resetLocalPassword } from '../lib/localAccounts';
 
 export const adminRouter = Router();
 const prisma = new PrismaClient();
@@ -40,12 +42,55 @@ adminRouter.get('/users', async (_req, res) => {
         email: true,
         role: true,
         createdAt: true,
+        must_change_password: true,
         _count: { select: { projects: true } },
       },
     });
     res.json(users);
   } catch {
     res.status(500).json({ error: 'Benutzer konnten nicht geladen werden' });
+  }
+});
+
+// ─── POST /admin/users ────────────────────────────────────────────────────────
+// Creates a local account; the generated start password is in this response only.
+
+const createAccountSchema = z.object({
+  username: z.string().max(100),
+  role: z.enum(['user', 'curator', 'prof', 'admin']),
+});
+
+adminRouter.post('/users', async (req, res) => {
+  const parsed = createAccountSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: 'Benutzername und Rolle sind erforderlich.' });
+  try {
+    const result = await createLocalAccount(prismaLocalAccountStore(prisma), parsed.data);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    const { user, password } = result.value;
+    res.status(201).json({ user: { id: user.id, email: user.email, role: user.role }, password });
+  } catch (error) {
+    // Two admins creating the same name at once: the unique index decides.
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return res.status(409).json({ error: 'Diesen Benutzernamen gibt es schon.' });
+    }
+    console.error('[Admin] create account:', error);
+    res.status(500).json({ error: 'Konto konnte nicht angelegt werden.' });
+  }
+});
+
+// ─── POST /admin/users/:id/password ───────────────────────────────────────────
+// New start password for a local account (must be changed at the next login).
+
+adminRouter.post('/users/:id/password', async (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (isNaN(targetId)) return res.status(400).json({ error: 'Ungültige Benutzer-ID' });
+  try {
+    const result = await resetLocalPassword(prismaLocalAccountStore(prisma), targetId);
+    if (!result.ok) return res.status(result.status).json({ error: result.error });
+    res.json({ password: result.value.password });
+  } catch (error) {
+    console.error('[Admin] reset password:', error);
+    res.status(500).json({ error: 'Passwort konnte nicht zurückgesetzt werden.' });
   }
 });
 

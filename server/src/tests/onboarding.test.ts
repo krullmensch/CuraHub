@@ -3,12 +3,12 @@ import { app } from '../index';
 import { publicUser, completeOnboarding } from '../lib/onboarding';
 
 const at = new Date('2026-10-29T10:00:00.000Z');
-const base = { id: 7, email: 'a@hsbi.de', role: 'curator', password_hash: 'x', createdAt: at };
+const base = { id: 7, email: 'a@hsbi.de', role: 'curator', password_hash: 'x', createdAt: at, must_change_password: false };
 
 describe('publicUser', () => {
-    it('returns id, email, role and the onboarding timestamp as ISO', () => {
+    it('returns id, email, role, the onboarding timestamp as ISO and the password-change flag', () => {
         expect(publicUser({ ...base, onboarding_completed_at: at }))
-            .toEqual({ id: 7, email: 'a@hsbi.de', role: 'curator', onboardingCompletedAt: '2026-10-29T10:00:00.000Z' });
+            .toEqual({ id: 7, email: 'a@hsbi.de', role: 'curator', onboardingCompletedAt: '2026-10-29T10:00:00.000Z', mustChangePassword: false });
     });
     it('returns null when the tour was never completed', () => {
         expect(publicUser({ ...base, onboarding_completed_at: null }).onboardingCompletedAt).toBeNull();

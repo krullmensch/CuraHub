@@ -50,8 +50,9 @@ async function verifyOwnership(exhibitionId: number, userId: number, userRole: s
 }
 
 // --- Schemas ---
+// `email` is User.email: an HSBI address or the username of a local account (no "@").
 const addCollaboratorSchema = z.object({
-    email: z.string().email(),
+    email: z.string().trim().min(1).max(200),
 });
 
 const updateExhibitionSchema = z.object({

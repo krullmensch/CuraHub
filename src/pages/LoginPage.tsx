@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useAuthStore } from '../store/authStore';
+import { useAuthStore, type User } from '../store/authStore';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,12 +11,13 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { AuthBackdrop } from '@/components/AuthBackdrop';
+import { PasswordChangeForm } from '@/components/auth/PasswordChangeForm';
 import {
   AUTH_BUTTON_STYLE, AUTH_CARD_STYLE, AUTH_DESCRIPTION_STYLE, AUTH_ERROR_STYLE, AUTH_INPUT_CLASS,
   AUTH_INPUT_STYLE, AUTH_LABEL_STYLE, AUTH_TITLE_STYLE,
 } from '@/components/authStyles';
 
-/** 'hsbi' = HSBI SSO; 'local' = emergency login for local admin accounts (setup wizard). */
+/** 'hsbi' = HSBI login; 'local' = CuraHub account (created by an admin, or the setup wizard's emergency admin). */
 type LoginMode = 'hsbi' | 'local';
 
 export const LoginPage = () => {
@@ -25,6 +26,8 @@ export const LoginPage = () => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
+  // A local account logged in with a start password: kept here (not in authStore) until it is replaced.
+  const [pending, setPending] = useState<{ token: string; user: User; password: string } | null>(null);
   const login = useAuthStore((state) => state.login);
   const navigate = useNavigate();
   const location = useLocation();
@@ -48,6 +51,10 @@ export const LoginPage = () => {
         throw new Error(data.error || 'Anmeldung fehlgeschlagen');
       }
 
+      if (data.user.mustChangePassword) {
+        setPending({ token: data.token, user: data.user, password });
+        return;
+      }
       login(data.token, data.user);
       navigate(from, { replace: true });
     } catch (err) {
@@ -67,14 +74,55 @@ export const LoginPage = () => {
       <Card className="w-full border" style={AUTH_CARD_STYLE}>
         <CardHeader className="pb-4">
           <CardTitle className="text-xl font-light" style={AUTH_TITLE_STYLE}>
-            {mode === 'hsbi' ? 'Anmelden' : 'Notfall-Login'}
+            {pending ? 'Neues Passwort festlegen' : 'Anmelden'}
           </CardTitle>
           <CardDescription style={AUTH_DESCRIPTION_STYLE}>
-            {mode === 'hsbi' ? 'Melde dich mit deinem HSBI-Account an.' : 'Lokales Admin-Konto — nur für den Notfall.'}
+            {pending
+              ? 'Du hast dich mit einem Startpasswort angemeldet. Lege jetzt dein eigenes Passwort fest.'
+              : mode === 'hsbi' ? 'Melde dich mit deinem HSBI-Account an.' : 'Melde dich mit deinem CuraHub-Konto an.'}
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {pending ? (
+            <div className="grid gap-3">
+              <PasswordChangeForm
+                token={pending.token}
+                username={pending.user.email}
+                knownCurrent={pending.password}
+                variant="auth"
+                submitLabel="Passwort speichern"
+                onDone={() => {
+                  login(pending.token, { ...pending.user, mustChangePassword: false });
+                  navigate(from, { replace: true });
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => { setPending(null); setPassword(''); }}
+                className="text-xs text-center text-white/45 hover:text-white/75 transition-colors"
+              >
+                Abbrechen
+              </button>
+            </div>
+          ) : (
           <form onSubmit={handleSubmit} className="grid gap-4">
+            <div role="tablist" aria-label="Kontoart" className="grid grid-cols-2 gap-1 rounded-md p-1" style={{ background: 'rgba(255,255,255,0.05)' }}>
+              {(['hsbi', 'local'] as const).map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="tab"
+                  aria-selected={mode === m}
+                  onClick={() => { setMode(m); setError(''); }}
+                  className="text-xs font-medium rounded px-3 py-1.5 transition-colors"
+                  style={mode === m
+                    ? { background: 'rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.92)' }
+                    : { color: 'rgba(255,255,255,0.5)' }}
+                >
+                  {m === 'hsbi' ? 'HSBI-Konto' : 'CuraHub-Konto'}
+                </button>
+              ))}
+            </div>
             {error && (
               <div className="text-sm font-medium rounded-md px-3 py-2" style={AUTH_ERROR_STYLE}>
                 {error}
@@ -91,7 +139,7 @@ export const LoginPage = () => {
               <Input
                 id="username"
                 type="text"
-                placeholder={mode === 'hsbi' ? 'amustermann' : 'notfall'}
+                placeholder={mode === 'hsbi' ? 'amustermann' : 'benutzername'}
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 required
@@ -130,14 +178,8 @@ export const LoginPage = () => {
             >
               {isLoading ? 'Anmeldung läuft…' : 'Anmelden'}
             </Button>
-            <button
-              type="button"
-              onClick={() => { setMode(mode === 'hsbi' ? 'local' : 'hsbi'); setError(''); }}
-              className="text-xs text-center text-white/30 hover:text-white/60 transition-colors"
-            >
-              {mode === 'hsbi' ? 'Notfall-Login' : 'Zurück zum HSBI-Login'}
-            </button>
           </form>
+          )}
         </CardContent>
       </Card>
     </AuthBackdrop>

@@ -11,6 +11,7 @@ const mockUser = {
     password_hash: null as string | null,
     createdAt: new Date('2026-01-01T00:00:00.000Z'),
     onboarding_completed_at: new Date('2026-10-29T10:00:00.000Z') as Date | null,
+    must_change_password: false,
 };
 const mockFindUnique = jest.fn(async () => mockUser);
 
@@ -33,7 +34,7 @@ describe('auth responses include onboardingCompletedAt', () => {
         const token = jwt.sign({ userId: 42, role: 'curator' }, JWT_SECRET);
         const res = await request(app).get('/auth/me').set('Authorization', `Bearer ${token}`);
         expect(res.status).toBe(200);
-        expect(res.body.user).toEqual({ id: 42, email: 'tour.test@hsbi.de', role: 'curator', onboardingCompletedAt: '2026-10-29T10:00:00.000Z' });
+        expect(res.body.user).toEqual({ id: 42, email: 'tour.test@hsbi.de', role: 'curator', onboardingCompletedAt: '2026-10-29T10:00:00.000Z', mustChangePassword: false });
     });
 
     it('POST /auth/login', async () => {

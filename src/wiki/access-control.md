@@ -1,6 +1,6 @@
 # Benutzer- & Rechtesystem
 
-CuraHub verfügt über ein rollenbasiertes Rechtesystem. Die Anmeldung läuft über das HSBI-Konto (Hochschul-Login). Wer sich zum ersten Mal anmeldet, hat zunächst die Rolle **User** und muss freigeschaltet werden.
+CuraHub verfügt über ein rollenbasiertes Rechtesystem. Die Anmeldung läuft über das HSBI-Konto (Hochschul-Login) oder über ein CuraHub-Konto, das ein Admin anlegt. Wer sich zum ersten Mal mit dem HSBI-Konto anmeldet, hat zunächst die Rolle **User** und muss freigeschaltet werden.
 
 ## Rollen im Überblick
 
@@ -31,5 +31,9 @@ CuraHub verfügt über ein rollenbasiertes Rechtesystem. Die Anmeldung läuft ü
 - Systemcheck der Installation einsehen.
 - Ausstellungen für die Startseite als "Featured" markieren.
 
-## Notfall-Login
-Neben dem HSBI-Login gibt es lokale Admin-Konten mit eigenem Passwort. Sie werden bei der Einrichtung angelegt und funktionieren auch dann, wenn der HSBI-Login ausfällt. Auf der Login-Seite erreichst du sie über **Notfall-Login**.
+## CuraHub-Konten
+Neben dem HSBI-Login gibt es CuraHub-Konten mit Benutzername und eigenem Passwort, für alle, die ihr HSBI-Passwort nicht in CuraHub eingeben möchten, und für Gäste ohne HSBI-Konto. Ein Admin legt sie in der **Benutzerverwaltung** an. Auf der Login-Seite wählst du dafür **CuraHub-Konto**.
+
+Bei der ersten Anmeldung meldest du dich mit dem Startpasswort an, das dir der Admin gegeben hat, und legst gleich ein eigenes fest (mindestens 12 Zeichen). Ändern kannst du es später über das Schlüssel-Symbol neben deinem Namen oben rechts. Hast du es vergessen, setzt ein Admin es zurück und gibt dir ein neues Startpasswort.
+
+Auch die lokalen Admin-Konten aus der Einrichtung sind CuraHub-Konten; sie funktionieren auch dann, wenn der HSBI-Login ausfällt.

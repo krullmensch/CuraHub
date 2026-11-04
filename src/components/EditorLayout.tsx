@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { UploadDropzone } from './UploadDropzone';
 import { useEditorStore } from '../store/editorStore';
 import { Button } from '@/components/ui/button';
-import { LogOut, BookOpen, ExternalLink, Globe, Settings } from 'lucide-react';
+import { LogOut, BookOpen, ExternalLink, Globe, Settings, KeyRound } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { VersionPanel } from './VersionPanel';
@@ -22,6 +22,8 @@ import { TourOverlay } from './tour/TourOverlay';
 import { MobilePlannerLayout } from './mobile/MobilePlannerLayout';
 import { useMobilePlanner } from '../lib/mobilePlanner/mode';
 import { isTouchViewer, readTouchEnv } from '../lib/touch/touchMode';
+import { isLocalAccount } from '../lib/auth/localAccounts';
+import { ChangePasswordDialog } from './auth/ChangePasswordDialog';
 
 const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
 const ProjectSettingsDialog = lazy(() =>
@@ -55,6 +57,7 @@ export const EditorLayout = () => {
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [wikiOpen, setWikiOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [passwordOpen, setPasswordOpen] = useState(false);
   const isProf = useAuthStore((s) => s.isProf);
 
   // Refresh auth (role, token) on mount and when the tab regains focus — on focus at most
@@ -302,6 +305,16 @@ export const EditorLayout = () => {
                     {user.email.split('@')[0]}
                 </span>
             )}
+            {user?.email && isLocalAccount(user.email) && (
+                <button
+                    onClick={() => setPasswordOpen(true)}
+                    title="Passwort ändern"
+                    aria-label="Passwort ändern"
+                    className="text-gray-400 hover:text-white transition-colors"
+                >
+                    <KeyRound className="h-4 w-4" />
+                </button>
+            )}
             <Button
                 variant="ghost"
                 size="sm"
@@ -379,7 +392,9 @@ export const EditorLayout = () => {
         </Suspense>
       )}
 
-      <TourAutoStart layoutDialogOpen={wikiOpen || settingsOpen} />
+      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
+
+      <TourAutoStart layoutDialogOpen={wikiOpen || settingsOpen || passwordOpen} />
       <TourOverlay />
     </div>
   );
