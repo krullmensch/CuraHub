@@ -14,6 +14,7 @@ const ExhibitionsPage = lazy(() => import('./pages/ExhibitionsPage').then((m) =>
 const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
 const KeinZugriffPage = lazy(() => import('./pages/KeinZugriffPage'));
 const ArExportPage = lazy(() => import('./pages/ArExportPage'));
+const LegalPage = lazy(() => import('./pages/LegalPage').then((m) => ({ default: m.LegalPage })));
 const SetupPage = lazy(() => import('./pages/SetupPage').then((m) => ({ default: m.SetupPage })));
 
 const RouteFallback = () => (
@@ -32,6 +33,8 @@ function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/setup" element={<SetupPage />} />
           <Route path="/kein-zugriff" element={<KeinZugriffPage />} />
+          <Route path="/impressum" element={<LegalPage kind="impressum" />} />
+          <Route path="/datenschutz" element={<LegalPage kind="datenschutz" />} />
           <Route path="/exhibitions" element={<ExhibitionsPage />} />
           <Route path="/exhibition" element={<ExhibitionsPage />} />
           {/* Public Viewer */}

@@ -2,9 +2,24 @@ import { Router } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { arDir, arFilePath } from '../lib/arExportFiles';
 import { arPublicInfo, buildPublicScenePayload } from '../lib/publicScene';
+import { toPublicListing } from '../lib/publicListing';
+import { behindCloudflare, loadLegalSettings } from '../lib/legalTexts';
 
 const prisma = new PrismaClient();
 export const publicRouter = Router();
+
+// GET /public/legal — operator details and own texts; the client builds Impressum and
+// Datenschutzerklärung from them (src/lib/legal/documents.ts). The operator details are what the
+// Impressum publishes anyway.
+publicRouter.get('/legal', async (_req, res) => {
+    try {
+        res.setHeader('Cache-Control', 'no-cache');
+        res.json({ ...(await loadLegalSettings(prisma)), behindCloudflare: behindCloudflare() });
+    } catch (err) {
+        console.error('Error fetching legal texts:', err);
+        res.status(500).json({ error: 'Rechtstexte konnten nicht geladen werden' });
+    }
+});
 
 // GET /public/featured — returns the single featured+published exhibition version
 publicRouter.get('/featured', async (_req, res) => {
@@ -20,16 +35,7 @@ publicRouter.get('/featured', async (_req, res) => {
 
         if (!featured) return res.json(null);
 
-        res.json({
-            exhibition: featured.exhibition,
-            version: {
-                id: featured.id,
-                comment: featured.comment,
-                published_at: featured.published_at,
-                artworkCount: featured._count.instances,
-                creator: featured.creator,
-            },
-        });
+        res.json(toPublicListing(featured));
     } catch (err) {
         console.error('Error fetching featured exhibition:', err);
         res.status(500).json({ error: 'Failed to load featured exhibition' });
@@ -49,18 +55,7 @@ publicRouter.get('/exhibitions', async (_req, res) => {
             },
         });
 
-        res.json(
-            versions.map((v) => ({
-                exhibition: v.exhibition,
-                version: {
-                    id: v.id,
-                    comment: v.comment,
-                    published_at: v.published_at,
-                    artworkCount: v._count.instances,
-                    creator: v.creator,
-                },
-            }))
-        );
+        res.json(versions.map(toPublicListing));
     } catch (err) {
         console.error('Error fetching exhibitions:', err);
         res.status(500).json({ error: 'Failed to load exhibitions' });

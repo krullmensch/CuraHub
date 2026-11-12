@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { ArrowUpRight, Layers, Calendar } from 'lucide-react';
+import { LegalLinks } from '@/components/legal/LegalLinks';
 
 interface ExhibitionEntry {
   exhibition: {
@@ -17,7 +18,7 @@ interface ExhibitionEntry {
     comment: string | null;
     published_at: string | null;
     artworkCount: number;
-    creator: { email: string };
+    creator: { name: string };
   };
   isFeatured?: boolean;
 }
@@ -40,7 +41,6 @@ const formatDateShort = (dateStr: string | null) => {
   });
 };
 
-const creatorName = (email: string) => email.split('@')[0];
 
 export const ExhibitionsPage = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
@@ -316,7 +316,7 @@ export const ExhibitionsPage = () => {
                             </span>
                             <span className="text-zinc-600">·</span>
                             <span>
-                              {creatorName(entry.version.creator.email)}
+                              {entry.version.creator.name}
                             </span>
                             {period && (
                               <>
@@ -352,9 +352,12 @@ export const ExhibitionsPage = () => {
       <footer className="border-t border-zinc-900 px-8 py-10">
         <div className="max-w-5xl mx-auto flex items-center justify-between text-xs text-zinc-700">
           <span>CuraHub · HSBI Bielefeld</span>
-          <Link to="/" className="hover:text-zinc-400 transition-colors">
-            Startseite
-          </Link>
+          <div className="flex items-center gap-6">
+            <LegalLinks className="text-zinc-400" />
+            <Link to="/" className="hover:text-zinc-400 transition-colors">
+              Startseite
+            </Link>
+          </div>
         </div>
       </footer>
     </div>

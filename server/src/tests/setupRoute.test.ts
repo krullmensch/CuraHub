@@ -101,6 +101,26 @@ describe('setup API', () => {
         expect(res.status).toBe(400);
     });
 
+    it('rejects incomplete operator details', async () => {
+        const deps = makeDeps();
+        const app = makeApp(deps);
+        const res = await request(app).post('/api/setup/complete').set('Authorization', `Bearer ${await token(app)}`)
+            .send({ ...body, operator: { name: 'HSBI', email: 'info@hsbi.de' } });
+        expect(res.status).toBe(400);
+        expect(res.body.issues.join(' ')).toContain('Betreiberangaben unvollständig');
+        expect(deps.completeSetup).not.toHaveBeenCalled();
+    });
+
+    it('passes complete operator details on', async () => {
+        const deps = makeDeps();
+        const app = makeApp(deps);
+        const operator = { name: 'Hochschule Bielefeld', street: 'Interaktion 1', postalCode: '33619', city: 'Bielefeld', email: 'info@hsbi.de' };
+        const res = await request(app).post('/api/setup/complete').set('Authorization', `Bearer ${await token(app)}`)
+            .send({ ...body, operator });
+        expect(res.status).toBe(200);
+        expect(deps.completeSetup.mock.calls[0][0].operator).toMatchObject({ ...operator, kind: 'public', phone: '' });
+    });
+
     it('refuses to complete while a check fails', async () => {
         const deps = makeDeps({ runChecks: async () => [{ id: 'ffmpeg', label: 'ffmpeg', status: 'fail', detail: 'fehlt' }] });
         const app = makeApp(deps);
@@ -130,6 +150,7 @@ describe('setup API', () => {
             publicUrl: 'https://curahub.hsbi.de',
             localAdmin: { username: 'notfall', passwordHash: 'hashed:sehr-geheim-123' },
             hsbiEmail: 'mmuster@hsbi.de',
+            operator: null,
         });
         expect(getSetupState()).toEqual({ complete: true, publicUrl: 'https://curahub.hsbi.de' });
         expect((await request(app).get('/api/setup/status')).body).toEqual({ complete: true });

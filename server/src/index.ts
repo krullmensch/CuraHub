@@ -30,6 +30,7 @@ import { API_NAMESPACE_SEGMENTS, isFrontendExhibitionPath, NOINDEX_ROUTE_PATTERN
 import { setupGate } from './lib/setupGate';
 import { ensureSetupSecrets, formatSetupBanner, getSetupState, loadSetupState } from './lib/setupState';
 import { allowedOrigins } from './lib/corsOrigins';
+import { securityHeaders } from './lib/securityHeaders';
 import { defaultCheckDeps, requestInfo, runSystemChecks } from './lib/systemChecks';
 import { completeSetupInDb, hashPassword } from './lib/setupStore';
 import { createSetupRouter } from './routes/setup';
@@ -53,6 +54,8 @@ configureArExportJobs({
 // Apache (host) and cloudflared reach the container through the Docker bridge / loopback;
 // trust their X-Forwarded-* so req.ip and req.protocol are the client's.
 app.set('trust proxy', 'loopback, uniquelocal');
+app.disable('x-powered-by');
+app.use(securityHeaders());
 
 // --- CORS (SEC-07) --- see lib/corsOrigins.ts
 app.use(cors({

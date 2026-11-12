@@ -167,6 +167,11 @@ export const LoginPage = () => {
                 style={AUTH_INPUT_STYLE}
                 className={AUTH_INPUT_CLASS}
               />
+              {mode === 'hsbi' && (
+                <p className="text-[11px] leading-snug" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                  Das Passwort wird nur zur Prüfung an die HSBI übermittelt und nicht gespeichert.
+                </p>
+              )}
             </div>
             <Button
               type="submit"

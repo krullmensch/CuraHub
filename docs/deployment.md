@@ -13,11 +13,25 @@
 2. Starten: `docker compose up -d --build` (der erste Build dauert einige Minuten). Eine `.env` ist nicht nötig; Datenbank-Passwörter und JWT-Secret erzeugt der `db`-Container beim ersten Start.
 3. Apache: `deploy/apache/curahub.conf` im `<VirtualHost *:443>` der Domain einbinden, dann `apachectl configtest && systemctl reload apache2`.
 4. Setup-Code anzeigen: `docker compose logs app | grep Setup-Code`
-5. `https://<domain>/setup` öffnen und den Assistenten durchgehen: Setup-Code, Systemcheck, öffentliche Adresse, Notfall-Admin, HSBI-Admin.
+5. `https://<domain>/setup` öffnen und den Assistenten durchgehen: Setup-Code, Systemcheck, öffentliche Adresse, Notfall-Admin, HSBI-Admin, Impressum & Datenschutz (Betreiberangaben, optional).
 
 Danach mit dem HSBI-Konto anmelden, unter „Benutzerverwaltung" Kurator:innen freischalten, ein Projekt anlegen, Werke hochladen und im Satelliten platzieren. Das Raummodell des Satelliten ist Teil des Images.
 
 Bis der Assistent abgeschlossen ist, antwortet die API nur mit `503 setup_required`. Nach dem Abschluss ist `/setup` gesperrt.
+
+## Datenschutz und Impressum
+
+Öffentliche Ausstellungen machen jede Installation zu einem öffentlichen Webangebot. Bevor die erste Ausstellung veröffentlicht wird:
+
+1. Die Betreiberangaben eintragen: im Einrichtungsassistenten (Schritt „Impressum & Datenschutz") oder später als Admin unter „Benutzerverwaltung" → „Rechtliche Angaben". Pflicht sind Name, Anschrift und E-Mail; dazu kommen u. a. Vertretung, Aufsichtsbehörde, Datenschutzbeauftragte:r, wo der Server läuft und wie lange Apache Zugriffe protokolliert.
+2. Daraus erzeugt CuraHub Impressum (§ 5 DDG) und Datenschutzerklärung (Art. 13 DSGVO); die Datenschutzerklärung beschreibt, was CuraHub verarbeitet, und nennt Cloudflare von selbst, wenn `BEHIND_CLOUDFLARE=true` gesetzt ist. Den Text von der oder dem Datenschutzbeauftragten prüfen lassen. Wer einen eigenen Text braucht, stellt das Dokument auf „Eigener Text" (beginnt mit dem erzeugten Text, Markdown).
+3. Beide erscheinen unter `/impressum` und `/datenschutz`, verlinkt auf der Startseite, der Ausstellungsübersicht, der Anmeldung, im Viewer und im Benutzerhandbuch. Solange etwas fehlt, zeigt der Systemcheck „Impressum & Datenschutz" eine Warnung (bei öffentlichen Stellen auch ohne Datenschutzbeauftragte:n).
+
+Ein Cookie-Banner braucht CuraHub nicht: Es setzt keine Cookies und speichert im Browser (localStorage) nur die Anmeldung und selbst gewählte Ansichtseinstellungen. Das ist technisch erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG) und wird in der Datenschutzerklärung aufgelistet. Schriften und Skripte kommen nur vom eigenen Server.
+
+Die App sendet Sicherheits-Header (Content-Security-Policy, `X-Frame-Options`, `Referrer-Policy: same-origin`, `Permissions-Policy`, …; `server/src/lib/securityHeaders.ts`). Blockiert die Policy nach einem Update eine Funktion, lässt sie sich mit `CSP_MODE=report-only` (nur protokollieren) oder `CSP_MODE=off` in der `.env` neben `docker-compose.yml` vorübergehend lockern (danach `docker compose up -d`).
+
+Die Zugriffsprotokolle von Apache (IP-Adressen) gehören in die Datenschutzerklärung; ihre Aufbewahrungsdauer legt der Betrieb fest.
 
 ## Daten und Backups
 

@@ -4,19 +4,21 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { AuthBackdrop } from '@/components/AuthBackdrop';
 import { AUTH_CARD_STYLE, AUTH_DESCRIPTION_STYLE, AUTH_TITLE_STYLE } from '@/components/authStyles';
 import {
-  ChecksStep, CodeStep, HsbiAdminStep, LocalAdminStep, PrimaryButton, SummaryStep, UrlStep,
+  ChecksStep, CodeStep, HsbiAdminStep, LegalStep, LocalAdminStep, PrimaryButton, SummaryStep, UrlStep,
 } from '@/components/setup/SetupSteps';
 import { setupApi, SetupExpiredError, type SetupCheck } from '@/lib/setup/setupApi';
+import { EMPTY_OPERATOR, type LegalOperator } from '@/lib/legal/operator';
 
-type Step = 'code' | 'checks' | 'url' | 'local' | 'hsbi' | 'summary' | 'done';
+type Step = 'code' | 'checks' | 'url' | 'local' | 'hsbi' | 'legal' | 'summary' | 'done';
 
 const TITLES: Record<Step, [string, string]> = {
-  code: ['Einrichtung', 'Schritt 1 von 6 · Setup-Code'],
-  checks: ['Systemcheck', 'Schritt 2 von 6'],
-  url: ['Öffentliche Adresse', 'Schritt 3 von 6'],
-  local: ['Notfall-Admin', 'Schritt 4 von 6'],
-  hsbi: ['HSBI-Admin', 'Schritt 5 von 6 · optional'],
-  summary: ['Zusammenfassung', 'Schritt 6 von 6'],
+  code: ['Einrichtung', 'Schritt 1 von 7 · Setup-Code'],
+  checks: ['Systemcheck', 'Schritt 2 von 7'],
+  url: ['Öffentliche Adresse', 'Schritt 3 von 7'],
+  local: ['Notfall-Admin', 'Schritt 4 von 7'],
+  hsbi: ['HSBI-Admin', 'Schritt 5 von 7 · optional'],
+  legal: ['Impressum & Datenschutz', 'Schritt 6 von 7 · optional'],
+  summary: ['Zusammenfassung', 'Schritt 7 von 7'],
   done: ['Fertig', 'CuraHub ist eingerichtet.'],
 };
 
@@ -32,6 +34,7 @@ export function SetupPage() {
   const [suggestedUrl, setSuggestedUrl] = useState('');
   const [localAdmin, setLocalAdmin] = useState<{ username: string; password: string } | null>(null);
   const [hsbi, setHsbi] = useState<{ username: string; password: string; email: string } | null>(null);
+  const [operator, setOperator] = useState<LegalOperator | null>(null);
 
   /** Runs a request; an expired session (restart, 30 min) sends the wizard back to the code step. */
   const run = useCallback(async (fn: () => Promise<void>) => {
@@ -94,13 +97,20 @@ export function SetupPage() {
               busy={busy}
               error={error}
               verifiedEmail={hsbi?.email ?? null}
-              onSkip={() => { setHsbi(null); setError(null); setStep('summary'); }}
-              onNext={() => { setError(null); setStep('summary'); }}
+              onSkip={() => { setHsbi(null); setError(null); setStep('legal'); }}
+              onNext={() => { setError(null); setStep('legal'); }}
               onCheck={(username, password) => run(async () => {
                 const result = await setupApi.hsbiCheck(token, username, password);
                 if (result.ok) setHsbi({ username, password, email: result.email });
                 else setError(result.reason);
               })}
+            />
+          )}
+          {step === 'legal' && (
+            <LegalStep
+              initial={operator ?? EMPTY_OPERATOR}
+              onSkip={() => { setOperator(null); setStep('summary'); }}
+              onNext={(op) => { setOperator(op); setStep('summary'); }}
             />
           )}
           {step === 'summary' && token && localAdmin && (
@@ -110,11 +120,13 @@ export function SetupPage() {
               publicUrl={publicUrl}
               localUsername={localAdmin.username}
               hsbiEmail={hsbi?.email ?? null}
+              operatorName={operator?.name ?? null}
               onFinish={() => run(async () => {
                 await setupApi.complete(token, {
                   publicUrl,
                   localAdmin,
                   ...(hsbi ? { hsbiAdmin: { username: hsbi.username, password: hsbi.password } } : {}),
+                  ...(operator ? { operator } : {}),
                 });
                 // Drop the passwords from memory as soon as they are no longer needed.
                 setLocalAdmin(null);

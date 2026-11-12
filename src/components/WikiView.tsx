@@ -2,6 +2,7 @@ import { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { BookOpen } from 'lucide-react';
+import { LegalLinks } from './legal/LegalLinks';
 
 import wikiPages from '../wiki/pages.json';
 
@@ -45,6 +46,7 @@ export const WikiView = () => {
             {page.title}
           </button>
         ))}
+        <LegalLinks newTab className="mt-auto px-3 pt-4 text-zinc-500" />
       </nav>
 
       {/* Content */}

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { legalOperatorSchema, operatorComplete } from './legalTexts';
 
 // Mirrored in src/lib/setup/validation.ts (client) — keep both in sync.
 export const LOCAL_USERNAME_RE = /^[a-z0-9._-]{3,32}$/;
@@ -33,6 +34,8 @@ export const completeSetupSchema = z.object({
         username: z.string().trim().min(1).max(100).refine((u) => !u.includes('@'), 'Nur die HSBI-Kennung, ohne @hsbi.de'),
         password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
     }).optional(),
+    /** Impressum/Datenschutz details; optional — they can be added later on /users. */
+    operator: legalOperatorSchema.refine(operatorComplete, 'Betreiberangaben unvollständig (Name, Anschrift und E-Mail sind Pflicht).').optional(),
 });
 
 export type CompleteSetupBody = z.infer<typeof completeSetupSchema>;

@@ -1,11 +1,13 @@
 import bcrypt from 'bcryptjs';
 import type { PrismaClient } from '@prisma/client';
 import { SETTING_COMPLETED, SETTING_PUBLIC_URL } from './setupState';
+import { operatorRow, SETTING_OPERATOR, type LegalOperatorInput } from './legalTexts';
 
 export interface CompleteSetupInput {
     publicUrl: string;
     localAdmin: { username: string; passwordHash: string };
     hsbiEmail: string | null;
+    operator?: LegalOperatorInput | null;
 }
 
 export const PASSWORD_COST = 12;
@@ -34,6 +36,7 @@ export async function completeSetupInDb(prisma: PrismaClient, input: CompleteSet
             })]
             : []),
         setting(SETTING_PUBLIC_URL, input.publicUrl),
+        ...(input.operator ? [setting(SETTING_OPERATOR, operatorRow(input.operator))] : []),
         setting(SETTING_COMPLETED, new Date().toISOString()),
     ]);
 }

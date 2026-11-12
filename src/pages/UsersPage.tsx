@@ -7,6 +7,7 @@ import { toast } from '@/hooks/use-toast';
 import { SystemCheckList } from '../components/setup/SystemCheckList';
 import type { SetupCheck } from '../lib/setup/setupApi';
 import { StartPasswordDialog } from '../components/users/StartPasswordDialog';
+import { LegalTextsEditor } from '../components/users/LegalTextsEditor';
 import { isLocalAccount } from '../lib/auth/localAccounts';
 import { LOCAL_USERNAME_RE } from '../lib/setup/validation';
 
@@ -185,6 +186,18 @@ export const UsersPage = () => {
               </span>
             </div>
             <SystemCheckList checks={system.checks} />
+          </section>
+        )}
+
+        {token && (
+          <section className="border border-zinc-800 rounded-xl p-5 mb-8">
+            <h2 className="font-display text-lg font-light mb-1">Rechtliche Angaben</h2>
+            <p className="text-xs text-zinc-400 mb-4">
+              Aus diesen Angaben erzeugt CuraHub Impressum und Datenschutzerklärung (unter /impressum und /datenschutz,
+              von jeder öffentlichen Seite verlinkt). Die Datenschutzerklärung beschreibt, was CuraHub verarbeitet; lass sie
+              von deiner bzw. deinem Datenschutzbeauftragten prüfen. Wer einen eigenen Text braucht, stellt auf „Eigener Text“ um.
+            </p>
+            <LegalTextsEditor token={token} />
           </section>
         )}
 

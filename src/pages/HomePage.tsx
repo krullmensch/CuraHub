@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ArrowRight, Layers, Calendar } from 'lucide-react';
+import { LegalLinks } from '@/components/legal/LegalLinks';
 
 // `navigator.connection` (Network Information API) isn't in the standard DOM
 // lib types yet — narrow it with a type guard instead of `any`.
@@ -25,7 +26,7 @@ interface ExhibitionEntry {
     comment: string | null;
     published_at: string | null;
     artworkCount: number;
-    creator: { email: string };
+    creator: { name: string };
   };
 }
 
@@ -298,6 +299,7 @@ export const HomePage = () => {
             CuraHub ist ein digitales Ausstellungstool der{' '}
             <span className="text-zinc-400">HSBI</span>.
           </p>
+          <LegalLinks />
           <p>
             Kuratieren erfordert einen{' '}
             <span className="text-zinc-400">HSBI</span>-Account.{' '}
