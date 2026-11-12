@@ -20,6 +20,7 @@ import { PLAYER_EYE_HEIGHT } from '../lib/playerDimensions';
 import { setLiveLocation } from '../lib/live/liveConnection';
 import { VisitorCount } from '../components/live/PresenceAvatars';
 import { ArButton, type PublicArInfo } from '../components/viewer/ArButton';
+import { LegalLinks } from '../components/legal/LegalLinks';
 import { detectArPlatform } from '../lib/arExport/launch';
 import { useTouchViewer } from '../lib/touch/touchMode';
 import { isWalking, setTouchWalking, subscribeWalking } from '../lib/touch/walking';
@@ -472,6 +473,12 @@ export const ViewerPage = () => {
                             ) : null}
                         </div>
                     </div>
+                    {/* Impressum / Datenschutz: reachable whenever the visitor is not walking */}
+                    {!loading && !isLocked && (
+                        <div className="absolute bottom-5 inset-x-0 flex justify-center cursor-default" onClick={(e) => e.stopPropagation()}>
+                            <LegalLinks newTab className="text-white/50" />
+                        </div>
+                    )}
                 </div>
             )}
         </>

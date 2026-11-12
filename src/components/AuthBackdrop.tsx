@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { LegalLinks } from '@/components/legal/LegalLinks';
 
 /** Dark gallery-grid background with the CuraHub mark — shared by login and setup. */
 export function AuthBackdrop({ children, wide = false }: { children: ReactNode; wide?: boolean }) {
@@ -59,6 +60,7 @@ export function AuthBackdrop({ children, wide = false }: { children: ReactNode; 
         >
           Digitale Ausstellungsplanung · Hochschule Bielefeld
         </p>
+        <LegalLinks className="justify-center text-white/40" newTab />
       </div>
     </div>
   );

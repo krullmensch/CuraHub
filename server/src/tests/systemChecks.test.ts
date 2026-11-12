@@ -18,6 +18,7 @@ function deps(over: Partial<CheckDeps> = {}): CheckDeps {
         reachHsbi: async () => {},
         chromiumAvailable: async () => true,
         backups: async () => ({ count: 3, newest: { name: 'curahub-20261011-030000.sql.gz', mtimeMs: NOW - 3 * HOUR, size: 2 * 1024 ** 2 }, lastError: null }),
+        legalTexts: async () => ({ imprint: '# Impressum\n\nHSBI', privacy: '# Datenschutz\n\nHSBI' }),
         now: () => NOW,
         timeoutMs: 50,
         ...over,
@@ -29,7 +30,7 @@ const byId = (checks: { id: string; status: string }[]) => Object.fromEntries(ch
 describe('runSystemChecks', () => {
     it('is all green on a healthy instance behind the proxy', async () => {
         const checks = await runSystemChecks(deps(), viaProxy);
-        expect(checks.map((c) => c.id)).toEqual(['database', 'migrations', 'uploads', 'ffmpeg', 'poppler', 'arExport', 'disk', 'hsbi', 'backup', 'proxy']);
+        expect(checks.map((c) => c.id)).toEqual(['database', 'migrations', 'uploads', 'ffmpeg', 'poppler', 'arExport', 'disk', 'hsbi', 'backup', 'legal', 'proxy']);
         expect(checks.every((c) => c.status === 'ok')).toBe(true);
         expect(checks.every((c) => c.label && c.detail)).toBe(true);
     });

@@ -19,6 +19,19 @@ Danach mit dem HSBI-Konto anmelden, unter „Benutzerverwaltung" Kurator:innen f
 
 Bis der Assistent abgeschlossen ist, antwortet die API nur mit `503 setup_required`. Nach dem Abschluss ist `/setup` gesperrt.
 
+## Datenschutz und Impressum
+
+Öffentliche Ausstellungen machen jede Installation zu einem öffentlichen Webangebot. Bevor die erste Ausstellung veröffentlicht wird:
+
+1. Als Admin unter „Benutzerverwaltung" → „Rechtliche Angaben" Impressum (§ 5 DDG) und Datenschutzerklärung (Art. 13 DSGVO) eintragen. „Vorlage einfügen" liefert für beide einen Entwurf; die Datenschutz-Vorlage beschreibt, was CuraHub verarbeitet. Alle Stellen in `[[…]]` ausfüllen und den Text von der oder dem Datenschutzbeauftragten prüfen lassen. Solange etwas fehlt oder ein Platzhalter übrig ist, zeigt der Systemcheck „Impressum & Datenschutz" eine Warnung.
+2. Beide Texte erscheinen unter `/impressum` und `/datenschutz`, verlinkt auf der Startseite, der Ausstellungsübersicht, der Anmeldung, im Viewer und im Benutzerhandbuch.
+
+Ein Cookie-Banner braucht CuraHub nicht: Es setzt keine Cookies und speichert im Browser (localStorage) nur die Anmeldung und selbst gewählte Ansichtseinstellungen. Das ist technisch erforderlich (§ 25 Abs. 2 Nr. 2 TDDDG) und wird in der Datenschutzerklärung aufgelistet. Schriften und Skripte kommen nur vom eigenen Server.
+
+Die App sendet Sicherheits-Header (Content-Security-Policy, `X-Frame-Options`, `Referrer-Policy: same-origin`, `Permissions-Policy`, …; `server/src/lib/securityHeaders.ts`). Blockiert die Policy nach einem Update eine Funktion, lässt sie sich mit `CSP_MODE=report-only` (nur protokollieren) oder `CSP_MODE=off` in der `.env` neben `docker-compose.yml` vorübergehend lockern (danach `docker compose up -d`).
+
+Die Zugriffsprotokolle von Apache (IP-Adressen) gehören in die Datenschutzerklärung; ihre Aufbewahrungsdauer legt der Betrieb fest.
+
 ## Daten und Backups
 
 Alles, was bleiben muss, liegt im Ordner `data/` des Stack-Verzeichnisses.

@@ -9,6 +9,7 @@ beforeAll(() => {
         pingDb: async () => {}, migrationRows: async () => ({ finished: 1, failed: 0 }), migrationFolderCount: () => 1,
         uploadsDir: '/tmp', writeProbe: async () => {}, run: async () => {}, freeBytes: async () => 100 * 1024 ** 3,
         reachHsbi: async () => {}, chromiumAvailable: async () => true, backups: async () => null,
+        legalTexts: async () => ({ imprint: '', privacy: '' }),
     });
 });
 
@@ -21,7 +22,7 @@ describe('GET /admin/system', () => {
         const token = jwt.sign({ userId: 1, role: 'admin' }, JWT_SECRET);
         const res = await request(app).get('/api/admin/system').set('Authorization', `Bearer ${token}`);
         expect(res.status).toBe(200);
-        expect(res.body.checks).toHaveLength(10);
+        expect(res.body.checks).toHaveLength(11);
         expect(res.body).toHaveProperty('publicUrl');
         expect(typeof res.body.version).toBe('string');
     });

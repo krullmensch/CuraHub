@@ -78,7 +78,9 @@ function makeStoredFilename(originalname: string): string {
         .replace(/^-+|-+$/g, '') || 'file';
     const safeExt = ext.toLowerCase().replace(/[^a-z0-9.]/g, '');
 
-    const uniquePrefix = `${Date.now().toString(36)}-${crypto.randomUUID().slice(0, 8)}`;
+    // 128 random bits: /uploads is served without a login, so the name is what keeps the files of
+    // unpublished projects private — it must not be guessable.
+    const uniquePrefix = `${Date.now().toString(36)}-${crypto.randomBytes(16).toString('hex')}`;
     return `${uniquePrefix}-${sanitizedTitle}${safeExt}`;
 }
 

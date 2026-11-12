@@ -83,10 +83,17 @@ function run(command: ffmpeg.FfmpegCommand, outputPath: string, onProgress?: Vid
     });
 }
 
+/**
+ * Drops the container's metadata (title, author, creation time, and above all the GPS position
+ * phones record as `location` / `com.apple.quicktime.location.ISO6709`) from every web copy:
+ * published videos are public. Rotation is display-matrix side data and survives.
+ */
+export const STRIP_METADATA = ['-map_metadata -1', '-map_chapters -1'];
+
 /** Stream copy with the moov atom moved to the front (playback starts before full download). */
 export function remuxForWeb(inputPath: string, outputPath: string, onProgress?: VideoProgressCallback, durationSec?: number): Promise<void> {
     return run(
-        ffmpeg(inputPath).outputOptions(['-map 0:v:0', '-map 0:a:0?', '-c copy', '-movflags +faststart']),
+        ffmpeg(inputPath).outputOptions(['-map 0:v:0', '-map 0:a:0?', '-c copy', ...STRIP_METADATA, '-movflags +faststart']),
         outputPath,
         onProgress,
         durationSec,
@@ -107,6 +114,7 @@ export function transcodeForWeb(inputPath: string, outputPath: string, onProgres
                 '-profile:v high',
                 '-c:a aac',
                 '-b:a 128k',
+                ...STRIP_METADATA,
                 '-movflags +faststart',
             ]),
         outputPath,
@@ -179,6 +187,7 @@ export function createVideoProxy(inputPath: string, outputPath: string, shortEdg
                 '-profile:v main',
                 '-c:a aac',
                 '-b:a 96k',
+                ...STRIP_METADATA,
                 '-movflags +faststart',
             ]),
         outputPath,
