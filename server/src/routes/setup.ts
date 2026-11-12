@@ -93,7 +93,7 @@ export function createSetupRouter(deps: SetupRouterDeps): Router {
             res.status(400).json({ error: 'Eingaben ungültig.', issues: parsed.error.issues.map((i) => i.message) });
             return;
         }
-        const { localAdmin, hsbiAdmin } = parsed.data;
+        const { localAdmin, hsbiAdmin, operator } = parsed.data;
         const publicUrl = normalizePublicUrl(parsed.data.publicUrl)!;
 
         const checks = await deps.runChecks(req);
@@ -117,6 +117,7 @@ export function createSetupRouter(deps: SetupRouterDeps): Router {
             publicUrl,
             localAdmin: { username: localAdmin.username, passwordHash: await deps.hashPassword(localAdmin.password) },
             hsbiEmail,
+            operator: operator ?? null,
         });
         setSetupState({ complete: true, publicUrl });
         console.log(`[Setup] Abgeschlossen: ${publicUrl}, Notfall-Admin "${localAdmin.username}"${hsbiEmail ? `, HSBI-Admin ${hsbiEmail}` : ''}`);

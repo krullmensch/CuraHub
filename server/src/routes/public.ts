@@ -3,16 +3,18 @@ import { PrismaClient } from '@prisma/client';
 import { arDir, arFilePath } from '../lib/arExportFiles';
 import { arPublicInfo, buildPublicScenePayload } from '../lib/publicScene';
 import { toPublicListing } from '../lib/publicListing';
-import { loadLegalTexts } from '../lib/legalTexts';
+import { behindCloudflare, loadLegalSettings } from '../lib/legalTexts';
 
 const prisma = new PrismaClient();
 export const publicRouter = Router();
 
-// GET /public/legal — Impressum and Datenschutzerklärung (Markdown) of this installation
+// GET /public/legal — operator details and own texts; the client builds Impressum and
+// Datenschutzerklärung from them (src/lib/legal/documents.ts). The operator details are what the
+// Impressum publishes anyway.
 publicRouter.get('/legal', async (_req, res) => {
     try {
         res.setHeader('Cache-Control', 'no-cache');
-        res.json(await loadLegalTexts(prisma));
+        res.json({ ...(await loadLegalSettings(prisma)), behindCloudflare: behindCloudflare() });
     } catch (err) {
         console.error('Error fetching legal texts:', err);
         res.status(500).json({ error: 'Rechtstexte konnten nicht geladen werden' });

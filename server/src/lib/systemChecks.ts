@@ -5,7 +5,7 @@ import { execFile } from 'child_process';
 import type { Request } from 'express';
 import type { PrismaClient } from '@prisma/client';
 import { chromiumBrowser } from './headlessBrowser';
-import { legalCheck, loadLegalTexts, type LegalTexts } from './legalTexts';
+import { legalCheck, loadLegalSettings, type LegalSettings } from './legalTexts';
 
 /** Health of an installation — shown by the setup wizard and on the admin page. */
 export type CheckStatus = 'ok' | 'warn' | 'fail';
@@ -29,7 +29,7 @@ export interface CheckDeps {
     reachHsbi(): Promise<void>;
     chromiumAvailable(): Promise<boolean>;
     backups(): Promise<BackupState | null>;
-    legalTexts(): Promise<LegalTexts>;
+    legalSettings(): Promise<LegalSettings>;
     now?: () => number;
     timeoutMs?: number;
 }
@@ -135,7 +135,7 @@ export async function runSystemChecks(deps: CheckDeps, info: CheckRequestInfo): 
             return { status: 'ok', detail: 'www.hsbi.de antwortet.' };
         }),
         attempt('backup', 'Datenbank-Backup', 'warn', async () => backupCheck(await deps.backups(), (deps.now ?? Date.now)())),
-        attempt('legal', 'Impressum & Datenschutz', 'warn', async () => legalCheck(await deps.legalTexts())),
+        attempt('legal', 'Impressum & Datenschutz', 'warn', async () => legalCheck(await deps.legalSettings())),
     ]);
 
     return [...checks, proxy];
@@ -177,7 +177,7 @@ export function defaultCheckDeps(prisma: PrismaClient, uploadsDir: string): Chec
         },
         chromiumAvailable: () => chromiumBrowser.available(),
         backups: () => readBackupState(BACKUPS_DIR),
-        legalTexts: () => loadLegalTexts(prisma),
+        legalSettings: () => loadLegalSettings(prisma),
     };
 }
 

@@ -5,7 +5,7 @@ import { runSystemChecks, requestInfo, type CheckDeps } from '../lib/systemCheck
 import { getSetupState } from '../lib/setupState';
 import { onVersionsDeleted } from '../lib/arExportJobs';
 import { z } from 'zod';
-import { legalTextsSchema, saveLegalTexts } from '../lib/legalTexts';
+import { legalSettingsSchema, saveLegalSettings } from '../lib/legalTexts';
 import { createLocalAccount, prismaLocalAccountStore, resetLocalPassword } from '../lib/localAccounts';
 
 export const adminRouter = Router();
@@ -33,13 +33,13 @@ adminRouter.get('/system', async (req, res) => {
 });
 
 // ─── PUT /admin/legal ─────────────────────────────────────────────────────────
-// Impressum + Datenschutzerklärung (Markdown); read publicly via GET /public/legal.
+// Operator details + optional own texts for Impressum / Datenschutzerklärung; read publicly via GET /public/legal.
 
 adminRouter.put('/legal', async (req, res) => {
-  const parsed = legalTextsSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json({ error: 'Impressum und Datenschutzerklärung müssen Text sein (höchstens 100 000 Zeichen).' });
+  const parsed = legalSettingsSchema.safeParse(req.body);
+  if (!parsed.success) return res.status(400).json({ error: parsed.error.issues[0]?.message ?? 'Rechtliche Angaben ungültig.' });
   try {
-    res.json(await saveLegalTexts(prisma, parsed.data));
+    res.json(await saveLegalSettings(prisma, parsed.data));
   } catch (error) {
     console.error('[Admin] save legal texts:', error);
     res.status(500).json({ error: 'Rechtliche Angaben konnten nicht gespeichert werden.' });

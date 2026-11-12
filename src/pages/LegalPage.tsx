@@ -3,11 +3,12 @@ import { Link } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LegalLinks } from '@/components/legal/LegalLinks';
-import { fetchLegalTexts, LEGAL_PAGES, type LegalKind } from '@/lib/legal/legalApi';
+import { fetchLegalData, LEGAL_PAGES, type LegalKind } from '@/lib/legal/legalApi';
+import { resolveLegalDocuments } from '@/lib/legal/documents';
 
 type Result = { status: 'error' } | { status: 'ready'; text: string };
 
-/** /impressum and /datenschutz: the operator's texts from the admin page, rendered as Markdown. */
+/** /impressum and /datenschutz: built from the operator's details (or their own text), rendered as Markdown. */
 export const LegalPage = ({ kind }: { kind: LegalKind }) => {
   const page = LEGAL_PAGES[kind];
   // Tagged with the page it belongs to: switching Impressum ↔ Datenschutz shows „loading“ again.
@@ -17,8 +18,10 @@ export const LegalPage = ({ kind }: { kind: LegalKind }) => {
   useEffect(() => {
     document.title = `${page.title} · CuraHub`;
     let cancelled = false;
-    fetchLegalTexts()
-      .then((texts) => { if (!cancelled) setLoaded({ kind, result: { status: 'ready', text: texts[page.field] } }); })
+    fetchLegalData()
+      .then((data) => {
+        if (!cancelled) setLoaded({ kind, result: { status: 'ready', text: resolveLegalDocuments(data, data)[page.field] } });
+      })
       .catch(() => { if (!cancelled) setLoaded({ kind, result: { status: 'error' } }); });
     return () => {
       cancelled = true;

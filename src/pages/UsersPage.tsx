@@ -193,9 +193,9 @@ export const UsersPage = () => {
           <section className="border border-zinc-800 rounded-xl p-5 mb-8">
             <h2 className="font-display text-lg font-light mb-1">Rechtliche Angaben</h2>
             <p className="text-xs text-zinc-400 mb-4">
-              Impressum und Datenschutzerklärung dieser Installation (Markdown). Sie stehen unter /impressum und
-              /datenschutz und sind von jeder öffentlichen Seite verlinkt. Die Vorlage beschreibt, was CuraHub verarbeitet;
-              lass den Text von deiner bzw. deinem Datenschutzbeauftragten prüfen.
+              Aus diesen Angaben erzeugt CuraHub Impressum und Datenschutzerklärung (unter /impressum und /datenschutz,
+              von jeder öffentlichen Seite verlinkt). Die Datenschutzerklärung beschreibt, was CuraHub verarbeitet; lass sie
+              von deiner bzw. deinem Datenschutzbeauftragten prüfen. Wer einen eigenen Text braucht, stellt auf „Eigener Text“ um.
             </p>
             <LegalTextsEditor token={token} />
           </section>

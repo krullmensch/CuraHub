@@ -8,6 +8,8 @@ import {
 import { SystemCheckList } from './SystemCheckList';
 import type { SetupCheck } from '@/lib/setup/setupApi';
 import { normalizePublicUrl, passwordProblem, usernameProblem } from '@/lib/setup/validation';
+import { OperatorFields } from '@/components/legal/OperatorFields';
+import { operatorProblem, type LegalOperator } from '@/lib/legal/operator';
 
 // One small component per wizard step: values and callbacks come from SetupPage, no fetching here.
 
@@ -166,8 +168,40 @@ export function HsbiAdminStep({ onCheck, onSkip, onNext, verifiedEmail, error, b
   );
 }
 
-export function SummaryStep({ publicUrl, localUsername, hsbiEmail, onFinish, error, busy }: {
-  publicUrl: string; localUsername: string; hsbiEmail: string | null;
+export function LegalStep({ initial, onSkip, onNext }: {
+  initial: LegalOperator;
+  onSkip: () => void;
+  onNext: (operator: LegalOperator) => void;
+}) {
+  const [operator, setOperator] = useState(initial);
+  const [problem, setProblem] = useState<string | null>(null);
+  return (
+    <form
+      className="grid gap-4"
+      noValidate
+      onSubmit={(e: FormEvent) => {
+        e.preventDefault();
+        const p = operatorProblem(operator);
+        setProblem(p);
+        if (!p) onNext(operator);
+      }}
+    >
+      <Hint>
+        Wer CuraHub öffentlich betreibt, braucht ein Impressum und eine Datenschutzerklärung. CuraHub erzeugt beide aus diesen
+        Angaben. Du kannst sie auch später unter „Benutzerverwaltung“ eintragen oder ändern.
+      </Hint>
+      {problem && <ErrorBox>{problem}</ErrorBox>}
+      <OperatorFields appearance="setup" value={operator} onChange={setOperator} />
+      <div className="grid grid-cols-2 gap-2">
+        <SecondaryButton onClick={onSkip}>Später</SecondaryButton>
+        <PrimaryButton type="submit">Weiter</PrimaryButton>
+      </div>
+    </form>
+  );
+}
+
+export function SummaryStep({ publicUrl, localUsername, hsbiEmail, operatorName, onFinish, error, busy }: {
+  publicUrl: string; localUsername: string; hsbiEmail: string | null; operatorName: string | null;
   onFinish: () => void; error: string | null; busy: boolean;
 }) {
   return (
@@ -177,6 +211,10 @@ export function SummaryStep({ publicUrl, localUsername, hsbiEmail, onFinish, err
         <div><dt className="text-white/60 text-xs">Öffentliche Adresse</dt><dd className="text-white/85">{publicUrl}</dd></div>
         <div><dt className="text-white/60 text-xs">Notfall-Admin</dt><dd className="text-white/85">{localUsername}</dd></div>
         <div><dt className="text-white/60 text-xs">HSBI-Admin</dt><dd className="text-white/85">{hsbiEmail ?? 'übersprungen'}</dd></div>
+        <div>
+          <dt className="text-white/60 text-xs">Impressum &amp; Datenschutz</dt>
+          <dd className="text-white/85">{operatorName ?? 'später in der Benutzerverwaltung'}</dd>
+        </div>
       </dl>
       <PrimaryButton type="button" onClick={onFinish} busy={busy}>Setup abschließen</PrimaryButton>
     </div>

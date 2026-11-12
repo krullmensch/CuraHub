@@ -1,3 +1,5 @@
+import type { LegalOperator } from '../legal/operator';
+
 export type SetupCheckStatus = 'ok' | 'warn' | 'fail';
 export interface SetupCheck { id: string; label: string; status: SetupCheckStatus; detail: string }
 
@@ -5,6 +7,7 @@ export interface CompleteSetupBody {
     publicUrl: string;
     localAdmin: { username: string; password: string };
     hsbiAdmin?: { username: string; password: string };
+    operator?: LegalOperator;
 }
 
 /** The setup token expired or the server restarted (new code) — the wizard starts over. */

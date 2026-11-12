@@ -9,7 +9,7 @@ beforeAll(() => {
         pingDb: async () => {}, migrationRows: async () => ({ finished: 1, failed: 0 }), migrationFolderCount: () => 1,
         uploadsDir: '/tmp', writeProbe: async () => {}, run: async () => {}, freeBytes: async () => 100 * 1024 ** 3,
         reachHsbi: async () => {}, chromiumAvailable: async () => true, backups: async () => null,
-        legalTexts: async () => ({ imprint: '', privacy: '' }),
+        legalSettings: async () => ({ operator: null, imprint: '', privacy: '' }),
     });
 });
 

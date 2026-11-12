@@ -13,7 +13,9 @@ Der Abschnitt **System** in der Benutzerverwaltung zeigt, ob die Installation ge
 
 ## Impressum und Datenschutz
 
-Sobald Ausstellungen öffentlich sind, braucht die Installation ein Impressum und eine Datenschutzerklärung. Du trägst beide in der **Benutzerverwaltung** unter **Rechtliche Angaben** ein (Markdown). **Vorlage einfügen** liefert einen Entwurf; die Datenschutz-Vorlage beschreibt bereits, was CuraHub verarbeitet. Fülle alle Stellen in `[[…]]` aus und lass den Text von der oder dem Datenschutzbeauftragten prüfen. Die Texte stehen dann unter `/impressum` und `/datenschutz` und sind auf jeder öffentlichen Seite verlinkt.
+Sobald Ausstellungen öffentlich sind, braucht die Installation ein Impressum und eine Datenschutzerklärung. CuraHub erzeugt beide aus den Angaben zum Betreiber: Name, Anschrift und E-Mail (Pflicht), dazu Vertretung, Aufsichtsbehörde, Datenschutzbeauftragte:r, Server-Standort und wie lange Zugriffsprotokolle aufbewahrt werden. Du trägst sie im Einrichtungsassistenten oder später in der **Benutzerverwaltung** unter **Rechtliche Angaben** ein. Die Texte stehen dann unter `/impressum` und `/datenschutz` und sind auf jeder öffentlichen Seite verlinkt; lass die Datenschutzerklärung von der oder dem Datenschutzbeauftragten prüfen.
+
+Brauchst du einen anderen Wortlaut, stell das Dokument auf **Eigener Text**: Es beginnt mit dem erzeugten Text, den du in Markdown anpasst.
 
 Einen Cookie-Hinweis braucht CuraHub nicht: Es setzt keine Cookies und speichert im Browser nur die Anmeldung und selbst gewählte Ansichtseinstellungen.
 

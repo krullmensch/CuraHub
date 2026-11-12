@@ -18,7 +18,7 @@ function deps(over: Partial<CheckDeps> = {}): CheckDeps {
         reachHsbi: async () => {},
         chromiumAvailable: async () => true,
         backups: async () => ({ count: 3, newest: { name: 'curahub-20261011-030000.sql.gz', mtimeMs: NOW - 3 * HOUR, size: 2 * 1024 ** 2 }, lastError: null }),
-        legalTexts: async () => ({ imprint: '# Impressum\n\nHSBI', privacy: '# Datenschutz\n\nHSBI' }),
+        legalSettings: async () => ({ operator: null, imprint: '# Impressum\n\nHSBI', privacy: '# Datenschutz\n\nHSBI' }),
         now: () => NOW,
         timeoutMs: 50,
         ...over,
