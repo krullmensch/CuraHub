@@ -39,22 +39,22 @@ const KEY_POSITION: Vec3 = [-3, 6, -8];
 const COUNTER_POSITION: Vec3 = [4, 5, 6];
 
 const RIG_WITH_AREA_LIGHTS: RoomLightRig = {
-    ambient: 0.2,
+    ambient: 0.35,
     hemisphere: null,
     directional: [
-        { position: KEY_POSITION, intensity: 0.9, color: WARM },
-        { position: COUNTER_POSITION, intensity: 0.25, color: COOL },
+        { position: KEY_POSITION, intensity: 1.0, color: WARM },
+        { position: COUNTER_POSITION, intensity: 0.3, color: COOL },
     ],
     rectDown: 3.5,
-    rectUp: 0.6,
+    rectUp: 1.2,
 };
 
 const RIG_WITHOUT_AREA_LIGHTS: RoomLightRig = {
     ambient: 0.3,
-    hemisphere: { sky: WARM, ground: '#f4efe8', intensity: 1.4 },
+    hemisphere: { sky: WARM, ground: '#f4efe8', intensity: 1.1 },
     directional: [
-        { position: KEY_POSITION, intensity: 1.0, color: WARM },
-        { position: COUNTER_POSITION, intensity: 0.3, color: COOL },
+        { position: KEY_POSITION, intensity: 1.5, color: WARM },
+        { position: COUNTER_POSITION, intensity: 0.45, color: COOL },
         // Replaces the upward area light that brightens the ceiling.
         { position: [0, -10, 0], intensity: 1.2, color: WARM },
     ],
@@ -93,7 +93,8 @@ export const WALL_NORMALS: Vec3[] = [[1, 0, 0], [-1, 0, 0], [0, 0, 1], [0, 0, -1
 
 /**
  * Rough guess of how much of the ceiling area lights reaches a vertical wall (per unit of
- * intensity). Only used for the brightness estimate below, not for rendering.
+ * intensity). Only used for the brightness estimate below, not for rendering. The estimate is a
+ * guard against accidental changes; the rig itself was tuned on screenshots.
  */
 export const RECT_WALL_SHARE = 0.25;
 

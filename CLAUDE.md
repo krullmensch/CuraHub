@@ -440,6 +440,7 @@ Public German site on GitHub Pages (`https://krullmensch.github.io/CuraHub/`): l
 - `shadowMap.mapSize`: default `1024×1024`; increase to `2048` only for key lights
 - **Light leak fix** — wall geometry must have non-zero thickness. Planar (zero-thickness) walls cause light bleeding. Minimum recommended thickness: `0.15` world units. Also ensure `side = THREE.FrontSide` is NOT used on interior surfaces — use `THREE.BackSide` for inside-facing walls or `THREE.DoubleSide` if needed (see Known Issues)
 - Lights stored in Zustand as `LightConfig[]` with `{ id, type, position, intensity, color, castShadow }`
+- **Room light rig (built):** every room light value lives in `src/lib/roomLighting.ts` (`roomLightRig(rectAreaLights)`), rendered by `Scene.tsx` (ambient, hemisphere for "Niedrig", directionals) and `Satellit.tsx` (ceiling RectAreaLights). A key light from the window wall (−Z, off-axis) and a weak counter light give the four wall directions different brightness, so corners and wall ends read; the downward area light stays 3.5 (frame calibration). Values tuned on test-stack screenshots; `wallIrradiance` is only a rough guard in Vitest. Spec `docs/superpowers/specs/2026-11-15-raum-shading-design.md`; corner darkening (AO) is a planned follow-up.
 - `BakeShadows` from Drei can be toggled for static scenes to improve performance
 
 ---
