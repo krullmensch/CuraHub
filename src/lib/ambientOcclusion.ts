@@ -5,7 +5,7 @@
  */
 
 export interface AmbientOcclusionOptions {
-    /** World-space sampling radius in metres. */
+    /** World-space sampling radius in metres (0.6 left grainy halos around the ceiling trusses). */
     radius: number;
     /** 0 = no darkening, 1 = full GTAO value. */
     strength: number;
@@ -15,7 +15,7 @@ export interface AmbientOcclusionOptions {
 }
 
 export const AO_DEFAULTS: AmbientOcclusionOptions = {
-    radius: 0.6,
+    radius: 0.3,
     strength: 1,
     resolutionScale: 0.5,
     samples: 16,

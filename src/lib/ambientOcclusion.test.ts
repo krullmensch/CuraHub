@@ -57,7 +57,8 @@ describe('readAmbientOcclusionOverride', () => {
         expect(options.samples).toBe(16);
     });
 
-    it('starts with the spec values', () => {
-        expect(AO_DEFAULTS).toEqual({ radius: 0.6, strength: 1, resolutionScale: 0.5, samples: 16 });
+    it('uses the values tuned on the test stack', () => {
+        // Radius 0.6 (spec start value) left grainy halos on the ceiling around the trusses.
+        expect(AO_DEFAULTS).toEqual({ radius: 0.3, strength: 1, resolutionScale: 0.5, samples: 16 });
     });
 });
