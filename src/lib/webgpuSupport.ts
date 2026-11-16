@@ -4,7 +4,7 @@ import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
 import { denoise } from 'three/examples/jsm/tsl/display/DenoiseNode.js';
 import {
     abs, cameraPosition, clamp, distance, dot, float, fract, fwidth, getNormalFromDepth, luminance, materialColor, max, min, mix,
-    modelPosition, normalView, output, pass, pmremTexture, sample, positionViewDirection, positionWorld, pow, reflectVector, smoothstep, sRGBTransferEOTF,
+    modelPosition, normalView, output, pass, pmremTexture, sample, select, positionViewDirection, positionWorld, pow, reflectVector, smoothstep, sRGBTransferEOTF,
     texture, toneMapping, toneMappingExposure, uniform, vec3, vec4,
 } from 'three/tsl';
 import { RectAreaLightTexturesLib } from 'three/examples/jsm/lights/RectAreaLightTexturesLib.js';
@@ -12,6 +12,7 @@ import { GaussianSplat } from 'three/examples/jsm/objects/GaussianSplat.js';
 import type { SplatAttributeData, SplatParseRequest, SplatParseResponse } from '../workers/splatParse.worker';
 import type { SplatFrame, SplatHandle } from './splats';
 import type { AmbientOcclusionOptions } from './ambientOcclusion';
+import { ARTWORK_SURFACE_LAYER } from './renderLayers';
 
 // WebGPU-only code, loaded on demand by ./rendererBackend once WebGPU is chosen. The WebGL
 // fallback never downloads three/webgpu, TSL or the splat addon.
@@ -280,6 +281,8 @@ export interface AmbientOcclusionPipeline {
  * - colour: the scene pass with the renderer's MSAA, materials tone-map themselves as without AO;
  * - AO: a second, non-multisampled pass (GTAO cannot read multisampled depth), normals reconstructed
  *   from its depth, GTAO at `resolutionScale`, denoised at full resolution;
+ * - mask: the artwork surfaces alone (ARTWORK_SURFACE_LAYER, cheap override material); where one is
+ *   the nearest surface, the AO is skipped so photos and videos keep their colours;
  * - composite: colour × mix(1, ao, strength); the pipeline only adds the sRGB output transform.
  */
 export function createAmbientOcclusionPipeline(
@@ -305,11 +308,23 @@ export function createAmbientOcclusionPipeline(
     aoPass.radius.value = options.radius;
     aoPass.samples.value = options.samples;
     const denoised = denoise(aoPass.getTextureNode(), depth, normal, camera);
-    const occlusion = mix(float(1), (denoised as unknown as Node<'vec4'>).r, float(options.strength));
+    const roomOcclusion = mix(float(1), (denoised as unknown as Node<'vec4'>).r, float(options.strength));
+
+    // Same camera, only the artwork-surface layer; copied every frame before rendering.
+    const maskCamera = camera.clone();
+    const maskPass = pass(scene, maskCamera, { samples: 0 });
+    maskPass.overrideMaterial = new MeshBasicNodeMaterial();
+    const maskDepth = maskPass.getTextureNode('depth');
+    // Both depths come from the same camera without MSAA: an artwork surface in front has exactly the
+    // scene's depth there; one hidden behind a wall is farther away.
+    const isArtwork = maskDepth.r.lessThan(1).and(maskDepth.r.lessThanEqual(depth.r.add(1e-6)));
+    const occlusion = select(isArtwork, float(1), roomOcclusion);
 
     const pipeline = new RenderPipeline(renderer, vec4(color.rgb.mul(occlusion), color.a));
     return {
         render() {
+            maskCamera.copy(camera as THREE.PerspectiveCamera);
+            maskCamera.layers.set(ARTWORK_SURFACE_LAYER);
             pipelineRenders++;
             try {
                 pipeline.render();
@@ -321,6 +336,8 @@ export function createAmbientOcclusionPipeline(
             pipeline.dispose();
             denoised.dispose();
             aoPass.dispose();
+            maskPass.overrideMaterial?.dispose();
+            maskPass.dispose();
             depthPass.dispose();
             scenePass.dispose();
         },

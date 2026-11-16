@@ -8,6 +8,7 @@ import { framedArtworkLayout } from '../lib/frameStyles';
 import { useArtworkTexture } from '../hooks/use-artwork-texture';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
+import { ARTWORK_SURFACE_LAYERS } from '../lib/renderLayers';
 
 // Render so the frame's back face sits at outer-group local z = -WALL_PLACEMENT_OFFSET,
 // cancelling out the placement offset baked into stored positions so the back is
@@ -112,7 +113,7 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
                     {/* Image plane, just behind the frame's lip (or the passepartout's window).
                         RND-04: unlit MeshBasicMaterial (true photo colours, cheap) unless the
                         "high" preset asks for lit PBR. */}
-                    <mesh ref={imageRef} position={[0, 0, imageZ]} castShadow={false} receiveShadow={false}>
+                    <mesh ref={imageRef} position={[0, 0, imageZ]} castShadow={false} receiveShadow={false} layers={ARTWORK_SURFACE_LAYERS}>
                         <planeGeometry args={[effWidth, effHeight]} />
                         {basicMaterials ? (
                             <meshBasicMaterial ref={bindMaterial} side={THREE.DoubleSide} toneMapped={false} />
