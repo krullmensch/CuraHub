@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AO_DEFAULTS, aoPassScales, readAmbientOcclusionOverride, shouldRunAmbientOcclusion } from './ambientOcclusion';
+import { AO_DEFAULTS, NO_ROOM_AO, aoPassScales, isRoomAoExcluded, readAmbientOcclusionOverride, shouldRunAmbientOcclusion } from './ambientOcclusion';
 
 const base = {
     qualityEnabled: true,
@@ -79,5 +79,16 @@ describe('aoPassScales', () => {
 
     it('never upscales below pixel ratio 1', () => {
         expect(aoPassScales(0.75, 0.5)).toEqual({ depth: 1, ao: 0.5 });
+    });
+});
+
+describe('isRoomAoExcluded', () => {
+    it('leaves out materials marked with NO_ROOM_AO', () => {
+        expect(isRoomAoExcluded({ userData: { ...NO_ROOM_AO } })).toBe(true);
+    });
+
+    it('keeps everything else in', () => {
+        expect(isRoomAoExcluded({ userData: {} })).toBe(false);
+        expect(isRoomAoExcluded({ userData: { noRoomAo: false } })).toBe(false);
     });
 });

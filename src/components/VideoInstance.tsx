@@ -8,7 +8,7 @@ import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, t
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { pickVideoSource, videoStreamUrl } from '../lib/videoSource';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
-import { ARTWORK_SURFACE_LAYERS, markArtworkSurface } from '../lib/renderLayers';
+import { NO_ROOM_AO } from '../lib/ambientOcclusion';
 import { useArtworkTexture } from '../hooks/use-artwork-texture';
 
 // Monitor GLB preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing
@@ -241,7 +241,6 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 if ((child as THREE.Mesh).isMesh) {
                     const mesh = child as THREE.Mesh;
                     if (mesh.name === 'Display') {
-                        markArtworkSurface(mesh);
                         const mat = new THREE.MeshBasicMaterial({
                             map: texture,
                             toneMapped: false,
@@ -342,7 +341,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                     onClick={handleClick}
                     onDoubleClick={handleDoubleClick}
                 >
-                    <mesh position={[0, 0, 0.001]} frustumCulled layers={ARTWORK_SURFACE_LAYERS}>
+                    <mesh position={[0, 0, 0.001]} frustumCulled>
                         <planeGeometry args={[beamerWidth, beamerHeight]} />
                         {/* Switching `transparent` needs a new program — remount instead of patching. */}
                         <meshBasicMaterial
@@ -372,10 +371,11 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                 onDoubleClick={handleDoubleClick}
             >
                 {/* Video texture */}
-                <mesh position={[0, 0, 0.02]} castShadow={false} receiveShadow={false} frustumCulled layers={ARTWORK_SURFACE_LAYERS}>
+                <mesh position={[0, 0, 0.02]} castShadow={false} receiveShadow={false} frustumCulled>
                     <planeGeometry args={[width, height]} />
                     <meshStandardMaterial
                         map={texture}
+                        userData={NO_ROOM_AO}
                         side={THREE.DoubleSide}
                         roughness={medium === 'display' ? 0.3 : 1}
                         metalness={medium === 'display' ? 0.1 : 0}
@@ -440,7 +440,6 @@ export const VideoStillInstance = forwardRef<THREE.Group, VideoInstanceProps>(({
         cloned.traverse((child) => {
             const mesh = child as THREE.Mesh;
             if (!mesh.isMesh || mesh.name !== 'Display') return;
-            markArtworkSurface(mesh);
             mesh.material = material;
             if (isPortrait) {
                 // VideoInstance turns the texture for a portrait monitor; the still's texture is

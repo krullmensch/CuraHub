@@ -77,3 +77,14 @@ export function aoPassScales(pixelRatio: number, resolutionScale: number): { dep
     const depth = 1 / Math.max(1, pixelRatio);
     return { depth, ao: depth * resolutionScale };
 }
+
+/**
+ * `userData` for materials the room AO must leave alone: artwork photos and videos, which keep
+ * their real colours (the wall and frame around them still darken). Not-tone-mapped materials are
+ * left out anyway.
+ */
+export const NO_ROOM_AO = { noRoomAo: true } as const;
+
+export function isRoomAoExcluded(material: { userData: Record<string, unknown> }): boolean {
+    return material.userData.noRoomAo === true;
+}
