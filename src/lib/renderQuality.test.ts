@@ -23,3 +23,12 @@ describe('resolveRenderQuality on phones', () => {
         expect(resolveRenderQuality('auto')).toBe('low');
     });
 });
+
+describe('ambient occlusion per preset', () => {
+    it('is off in low and on in medium and high', async () => {
+        const { RENDER_QUALITY_SETTINGS } = await import('./renderQuality');
+        expect(RENDER_QUALITY_SETTINGS.low.ambientOcclusion).toBe(false);
+        expect(RENDER_QUALITY_SETTINGS.medium.ambientOcclusion).toBe(true);
+        expect(RENDER_QUALITY_SETTINGS.high.ambientOcclusion).toBe(true);
+    });
+});

@@ -30,6 +30,8 @@ export interface RenderQualitySettings {
     maxConcurrentLoads: number;
     /** VID-04: largest video short edge (px) — smaller proxy versions are played. null = full version. */
     videoMaxShortEdge: number | null;
+    /** Soft corner darkening (GTAO post pass, WebGPU only; lib/ambientOcclusion.ts). */
+    ambientOcclusion: boolean;
 }
 
 const MB = 1024 * 1024;
@@ -47,6 +49,7 @@ export const RENDER_QUALITY_SETTINGS: Record<RenderQuality, RenderQualitySetting
         uploadBudgetMs: 4,
         maxConcurrentLoads: 2,
         videoMaxShortEdge: 480,
+        ambientOcclusion: false,
     },
     medium: {
         dpr: [1, 1.5],
@@ -60,6 +63,7 @@ export const RENDER_QUALITY_SETTINGS: Record<RenderQuality, RenderQualitySetting
         uploadBudgetMs: 6,
         maxConcurrentLoads: 4,
         videoMaxShortEdge: 720,
+        ambientOcclusion: true,
     },
     high: {
         dpr: [1, 2],
@@ -73,6 +77,7 @@ export const RENDER_QUALITY_SETTINGS: Record<RenderQuality, RenderQualitySetting
         uploadBudgetMs: 8,
         maxConcurrentLoads: 4,
         videoMaxShortEdge: null,
+        ambientOcclusion: true,
     },
 };
 
