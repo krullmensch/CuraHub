@@ -278,8 +278,8 @@ export interface AmbientOcclusionPipeline {
 /**
  * Renders the frame with soft corner darkening (spec docs/superpowers/specs/2026-11-16-raum-ao-design.md):
  * - colour: the scene pass with the renderer's MSAA, materials tone-map themselves as without AO;
- * - AO: a second, non-multisampled pass at `resolutionScale` (GTAO cannot read multisampled depth),
- *   normals reconstructed from its depth, GTAO + denoise;
+ * - AO: a second, non-multisampled pass (GTAO cannot read multisampled depth), normals reconstructed
+ *   from its depth, GTAO at `resolutionScale`, denoised at full resolution;
  * - composite: colour × mix(1, ao, strength); the pipeline only adds the sRGB output transform.
  */
 export function createAmbientOcclusionPipeline(
@@ -293,8 +293,9 @@ export function createAmbientOcclusionPipeline(
     const scenePass = pass(scene, camera);
     const color = scenePass.getTextureNode('output');
 
+    // Full resolution: the denoise filter is depth-aware, so a half-res AO is upsampled without the
+    // stippled seams a half-res depth leaves along silhouettes.
     const depthPass = pass(scene, camera, { samples: 0 });
-    depthPass.setResolutionScale(options.resolutionScale);
     const depth = depthPass.getTextureNode('depth');
     const projectionInverse = uniform(camera.projectionMatrixInverse);
     const normal = sample((uv) => getNormalFromDepth(uv, depth.value as unknown as Node, projectionInverse));
