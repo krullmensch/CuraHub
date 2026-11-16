@@ -17,6 +17,8 @@ import { useEditorStore, type ArtworkInstanceData, type ModularWallData, type Sc
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { useExportMode } from '../lib/arExport/exportMode';
 import { ExportPart } from './arExport/ExportPart';
+import { roomLightRig } from '../lib/roomLighting';
+import { RoomAmbientOcclusion } from './RoomAmbientOcclusion';
 
 interface SceneProps {
     isEditor?: boolean;
@@ -35,6 +37,7 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
     // 2D wall editor: the room and the floor grid make way for the open wall
     const wallEditorOpen = useEditorStore(state => isEditor && !!state.wallEditor);
     const { rectAreaLights } = useRenderQualitySettings();
+    const lightRig = roomLightRig(rectAreaLights);
     const [windowViewReady, setWindowViewReady] = useState(false);
     // AR export page: no camera system, player, street view, info raycast or shader warmup.
     const exportMode = useExportMode().active;
@@ -51,37 +54,19 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                 {/* Only use Planner Camera System in Editor Mode */}
                 {isEditor && <PlannerCameraSystem />}
 
-                {/* Lighting Setup — bright gallery with soft ambient bounces */}
-                <ambientLight intensity={0.4} />
-
-                {/* Environment map for indirect light bounces on materials */}
-                {/* <Environment preset="warehouse" background={false} environmentIntensity={0.25} /> */}
-
-                {/* Key light — soft overhead from skylight direction */}
-                {/* <directionalLight
-                    position={[-4, 8, -8]}
-                    intensity={0.8}
-                    castShadow
-                    shadow-mapSize={[2048, 2048]}
-                    shadow-bias={-0.0003}
-                    shadow-normalBias={0.04}
-                    shadow-radius={4}
-                >
-                    <orthographicCamera attach="shadow-camera" args={[-15, 15, 15, -15]} near={0.1} far={25} />
-                </directionalLight> */}
-
-                {/* Fill light — simulate bounce off white walls */}
-                <directionalLight position={[-6, 6, -4]} intensity={0.3} color="#f8f8ff" />
-
-                {/* RND-04: the "low" preset drops the two ceiling RectAreaLights (per-fragment LTC
-                    shading); a hemisphere light keeps the room roughly as bright. */}
-                {!rectAreaLights && (
-                    <>
-                        <hemisphereLight args={['#fff5e0', '#f4efe8', 1.7]} />
-                        {/* Replaces the upward area light that brightens the ceiling */}
-                        <directionalLight position={[0, -10, 0]} intensity={1.2} color="#fff5e0" />
-                    </>
+                {/* Room light rig (lib/roomLighting.ts): little directionless light, a key light from
+                    the window wall and a weak counter light, so wall corners and edges read. RND-04:
+                    the "low" preset has no ceiling RectAreaLights (Satellit), a hemisphere light instead. */}
+                <ambientLight intensity={lightRig.ambient} />
+                {lightRig.hemisphere && (
+                    <hemisphereLight args={[lightRig.hemisphere.sky, lightRig.hemisphere.ground, lightRig.hemisphere.intensity]} />
                 )}
+                {lightRig.directional.map((light, i) => (
+                    <directionalLight key={i} position={light.position} intensity={light.intensity} color={light.color} />
+                ))}
+
+                {/* Soft corner darkening (GTAO, WebGPU, "Hoch", first person); renders the frame while on. */}
+                {!exportMode && <RoomAmbientOcclusion firstPerson={viewMode === 'firstPerson'} />}
 
                 {isEditor && viewMode !== 'firstPerson' && !wallEditorOpen && (
                     <EditorGrid />

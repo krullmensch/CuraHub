@@ -18,6 +18,10 @@ import { useWallEditorView } from '../store/wallEditorViewStore'
 import { useRoomCutaway } from '../store/roomCutawayStore'
 import { splitByRoomFace } from '../lib/roomCutaway'
 import type { RoomFace } from '../lib/wallEditor/roomFaces'
+import { roomLightRig } from '../lib/roomLighting'
+
+/** Ceiling area light intensities (lib/roomLighting.ts). */
+const AREA_LIGHTS = roomLightRig(true)
 
 // Required once for RectAreaLight to work with MeshStandardMaterial on WebGLRenderer
 // (WebGPU: RectAreaLightNode.setLTC in webgpuSupport.createWebGPURenderer).
@@ -235,7 +239,7 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
             width={ceilingLight.width}
             height={ceilingLight.height}
             color="#fff5e0"
-            intensity={3.5}
+            intensity={AREA_LIGHTS.rectDown}
             position={[ceilingLight.posX, ceilingLight.posY - 0.01, ceilingLight.posZ]}
             rotation={[Math.PI / 2, 0, 0]}
           />
@@ -244,7 +248,7 @@ export function Satellit({ viewMode = 'firstPerson', rectAreaLights = true, clea
             width={ceilingLight.width}
             height={ceilingLight.height}
             color="#fff5e0"
-            intensity={1.2}
+            intensity={AREA_LIGHTS.rectUp}
             position={[ceilingLight.posX, ceilingLight.posY - 0.01, ceilingLight.posZ]}
             rotation={[-Math.PI / 2, 0, 0]}
           />

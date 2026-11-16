@@ -8,6 +8,7 @@ import { useEditorStore, videoRefMap, monitorGlbBounds, WALL_PLACEMENT_OFFSET, t
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { pickVideoSource, videoStreamUrl } from '../lib/videoSource';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
+import { NO_ROOM_AO } from '../lib/ambientOcclusion';
 import { useArtworkTexture } from '../hooks/use-artwork-texture';
 
 // Monitor GLB preload moved to EditorPage/ViewerPage (mount-time useEffect) so importing
@@ -374,6 +375,7 @@ export const VideoInstance = forwardRef<THREE.Group, VideoInstanceProps>(
                     <planeGeometry args={[width, height]} />
                     <meshStandardMaterial
                         map={texture}
+                        userData={NO_ROOM_AO}
                         side={THREE.DoubleSide}
                         roughness={medium === 'display' ? 0.3 : 1}
                         metalness={medium === 'display' ? 0.1 : 0}

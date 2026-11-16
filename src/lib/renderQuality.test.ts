@@ -23,3 +23,13 @@ describe('resolveRenderQuality on phones', () => {
         expect(resolveRenderQuality('auto')).toBe('low');
     });
 });
+
+describe('ambient occlusion per preset', () => {
+    it('is on in high only', async () => {
+        // Medium was planned too, but AO costs ~4 ms per frame (2026-11-16, test stack), over the 2 ms limit.
+        const { RENDER_QUALITY_SETTINGS } = await import('./renderQuality');
+        expect(RENDER_QUALITY_SETTINGS.low.ambientOcclusion).toBe(false);
+        expect(RENDER_QUALITY_SETTINGS.medium.ambientOcclusion).toBe(false);
+        expect(RENDER_QUALITY_SETTINGS.high.ambientOcclusion).toBe(true);
+    });
+});

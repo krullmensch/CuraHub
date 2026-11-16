@@ -8,6 +8,7 @@ import { framedArtworkLayout } from '../lib/frameStyles';
 import { useArtworkTexture } from '../hooks/use-artwork-texture';
 import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { consumeMarqueeClick } from '@/lib/selectionBridge';
+import { NO_ROOM_AO } from '../lib/ambientOcclusion';
 
 // Render so the frame's back face sits at outer-group local z = -WALL_PLACEMENT_OFFSET,
 // cancelling out the placement offset baked into stored positions so the back is
@@ -119,6 +120,7 @@ export const SelectableInstance = forwardRef<THREE.Group, SelectableInstanceProp
                         ) : (
                             <meshStandardMaterial
                                 ref={bindMaterial}
+                                userData={NO_ROOM_AO}
                                 side={THREE.DoubleSide}
                                 roughness={1}
                                 metalness={0}
