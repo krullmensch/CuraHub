@@ -1,14 +1,17 @@
 import * as THREE from 'three';
-import { CubeRenderTarget, MeshBasicNodeMaterial, MeshStandardNodeMaterial, RectAreaLightNode, WebGPURenderer, type Node } from 'three/webgpu';
+import { CubeRenderTarget, MeshBasicNodeMaterial, MeshStandardNodeMaterial, RectAreaLightNode, RenderPipeline, WebGPURenderer, type Node } from 'three/webgpu';
+import { ao } from 'three/examples/jsm/tsl/display/GTAONode.js';
+import { denoise } from 'three/examples/jsm/tsl/display/DenoiseNode.js';
 import {
-    abs, cameraPosition, clamp, distance, dot, float, fract, fwidth, luminance, materialColor, max, min, mix, modelPosition,
-    normalView, output, pmremTexture, positionViewDirection, positionWorld, pow, reflectVector, smoothstep, sRGBTransferEOTF,
+    abs, cameraPosition, clamp, distance, dot, float, fract, fwidth, getNormalFromDepth, luminance, materialColor, max, min, mix,
+    modelPosition, normalView, output, pass, pmremTexture, sample, positionViewDirection, positionWorld, pow, reflectVector, smoothstep, sRGBTransferEOTF,
     texture, toneMapping, toneMappingExposure, uniform, vec3, vec4,
 } from 'three/tsl';
 import { RectAreaLightTexturesLib } from 'three/examples/jsm/lights/RectAreaLightTexturesLib.js';
 import { GaussianSplat } from 'three/examples/jsm/objects/GaussianSplat.js';
 import type { SplatAttributeData, SplatParseRequest, SplatParseResponse } from '../workers/splatParse.worker';
 import type { SplatFrame, SplatHandle } from './splats';
+import type { AmbientOcclusionOptions } from './ambientOcclusion';
 
 // WebGPU-only code, loaded on demand by ./rendererBackend once WebGPU is chosen. The WebGL
 // fallback never downloads three/webgpu, TSL or the splat addon.
@@ -43,7 +46,10 @@ function enablePerMaterialToneMapping(renderer: WebGPURenderer): void {
     Object.defineProperty(renderer, 'toneMapping', {
         configurable: true,
         get: () => THREE.NoToneMapping,
-        set: (value: THREE.ToneMapping) => { sceneToneMapping = value; },
+        // RenderPipeline.render() sets toneMapping to NoToneMapping and restores what it read (also
+        // NoToneMapping, from the getter above). Without this guard the scene tone mapping would be
+        // off for good after the first post-processed frame (room AO: ceiling clipped to white).
+        set: (value: THREE.ToneMapping) => { if (pipelineRenders === 0) sceneToneMapping = value; },
     });
 
     const library = renderer.library;
@@ -59,6 +65,9 @@ function enablePerMaterialToneMapping(renderer: WebGPURenderer): void {
     };
     webGPUSceneToneMapping.get = () => sceneToneMapping;
 }
+
+/** > 0 while a RenderPipeline renders (see enablePerMaterialToneMapping). */
+let pipelineRenders = 0;
 
 const webGPUSceneToneMapping = { get: (): THREE.ToneMapping => THREE.ACESFilmicToneMapping };
 
@@ -257,4 +266,62 @@ export async function loadGaussianSplat(url: string): Promise<SplatHandle> {
         lease.release();
         throw err;
     }
+}
+
+// ── Room ambient occlusion (GTAO) ────────────────────────────────────────────
+
+export interface AmbientOcclusionPipeline {
+    render(): void;
+    dispose(): void;
+}
+
+/**
+ * Renders the frame with soft corner darkening (spec docs/superpowers/specs/2026-11-16-raum-ao-design.md):
+ * - colour: the scene pass with the renderer's MSAA, materials tone-map themselves as without AO;
+ * - AO: a second, non-multisampled pass at `resolutionScale` (GTAO cannot read multisampled depth),
+ *   normals reconstructed from its depth, GTAO + denoise;
+ * - composite: colour × mix(1, ao, strength); the pipeline only adds the sRGB output transform.
+ */
+export function createAmbientOcclusionPipeline(
+    gl: THREE.WebGLRenderer,
+    scene: THREE.Scene,
+    camera: THREE.Camera,
+    options: AmbientOcclusionOptions,
+): AmbientOcclusionPipeline {
+    const renderer = gl as unknown as WebGPURenderer;
+
+    const scenePass = pass(scene, camera);
+    const color = scenePass.getTextureNode('output');
+
+    const depthPass = pass(scene, camera, { samples: 0 });
+    depthPass.setResolutionScale(options.resolutionScale);
+    const depth = depthPass.getTextureNode('depth');
+    const projectionInverse = uniform(camera.projectionMatrixInverse);
+    const normal = sample((uv) => getNormalFromDepth(uv, depth.value as unknown as Node, projectionInverse));
+
+    const aoPass = ao(depth, normal, camera);
+    aoPass.resolutionScale = options.resolutionScale;
+    aoPass.radius.value = options.radius;
+    aoPass.samples.value = options.samples;
+    const denoised = denoise(aoPass.getTextureNode(), depth, normal, camera);
+    const occlusion = mix(float(1), (denoised as unknown as Node<'vec4'>).r, float(options.strength));
+
+    const pipeline = new RenderPipeline(renderer, vec4(color.rgb.mul(occlusion), color.a));
+    return {
+        render() {
+            pipelineRenders++;
+            try {
+                pipeline.render();
+            } finally {
+                pipelineRenders--;
+            }
+        },
+        dispose() {
+            pipeline.dispose();
+            denoised.dispose();
+            aoPass.dispose();
+            depthPass.dispose();
+            scenePass.dispose();
+        },
+    };
 }

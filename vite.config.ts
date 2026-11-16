@@ -56,7 +56,7 @@ export default defineConfig({
             {
               name: 'vendor-three-webgpu',
               priority: 35,
-              test: /node_modules[\\/]three[\\/](build[\\/]three\.(webgpu|tsl)\.js|examples[\\/]jsm[\\/](objects[\\/]GaussianSplat|gpgpu[\\/]))/,
+              test: /node_modules[\\/]three[\\/](build[\\/]three\.(webgpu|tsl)\.js|examples[\\/]jsm[\\/](objects[\\/]GaussianSplat|gpgpu[\\/]|tsl[\\/]display[\\/]))/,
             },
             // GLTFExporter/USDZExporter stay out: only the AR export page (headless, server-side)
             // imports them, so they follow it into its own lazy chunk.

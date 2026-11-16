@@ -18,6 +18,7 @@ import { useRenderQualitySettings } from '../hooks/use-render-quality';
 import { useExportMode } from '../lib/arExport/exportMode';
 import { ExportPart } from './arExport/ExportPart';
 import { roomLightRig } from '../lib/roomLighting';
+import { RoomAmbientOcclusion } from './RoomAmbientOcclusion';
 
 interface SceneProps {
     isEditor?: boolean;
@@ -63,6 +64,9 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                 {lightRig.directional.map((light, i) => (
                     <directionalLight key={i} position={light.position} intensity={light.intensity} color={light.color} />
                 ))}
+
+                {/* Soft corner darkening (GTAO, WebGPU, "Mittel"/"Hoch"); renders the frame while on. */}
+                {!exportMode && <RoomAmbientOcclusion />}
 
                 {isEditor && viewMode !== 'firstPerson' && !wallEditorOpen && (
                     <EditorGrid />
