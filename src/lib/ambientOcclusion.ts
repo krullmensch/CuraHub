@@ -55,10 +55,15 @@ export function shouldRunAmbientOcclusion(input: {
     webgpu: boolean;
     /** From `?ao=`; null = follow the preset. */
     override: boolean | null;
+    /**
+     * Only in first person: the orbit editor draws helpers that write no depth (gizmo, measures,
+     * drag ghosts) and would get the AO of the wall behind them.
+     */
+    firstPerson: boolean;
     wallEditorOpen: boolean;
     exportMode: boolean;
     mobilePlanner: boolean;
 }): boolean {
-    if (!input.webgpu || input.wallEditorOpen || input.exportMode || input.mobilePlanner) return false;
+    if (!input.webgpu || !input.firstPerson || input.wallEditorOpen || input.exportMode || input.mobilePlanner) return false;
     return input.override ?? input.qualityEnabled;
 }

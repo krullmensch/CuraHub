@@ -5,6 +5,7 @@ const base = {
     qualityEnabled: true,
     webgpu: true,
     override: null,
+    firstPerson: true,
     wallEditorOpen: false,
     exportMode: false,
     mobilePlanner: false,
@@ -34,6 +35,10 @@ describe('shouldRunAmbientOcclusion', () => {
 
     it('off on the AR export page', () => {
         expect(shouldRunAmbientOcclusion({ ...base, override: true, exportMode: true })).toBe(false);
+    });
+
+    it('off outside first person (gizmo, measures and ghosts write no depth and would get the AO behind them)', () => {
+        expect(shouldRunAmbientOcclusion({ ...base, override: true, firstPerson: false })).toBe(false);
     });
 
     it('off in the mobile planner', () => {

@@ -299,6 +299,10 @@ export function createAmbientOcclusionPipeline(
     // Full resolution: the denoise filter is depth-aware, so a half-res AO is upsampled without the
     // stippled seams a half-res depth leaves along silhouettes.
     const depthPass = pass(scene, camera, { samples: 0 });
+    // Depth only: opaque objects with a cheap double-sided material (room walls are seen from inside).
+    // Transparent ones (glass, splats, sprites) write no depth in the colour pass either.
+    depthPass.transparent = false;
+    depthPass.overrideMaterial = new MeshBasicNodeMaterial({ colorWrite: false, side: THREE.DoubleSide });
     const depth = depthPass.getTextureNode('depth');
     const projectionInverse = uniform(camera.projectionMatrixInverse);
     const normal = sample((uv) => getNormalFromDepth(uv, depth.value as unknown as Node, projectionInverse));
@@ -338,6 +342,7 @@ export function createAmbientOcclusionPipeline(
             aoPass.dispose();
             maskPass.overrideMaterial?.dispose();
             maskPass.dispose();
+            depthPass.overrideMaterial?.dispose();
             depthPass.dispose();
             scenePass.dispose();
         },
