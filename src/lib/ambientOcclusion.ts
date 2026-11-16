@@ -67,3 +67,13 @@ export function shouldRunAmbientOcclusion(input: {
     if (!input.webgpu || !input.firstPerson || input.wallEditorOpen || input.exportMode || input.mobilePlanner) return false;
     return input.override ?? input.qualityEnabled;
 }
+
+/**
+ * Resolution of the AO passes relative to the drawing buffer. The AO is soft, so on high-density
+ * displays its passes run at CSS resolution: at pixel ratio 2 that is a quarter of the pixels
+ * (2026-11-16: with full-density AO about 17 % of the frames missed 60 fps on a Retina Mac).
+ */
+export function aoPassScales(pixelRatio: number, resolutionScale: number): { depth: number; ao: number } {
+    const depth = 1 / Math.max(1, pixelRatio);
+    return { depth, ao: depth * resolutionScale };
+}

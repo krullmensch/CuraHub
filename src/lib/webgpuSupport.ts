@@ -11,7 +11,7 @@ import { RectAreaLightTexturesLib } from 'three/examples/jsm/lights/RectAreaLigh
 import { GaussianSplat } from 'three/examples/jsm/objects/GaussianSplat.js';
 import type { SplatAttributeData, SplatParseRequest, SplatParseResponse } from '../workers/splatParse.worker';
 import type { SplatFrame, SplatHandle } from './splats';
-import type { AmbientOcclusionOptions } from './ambientOcclusion';
+import { aoPassScales, type AmbientOcclusionOptions } from './ambientOcclusion';
 import { ARTWORK_SURFACE_LAYER } from './renderLayers';
 
 // WebGPU-only code, loaded on demand by ./rendererBackend once WebGPU is chosen. The WebGL
@@ -280,7 +280,8 @@ export interface AmbientOcclusionPipeline {
  * Renders the frame with soft corner darkening (spec docs/superpowers/specs/2026-11-16-raum-ao-design.md):
  * - colour: the scene pass with the renderer's MSAA, materials tone-map themselves as without AO;
  * - AO: a second, non-multisampled pass (GTAO cannot read multisampled depth), normals reconstructed
- *   from its depth, GTAO at `resolutionScale`, denoised at full resolution;
+ *   from its depth, GTAO at `resolutionScale`, denoised at the depth's resolution; depth, mask and
+ *   AO run at CSS resolution on high-density displays (`aoPassScales`), the colour pass stays sharp;
  * - mask: the artwork surfaces alone (ARTWORK_SURFACE_LAYER, cheap override material); where one is
  *   the nearest surface, the AO is skipped so photos and videos keep their colours;
  * - composite: colour × mix(1, ao, strength); the pipeline only adds the sRGB output transform.
@@ -308,7 +309,6 @@ export function createAmbientOcclusionPipeline(
     const normal = sample((uv) => getNormalFromDepth(uv, depth.value as unknown as Node, projectionInverse));
 
     const aoPass = ao(depth, normal, camera);
-    aoPass.resolutionScale = options.resolutionScale;
     aoPass.radius.value = options.radius;
     aoPass.samples.value = options.samples;
     const denoised = denoise(aoPass.getTextureNode(), depth, normal, camera);
@@ -327,6 +327,12 @@ export function createAmbientOcclusionPipeline(
     const pipeline = new RenderPipeline(renderer, vec4(color.rgb.mul(occlusion), color.a));
     return {
         render() {
+            const scales = aoPassScales(renderer.getPixelRatio(), options.resolutionScale);
+            if (depthPass.getResolutionScale() !== scales.depth) {
+                depthPass.setResolutionScale(scales.depth);
+                maskPass.setResolutionScale(scales.depth);
+            }
+            aoPass.resolutionScale = scales.ao;
             maskCamera.copy(camera as THREE.PerspectiveCamera);
             maskCamera.layers.set(ARTWORK_SURFACE_LAYER);
             pipelineRenders++;

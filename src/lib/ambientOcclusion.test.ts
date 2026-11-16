@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AO_DEFAULTS, readAmbientOcclusionOverride, shouldRunAmbientOcclusion } from './ambientOcclusion';
+import { AO_DEFAULTS, aoPassScales, readAmbientOcclusionOverride, shouldRunAmbientOcclusion } from './ambientOcclusion';
 
 const base = {
     qualityEnabled: true,
@@ -65,5 +65,19 @@ describe('readAmbientOcclusionOverride', () => {
     it('uses the values tuned on the test stack', () => {
         // Radius 0.6 (spec start value) left grainy halos on the ceiling around the trusses.
         expect(AO_DEFAULTS).toEqual({ radius: 0.3, strength: 1, resolutionScale: 0.5, samples: 16 });
+    });
+});
+
+describe('aoPassScales', () => {
+    it('renders the AO passes at CSS resolution on a 2x display', () => {
+        expect(aoPassScales(2, 0.5)).toEqual({ depth: 0.5, ao: 0.25 });
+    });
+
+    it('keeps device resolution at pixel ratio 1', () => {
+        expect(aoPassScales(1, 0.5)).toEqual({ depth: 1, ao: 0.5 });
+    });
+
+    it('never upscales below pixel ratio 1', () => {
+        expect(aoPassScales(0.75, 0.5)).toEqual({ depth: 1, ao: 0.5 });
     });
 });
