@@ -31,7 +31,7 @@ Der Raum wirkt flach: Wandecken, Wandenden und Stellwand-Kanten verschwinden, we
 | B | AO als Nachbearbeitung in Echtzeit | dynamisch und echt, aber zwei Umsetzungen (TSL/GLSL), Kosten, auf Handys aus |
 | C | AO/Licht in Blender backen + Stellwand-Fasen | zur Laufzeit gratis, aber Blender-Arbeit, nur für den statischen Raum |
 
-Gewählt hat der Nutzer A, „erstmal nur A“. B/C bleiben als Folgeschritt offen.
+Gewählt hat der Nutzer A, „erstmal nur A“. B folgte am 2026-11-16 als eigenes Design: `docs/superpowers/specs/2026-11-16-raum-ao-design.md` (GTAO auf WebGPU, Stufe „Hoch“).
 
 ## Design
 

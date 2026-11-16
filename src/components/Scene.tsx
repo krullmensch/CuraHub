@@ -65,7 +65,7 @@ export const Scene = ({ isEditor = true, viewerInstances, viewerWalls, viewerSca
                     <directionalLight key={i} position={light.position} intensity={light.intensity} color={light.color} />
                 ))}
 
-                {/* Soft corner darkening (GTAO, WebGPU, "Mittel"/"Hoch"); renders the frame while on. */}
+                {/* Soft corner darkening (GTAO, WebGPU, "Hoch"); renders the frame while on. */}
                 {!exportMode && <RoomAmbientOcclusion />}
 
                 {isEditor && viewMode !== 'firstPerson' && !wallEditorOpen && (

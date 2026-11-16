@@ -7,7 +7,7 @@ import { useEditorStore } from '../store/editorStore';
 import { useExportMode } from '../lib/arExport/exportMode';
 
 /**
- * Soft corner darkening of the room (GTAO, WebGPU only, presets "Mittel"/"Hoch"). While it is on,
+ * Soft corner darkening of the room (GTAO, WebGPU only, preset "Hoch"). While it is on,
  * it renders the frame itself (useFrame priority 1 stops R3F's own render call); otherwise R3F
  * renders as before. Spec: docs/superpowers/specs/2026-11-16-raum-ao-design.md
  */

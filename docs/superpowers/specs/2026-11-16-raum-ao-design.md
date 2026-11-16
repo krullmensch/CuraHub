@@ -1,6 +1,6 @@
 # Raum-Shading B: Eckverdunkelung (GTAO) — Design
 
-**Stand:** 2026-11-16 · **Status:** zur Freigabe
+**Stand:** 2026-11-16 · **Status:** gebaut (Branch `feat/room-ao`). Abweichung: nur „Hoch“, weil AO ~4 ms pro Bild kostet; Radius 0,3 m statt 0,6 m.
 **Bezug:** `docs/superpowers/specs/2026-11-15-raum-shading-design.md` (Weg A, gebaut auf `feat/room-shading`), Spike `test/room-shading-light` (`AmbientOcclusionSpike.tsx`, `createAmbientOcclusionPipeline` in `webgpuSupport.ts`), Vergleichsbild `2026-11-15-gtao-spike-vergleich.png`
 
 ## Warum

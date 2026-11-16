@@ -63,7 +63,8 @@ export const RENDER_QUALITY_SETTINGS: Record<RenderQuality, RenderQualitySetting
         uploadBudgetMs: 6,
         maxConcurrentLoads: 4,
         videoMaxShortEdge: 720,
-        ambientOcclusion: true,
+        // ~4 ms per frame in the 2026-11-16 measurement (scene rendered three times), too much here.
+        ambientOcclusion: false,
     },
     high: {
         dpr: [1, 2],
