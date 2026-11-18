@@ -5,6 +5,11 @@ import { useEditorStore } from '@/store/editorStore';
 import { useLiveStore } from '@/store/liveStore';
 import { toast } from '@/hooks/use-toast';
 import { arExportStatusText, type ArExportStatus as Status } from '@/lib/arExport/statusText';
+import { ProgressBar, Spinner } from '@/components/ui/loading';
+import { cn } from '@/lib/utils';
+import { progressPercent, readBlobWithProgress } from '@/lib/loading/progress';
+
+type DownloadKind = 'glb' | 'usdz';
 
 interface ArExportStatusProps {
   exhibitionId: number;
@@ -22,6 +27,8 @@ export const ArExportStatus = ({ exhibitionId, versionId, canRegenerate }: ArExp
   // Counts requests so a slow, older response never overwrites a newer one.
   const requestSeq = useRef(0);
   const [restarting, setRestarting] = useState(false);
+  // The file being downloaded (exports are tens of MB) and how far it got (null = unknown size).
+  const [downloading, setDownloading] = useState<{ kind: DownloadKind; fraction: number | null } | null>(null);
 
   const base = `/api/exhibitions/${exhibitionId}/versions/${versionId}/ar-export`;
 
@@ -48,12 +55,20 @@ export const ArExportStatus = ({ exhibitionId, versionId, canRegenerate }: ArExp
     void load();
   }, [load, arExportRevision]);
 
-  const download = async (kind: 'glb' | 'usdz') => {
-    if (!token) return;
+  const download = async (kind: DownloadKind) => {
+    if (!token || downloading) return;
+    setDownloading({ kind, fraction: null });
     try {
       const res = await fetch(`${base}/${kind}`, { headers: { Authorization: `Bearer ${token}` } });
       if (!res.ok) throw new Error(String(res.status));
-      const url = URL.createObjectURL(await res.blob());
+      let lastPercent = -1;
+      const blob = await readBlobWithProgress(res, (fraction) => {
+        const percent = fraction == null ? -1 : progressPercent(fraction);
+        if (percent === lastPercent) return;
+        lastPercent = percent;
+        setDownloading({ kind, fraction });
+      });
+      const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
       a.download = `${exhibitionSlug || `ausstellung-${versionId}`}.${kind}`;
@@ -63,6 +78,8 @@ export const ArExportStatus = ({ exhibitionId, versionId, canRegenerate }: ArExp
       setTimeout(() => URL.revokeObjectURL(url), 10_000);
     } catch {
       toast.error('Download fehlgeschlagen.');
+    } finally {
+      setDownloading(null);
     }
   };
 
@@ -87,7 +104,10 @@ export const ArExportStatus = ({ exhibitionId, versionId, canRegenerate }: ArExp
   return (
     <div className="px-3 py-2 border-b border-zinc-800 flex flex-wrap items-center gap-x-4 gap-y-1.5 shrink-0 text-xs">
       <span className="font-semibold text-zinc-200">AR-Export</span>
-      <span className={status?.status === 'failed' ? 'text-red-400' : 'text-zinc-400'}>
+      <span className={`inline-flex items-center gap-1.5 ${status?.status === 'failed' ? 'text-red-400' : 'text-zinc-400'}`}>
+        {(status === null || status.status === 'queued' || status.status === 'running') && (
+          <Spinner className="h-3.5 w-3.5" />
+        )}
         {status === null ? 'Lade…' : text ? text.line : 'Noch nicht erzeugt'}
         {text?.detail && <span className="text-zinc-500"> · {text.detail}</span>}
       </span>
@@ -95,16 +115,10 @@ export const ArExportStatus = ({ exhibitionId, versionId, canRegenerate }: ArExp
         {status?.status === 'done' && (
           <>
             {status.glbSize != null && (
-              <button type="button" className={btn} onClick={() => void download('glb')}>
-                <Download className="h-3.5 w-3.5" />
-                GLB herunterladen
-              </button>
+              <DownloadButton kind="glb" className={btn} downloading={downloading} onClick={() => void download('glb')} />
             )}
             {status.usdzSize != null && (
-              <button type="button" className={btn} onClick={() => void download('usdz')}>
-                <Download className="h-3.5 w-3.5" />
-                USDZ herunterladen
-              </button>
+              <DownloadButton kind="usdz" className={btn} downloading={downloading} onClick={() => void download('usdz')} />
             )}
           </>
         )}
@@ -115,7 +129,7 @@ export const ArExportStatus = ({ exhibitionId, versionId, canRegenerate }: ArExp
             disabled={restarting || status?.status === 'queued' || status?.status === 'running'}
             onClick={() => void regenerate()}
           >
-            <RefreshCw className="h-3.5 w-3.5" />
+            {restarting ? <Spinner className="h-3.5 w-3.5" /> : <RefreshCw className="h-3.5 w-3.5" />}
             Neu erzeugen
           </button>
         )}
@@ -123,3 +137,38 @@ export const ArExportStatus = ({ exhibitionId, versionId, canRegenerate }: ArExp
     </div>
   );
 };
+
+interface DownloadButtonProps {
+  kind: DownloadKind;
+  className: string;
+  downloading: { kind: DownloadKind; fraction: number | null } | null;
+  onClick: () => void;
+}
+
+/** „GLB/USDZ herunterladen", with spinner, percentage and a thin bar while that file downloads. */
+function DownloadButton({ kind, className, downloading, onClick }: DownloadButtonProps) {
+  const label = kind === 'glb' ? 'GLB' : 'USDZ';
+  const active = downloading?.kind === kind;
+  return (
+    <button
+      type="button"
+      className={cn(className, 'relative overflow-hidden', active && 'disabled:cursor-progress disabled:opacity-100')}
+      disabled={downloading !== null}
+      aria-busy={active}
+      onClick={onClick}
+    >
+      {active ? <Spinner className="h-3.5 w-3.5" /> : <Download className="h-3.5 w-3.5" />}
+      {active
+        ? `${label} wird geladen${downloading.fraction != null ? ` … ${progressPercent(downloading.fraction)} %` : ' …'}`
+        : `${label} herunterladen`}
+      {active && (
+        <ProgressBar
+          value={downloading.fraction}
+          label={`${label} wird heruntergeladen`}
+          className="absolute inset-x-0 bottom-0 h-0.5 rounded-none bg-transparent"
+          barClassName="bg-blue-500"
+        />
+      )}
+    </button>
+  );
+}

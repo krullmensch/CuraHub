@@ -177,7 +177,7 @@ export const LoginPage = () => {
               type="submit"
               className="w-full mt-1 font-medium transition-all duration-200"
               style={AUTH_BUTTON_STYLE}
-              disabled={isLoading}
+              loading={isLoading}
               onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,1)'; }}
               onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.92)'; }}
             >

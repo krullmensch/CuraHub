@@ -480,6 +480,7 @@ Public German site on GitHub Pages (`https://krullmensch.github.io/CuraHub/`): l
 - Toolbar: mode switcher (Edit / First Person / Preview), light add button, export button
 - VersionPanel as a center overlay for browsing and restoring versions
 - All DOM overlay elements use `position: absolute` or `fixed` with `pointer-events: none` on the container and `pointer-events: auto` on interactive children, to pass clicks through to the canvas
+- Loading states: wherever someone waits, show something — `components/ui/loading.tsx` (`Spinner`, `ProgressBar` determinate/indeterminate, `LoadingState` (`inline` for one row), `LoadingOverlay` for lazy dialogs' `Suspense` fallbacks, `FullPageLoader`, `SkeletonGrid`), `Skeleton` for list/page shapes, `Button loading` (spinner + disabled). Downloads with a size use `readBlobWithProgress` (`lib/loading/progress.ts`). No `Suspense fallback={null}` around DOM UI the user opened. The editor's centre overlay (`EditorLoadingOverlay`, text from `lib/loading/editorLoading.ts`) covers renderer start, `editorStore.versionContentStatus` (instances + walls + figures of the active version) and first person's Rapier chunk; the bottom pill (`SceneLoadingIndicator`) covers drei's LoadingManager and then the artworks' first texture tiers. iOS AR goes through `ArQuickLookSheet` (USDZ download with progress, second tap opens Quick Look).
 - Typography: **Funnel Display** (headings), **Albert Sans** (body)
 - Dark mode via Tailwind `class` strategy; semantic color tokens: primary, secondary, muted, accent, destructive
 

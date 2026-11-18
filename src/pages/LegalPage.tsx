@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Skeleton } from '@/components/ui/skeleton';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LegalLinks } from '@/components/legal/LegalLinks';
@@ -40,7 +41,19 @@ export const LegalPage = ({ kind }: { kind: LegalKind }) => {
 
       <main className="flex-1 px-8 py-12">
         <div className="max-w-3xl mx-auto wiki-content">
-          {state.status === 'loading' && <p className="text-zinc-400 text-sm">Wird geladen…</p>}
+          {state.status === 'loading' && (
+            <div role="status" aria-label={`${page.title} wird geladen`} className="space-y-4">
+              <Skeleton className="h-9 w-1/2 bg-zinc-800" />
+              {Array.from({ length: 3 }, (_, i) => (
+                <div key={i} className="space-y-2 pt-4">
+                  <Skeleton className="h-5 w-1/3 bg-zinc-800" />
+                  <Skeleton className="h-3.5 w-full bg-zinc-800/80" />
+                  <Skeleton className="h-3.5 w-11/12 bg-zinc-800/80" />
+                  <Skeleton className="h-3.5 w-4/5 bg-zinc-800/80" />
+                </div>
+              ))}
+            </div>
+          )}
           {state.status === 'error' && (
             <p className="text-zinc-400 text-sm">{page.title} konnte nicht geladen werden. Bitte später erneut versuchen.</p>
           )}

@@ -30,6 +30,8 @@ import {
 } from '@/components/ui/popover';
 import { toast } from '@/hooks/use-toast';
 import { Trash2, FileIcon, Loader2, Edit, Play, Folder as FolderIcon, FolderPlus, FolderUp, Inbox, Layers, MoreHorizontal, Palette, Pencil, FolderInput, Upload, AlertCircle } from 'lucide-react';
+import { LoadingOverlay, LoadingState } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/skeleton';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { SplatPreviewTile } from './SplatPreviewTile';
 import { BookPreviewTile } from './book/BookPreviewTile';
@@ -752,7 +754,7 @@ export const AssetLibrary = () => {
   if (loading && assets.length === 0 && folders.length === 0) {
     return (
       <div className="flex h-full items-center justify-center p-8">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <LoadingState label="Asset-Bibliothek wird geladen …" />
       </div>
     );
   }
@@ -941,8 +943,8 @@ export const AssetLibrary = () => {
           </div>
 
           {loading ? (
-            <div className="flex h-64 items-center justify-center">
-              <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" role="status" aria-label="Assets werden geladen">
+              {Array.from({ length: 12 }, (_, i) => <AssetCardSkeleton key={i} index={i} />)}
             </div>
           ) : assets.length === 0 ? (
             <div className="text-center py-20 text-gray-500 border-2 border-dashed border-zinc-800 rounded-xl">
@@ -1141,7 +1143,7 @@ export const AssetLibrary = () => {
 
           {/* Upload Preview Modal — mounted (and its module loaded) only once needed */}
           {(uploadModalOpen || pendingFiles.length > 0) && (
-            <Suspense fallback={null}>
+            <Suspense fallback={<LoadingOverlay />}>
               <UploadPreviewModal
                 key={uploadKey}
                 files={pendingFiles}
@@ -1184,7 +1186,7 @@ export const AssetLibrary = () => {
 
           {/* Metadata Edit Dialog */}
           {selectedAsset && (
-            <Suspense fallback={null}>
+            <Suspense fallback={<LoadingOverlay />}>
               <MetadataDialog
                 asset={selectedAsset}
                 onSave={handleMetadataSaved}
@@ -1307,3 +1309,17 @@ const formatBytes = (bytes: number) => {
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
 };
+
+/** Placeholder in the shape of an asset card (square preview, title, size line). */
+function AssetCardSkeleton({ index }: { index: number }) {
+  const delay = { animationDelay: `${(index % 6) * 80}ms` };
+  return (
+    <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/60">
+      <Skeleton className="aspect-square w-full rounded-none bg-zinc-800/70" style={delay} />
+      <div className="space-y-2 p-3">
+        <Skeleton className="h-3 w-3/4 bg-zinc-800" style={delay} />
+        <Skeleton className="h-2.5 w-1/3 bg-zinc-800" style={delay} />
+      </div>
+    </div>
+  );
+}

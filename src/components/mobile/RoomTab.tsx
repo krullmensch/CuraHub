@@ -14,6 +14,7 @@ import { pictureSize } from '@/lib/wallEditor/footprint';
 import { useHeldByOthers } from '@/hooks/use-held-claims';
 import { claimKey } from '@/lib/live/claims';
 import { displayArtworkTitle } from '@/lib/artworkTitle';
+import { LoadingOverlay } from '@/components/ui/loading';
 
 const ArWallSheet = lazy(() => import('./ArWallSheet'));
 
@@ -107,7 +108,7 @@ function SelectedArtwork({ inst }: { inst: ArtworkInstanceData }) {
       )}
 
       {arInstance && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingOverlay label="AR wird geöffnet …" className="z-[1200]" />}>
           <ArWallSheet instance={arInstance} title={title} sizeLabel={sizeLabel} onClose={closeAr} />
         </Suspense>
       )}

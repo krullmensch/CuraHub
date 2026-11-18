@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { LoadingState, Spinner } from '@/components/ui/loading';
 import { Link } from 'react-router-dom';
 import { ExternalLink } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
@@ -61,7 +62,7 @@ export const LegalTextsEditor = ({ token }: { token: string }) => {
   }, [draft, behindCloudflare]);
 
   if (loadFailed) return <p className="text-sm text-red-400">Rechtliche Angaben konnten nicht geladen werden.</p>;
-  if (!draft) return <p className="text-sm text-zinc-400">Wird geladen…</p>;
+  if (!draft) return <LoadingState inline label="Rechtstexte werden geladen …" className="py-2" />;
 
   const dirty = JSON.stringify(draft) !== saved;
   const problem = untouched(draft.operator) ? null : operatorProblem(draft.operator);
@@ -156,7 +157,7 @@ export const LegalTextsEditor = ({ token }: { token: string }) => {
           disabled={saving || !dirty}
           className="text-xs text-zinc-100 border border-zinc-600 hover:border-zinc-400 bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded transition-all disabled:opacity-40"
         >
-          {saving ? 'Wird gespeichert…' : 'Speichern'}
+          {saving ? <span className="inline-flex items-center gap-2"><Spinner className="h-3.5 w-3.5" /> Wird gespeichert…</span> : 'Speichern'}
         </button>
       </div>
     </div>

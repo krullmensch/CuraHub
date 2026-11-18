@@ -10,6 +10,8 @@ import { StartPasswordDialog } from '../components/users/StartPasswordDialog';
 import { LegalTextsEditor } from '../components/users/LegalTextsEditor';
 import { isLocalAccount } from '../lib/auth/localAccounts';
 import { LOCAL_USERNAME_RE } from '../lib/setup/validation';
+import { LoadingState, Spinner } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type AppRole = 'user' | 'curator' | 'prof' | 'admin';
 
@@ -46,6 +48,8 @@ export const UsersPage = () => {
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [modalUser, setModalUser] = useState<{ id: number; email: string } | null>(null);
   const [system, setSystem] = useState<{ checks: SetupCheck[]; publicUrl: string | null; version: string } | null>(null);
+  // The checks run on the server (Chromium start, backups, …) and can take a few seconds.
+  const [systemLoading, setSystemLoading] = useState(true);
   const [newUsername, setNewUsername] = useState('');
   const [newRole, setNewRole] = useState<AppRole>('curator');
   const [creating, setCreating] = useState(false);
@@ -57,7 +61,8 @@ export const UsersPage = () => {
     let cancelled = false;
     fetch('/admin/system', { headers: { Authorization: `Bearer ${token}` } })
       .then(async (res) => { if (res.ok && !cancelled) setSystem(await res.json()); })
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setSystemLoading(false); });
     return () => { cancelled = true; };
   }, [token]);
 
@@ -173,8 +178,17 @@ export const UsersPage = () => {
 
       <div className="pt-24 px-8 pb-16 max-w-5xl mx-auto">
         <h1 className="font-display text-3xl font-light text-white mb-2">Benutzerverwaltung</h1>
-        {!loading && (
+        {loading ? (
+          <Skeleton className="h-4 w-40 mb-10 bg-zinc-800" />
+        ) : (
           <p className="text-zinc-400 text-sm mb-10">{users.length} registrierte Benutzer</p>
+        )}
+
+        {!system && systemLoading && (
+          <section className="border border-zinc-800 rounded-xl p-5 mb-8">
+            <h2 className="font-display text-lg font-light mb-2">System</h2>
+            <LoadingState inline label="Systemprüfung läuft …" />
+          </section>
         )}
 
         {system && (
@@ -237,14 +251,24 @@ export const UsersPage = () => {
               disabled={creating}
               className="flex items-center gap-1.5 text-xs text-zinc-100 border border-zinc-600 hover:border-zinc-400 bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded transition-all disabled:opacity-40"
             >
-              <UserPlus className="w-3.5 h-3.5" />
+              {creating ? <Spinner className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
               {creating ? 'Wird angelegt…' : 'Konto anlegen'}
             </button>
           </form>
         </section>
 
         {loading && (
-          <div className="text-zinc-400 text-sm">Wird geladen…</div>
+          <div className="border border-zinc-800 rounded-xl overflow-hidden" role="status" aria-label="Benutzer werden geladen">
+            <div className="h-11 border-b border-zinc-800 bg-zinc-900/50" />
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="flex items-center gap-6 px-5 py-4 border-b border-zinc-800/50 last:border-b-0">
+                <Skeleton className="h-4 w-40 bg-zinc-800" />
+                <Skeleton className="h-6 w-20 bg-zinc-800" />
+                <Skeleton className="h-4 w-28 bg-zinc-800" />
+                <Skeleton className="h-4 w-10 bg-zinc-800" />
+              </div>
+            ))}
+          </div>
         )}
 
         {error && (

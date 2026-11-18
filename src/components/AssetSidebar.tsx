@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { FileIcon, Loader2, ChevronLeft, ChevronRight, Play, AlertCircle } from 'lucide-react';
+import { FileIcon, ChevronLeft, ChevronRight, Play, AlertCircle } from 'lucide-react';
+import { SkeletonGrid } from '@/components/ui/loading';
 import { SidebarTabs } from './SidebarTabs';
 import { ModelPreviewCard } from './ModelPreviewCard';
 import { toast } from '@/hooks/use-toast';
@@ -303,9 +304,7 @@ export const AssetSidebar = ({ isOpen, onToggle }: AssetSidebarProps) => {
                 )}
                 <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
                     {loading ? (
-                         <div className="flex h-full items-center justify-center">
-                            <Loader2 className="h-5 w-5 animate-spin text-zinc-400" />
-                         </div>
+                        <SkeletonGrid count={8} className="grid grid-cols-2 gap-2" label="Assets werden geladen" />
                     ) : assets.length === 0 ? (
                         <div className="text-center py-8 text-zinc-400 text-xs">
                             {!activeProjectId

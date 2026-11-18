@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, useMemo } from 'react';
+import { LoadingState } from '@/components/ui/loading';
 import {
   ReactFlow,
   Background,
@@ -370,9 +371,7 @@ export const VersionPanelContent = ({
         {/* Graph area */}
         <div className="flex-1 relative overflow-hidden">
           {loading ? (
-            <div className="flex h-full items-center justify-center">
-              <div className="text-sm text-zinc-400">Lade Versionen…</div>
-            </div>
+            <LoadingState label="Versionen werden geladen …" className="h-full" />
           ) : versions.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center text-zinc-400">
               <Layers className="h-8 w-8 mb-2 opacity-40" />

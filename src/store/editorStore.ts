@@ -14,6 +14,7 @@ import { heldBy, reportHeld } from '../lib/live/claimGate';
 import { claimKey, keepHeldInstances, restoreRefused, splitClaimedInstances, wallBlocker } from '../lib/live/claims';
 import { liveSessionHeaders } from '../lib/live/session';
 import { publishedEditGate } from '../lib/publishedEditGate';
+import type { VersionContentStatus } from '../lib/loading/editorLoading';
 import {
   defaultWallReplacedBy, deleteInHistory, deleteRemote, figureSyncedEqual, instanceSyncedEqual,
   upsertInHistory, upsertRemote, wallSyncedEqual, withoutDeleted,
@@ -285,6 +286,12 @@ interface EditorState {
   activeVersionId: number | null;
   /** The active version is published (read-only on the server). Set by lib/versions/versionStatus. */
   activeVersionPublished: boolean;
+  /**
+   * Whether the active version's instances, walls and scale figures have arrived (drives the
+   * editor's loading overlay): 'idle' without a version, 'loading' from a version switch until
+   * all three lists are set, 'failed' when one of them could not be fetched.
+   */
+  versionContentStatus: VersionContentStatus;
 
   // Phase 6: Local State & Undo/Redo
   localInstances: ArtworkInstanceData[];
@@ -458,6 +465,7 @@ export function markListLoadFailed(kind: LoadedList, versionId: number): void {
   if (versionId !== state.activeVersionId) return;
   if (loadFailedVersion !== versionId) { loadFailedLists.clear(); loadFailedVersion = versionId; }
   loadFailedLists.add(kind);
+  if (state.versionContentStatus !== 'failed') useEditorStore.setState({ versionContentStatus: 'failed' });
   if (loadFailToastVersion !== versionId) {
     loadFailToastVersion = versionId;
     toast.error(LIST_LOAD_FAILED_MESSAGE);
@@ -562,6 +570,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   activeExhibitionSlug: null,
   activeVersionId: null,
   activeVersionPublished: false,
+  versionContentStatus: 'idle',
 
   // Phase 6 defaults
   localInstances: [],
@@ -792,6 +801,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     clearListLoadFailed('instances', listsLoadedFor.instances);
     persistedUndoDepth = 0;
     return set({
+      ...versionContentAfterLoad(get().activeVersionId),
       localInstances: instances,
       pastInstances: [],
       futureInstances: [],
@@ -889,7 +899,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     prevWalls = walls.filter(w => w.id > 0);
     listsLoadedFor.walls = get().activeVersionId;
     clearListLoadFailed('walls', listsLoadedFor.walls);
-    return set({ localWalls: walls });
+    return set({ ...versionContentAfterLoad(get().activeVersionId), localWalls: walls });
   },
   addWall: (wall) => {
     localEditSeq++;
@@ -937,7 +947,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     prevScaleFigures = figures.filter(f => f.id > 0);
     listsLoadedFor.figures = get().activeVersionId;
     clearListLoadFailed('figures', listsLoadedFor.figures);
-    return set({ localScaleFigures: figures, selectedFigureId: null });
+    return set({ ...versionContentAfterLoad(get().activeVersionId), localScaleFigures: figures, selectedFigureId: null });
   },
   addScaleFigure: (figure) => {
     localEditSeq++;
@@ -1840,6 +1850,7 @@ useEditorStore.subscribe((state, prevState) => {
     listsLoadedFor.instances = null;
     listsLoadedFor.walls = null;
     listsLoadedFor.figures = null;
+    useEditorStore.setState({ versionContentStatus: state.activeVersionId == null ? 'idle' : 'loading' });
     prevInstances = [];
     prevWalls = [];
     prevScaleFigures = [];
@@ -1953,6 +1964,13 @@ function applyRemoteDelete(kind: 'instance' | 'wall' | 'figure', id: number): bo
   const wasSelected = s.selectedFigureId === id;
   useEditorStore.setState({ localScaleFigures: lists.local, ...(wasSelected ? { selectedFigureId: null } : {}) });
   return wasSelected;
+}
+
+/** `versionContentStatus` once a list was set: 'loaded' when all three belong to the active version. */
+function versionContentAfterLoad(versionId: number | null): Partial<EditorState> {
+  if (versionId == null) return { versionContentStatus: 'idle' };
+  if (!listsLoadedForVersion(versionId)) return {};
+  return { versionContentStatus: listLoadFailed(versionId) ? 'failed' : 'loaded' };
 }
 
 /** True once instances, walls and scale figures have all been loaded for `versionId`. */

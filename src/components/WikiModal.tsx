@@ -1,4 +1,5 @@
 import { useEffect, lazy, Suspense } from 'react';
+import { LoadingState } from '@/components/ui/loading';
 import { Compass, X } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { useTourStore } from '@/store/tourStore';
@@ -70,8 +71,8 @@ export const WikiModal = ({ isOpen, onClose }: WikiModalProps) => {
         {/* Wiki content rendered in-app */}
         <Suspense
           fallback={
-            <div className="flex h-full items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
-              Lädt …
+            <div className="flex h-full items-center justify-center bg-zinc-950">
+              <LoadingState label="Wiki wird geladen …" />
             </div>
           }
         >

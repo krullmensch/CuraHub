@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Spinner } from '@/components/ui/loading';
 import { GitMerge, X } from 'lucide-react';
 import type { Version } from './buildVersionGraph';
 
@@ -70,7 +71,7 @@ export const MergeDialog = ({ sourceVersion, onConfirm, onCancel }: MergeDialogP
             disabled={loading}
             className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm text-white font-medium transition-colors"
           >
-            {loading ? 'Merging…' : 'Merge bestätigen'}
+            {loading ? <span className="inline-flex items-center gap-2"><Spinner className="h-4 w-4" /> Merging…</span> : 'Merge bestätigen'}
           </button>
         </div>
       </div>

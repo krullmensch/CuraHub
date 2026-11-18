@@ -24,6 +24,7 @@ import { useMobilePlanner } from '../lib/mobilePlanner/mode';
 import { isTouchViewer, readTouchEnv } from '../lib/touch/touchMode';
 import { isLocalAccount } from '../lib/auth/localAccounts';
 import { ChangePasswordDialog } from './auth/ChangePasswordDialog';
+import { LoadingOverlay, Spinner } from '@/components/ui/loading';
 
 const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
 const ProjectSettingsDialog = lazy(() =>
@@ -273,7 +274,9 @@ export const EditorLayout = () => {
                     </div>
 
                     {publishedVersionExists === null && (
-                      <p className="text-xs text-zinc-400">Wird geprüft…</p>
+                      <p className="flex items-center gap-2 text-xs text-zinc-400" role="status">
+                        <Spinner className="h-3.5 w-3.5" /> Wird geprüft…
+                      </p>
                     )}
                     {publishedVersionExists === false && (
                       <>
@@ -285,7 +288,9 @@ export const EditorLayout = () => {
                           disabled={publishing}
                           className="w-full text-xs bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 hover:border-zinc-400 text-zinc-200 px-3 py-2 rounded transition-all disabled:opacity-40"
                         >
-                          {publishing ? 'Wird veröffentlicht…' : 'Aktuellen Stand veröffentlichen'}
+                          {publishing ? (
+                            <span className="inline-flex items-center gap-2"><Spinner className="h-3.5 w-3.5" /> Wird veröffentlicht…</span>
+                          ) : 'Aktuellen Stand veröffentlichen'}
                         </button>
                       </>
                     )}
@@ -360,7 +365,7 @@ export const EditorLayout = () => {
          </UploadDropzone>
 
          {uploadedAsset && isPlanningMode && (
-             <Suspense fallback={null}>
+             <Suspense fallback={<LoadingOverlay />}>
                <MetadataDialog
                   asset={uploadedAsset}
                   onSave={onMetadataSaved}
@@ -380,14 +385,14 @@ export const EditorLayout = () => {
 
       {/* Wiki Modal */}
       {wikiOpen && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingOverlay label="Wiki wird geladen …" />}>
           <WikiModal isOpen={wikiOpen} onClose={() => setWikiOpen(false)} />
         </Suspense>
       )}
 
       {/* Project Settings Dialog */}
       {settingsOpen && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingOverlay label="Projekteinstellungen werden geladen …" />}>
           <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
         </Suspense>
       )}

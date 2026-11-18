@@ -5,6 +5,7 @@ import { HomePage } from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { SetupGate } from './components/setup/SetupGate';
 import { Toaster } from './components/ui/toaster';
+import { FullPageLoader } from './components/ui/loading';
 import './App.css';
 
 const ViewerPage = lazy(() => import('./pages/ViewerPage').then((m) => ({ default: m.ViewerPage })));
@@ -17,11 +18,7 @@ const ArExportPage = lazy(() => import('./pages/ArExportPage'));
 const LegalPage = lazy(() => import('./pages/LegalPage').then((m) => ({ default: m.LegalPage })));
 const SetupPage = lazy(() => import('./pages/SetupPage').then((m) => ({ default: m.SetupPage })));
 
-const RouteFallback = () => (
-  <div className="h-screen w-screen flex items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
-    Lädt …
-  </div>
-);
+const RouteFallback = () => <FullPageLoader />;
 
 function App() {
   return (

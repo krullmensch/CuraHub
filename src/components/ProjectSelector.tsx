@@ -4,6 +4,8 @@ import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { toast } from '@/hooks/use-toast';
 import { Plus, ChevronDown, Search, FolderOpen, Trash2, AlertTriangle } from 'lucide-react';
+import { Spinner } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/skeleton';
 
 interface Project {
   id: number;
@@ -25,6 +27,10 @@ export const ProjectSelector = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [newName, setNewName] = useState('');
   const [loading, setLoading] = useState(false);
+  // First /api/projects answer arrived (or failed) — the list shows skeleton rows until then.
+  const [projectsLoaded, setProjectsLoaded] = useState(false);
+  // A project is being switched to (its exhibition + latest version are resolved).
+  const [activating, setActivating] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<Project | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -63,14 +69,14 @@ export const ProjectSelector = () => {
       if ((e as Error).name !== 'AbortError') {
         console.error('Failed to fetch projects:', e);
       }
+    } finally {
+      if (projectsAbortRef.current === controller && !controller.signal.aborted) setProjectsLoaded(true);
     }
     return null;
   }, [token]);
 
   // Fetch projects on mount
   useEffect(() => {
-    // setProjects only runs after the awaited request; the rule can't see the async boundary.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchProjects();
     return () => projectsAbortRef.current?.abort();
   }, [fetchProjects]);
@@ -135,8 +141,10 @@ export const ProjectSelector = () => {
     const controller = new AbortController();
     selectionAbortRef.current = controller;
 
+    setActivating(true);
     const { exhibitionId, exhibitionSlug, versionId } = await resolveExhibitionAndVersion(project, controller.signal);
     if (controller.signal.aborted) return;
+    setActivating(false);
 
     setActiveProject(project.id, project.name, project.slug, exhibitionId, versionId, exhibitionSlug);
     triggerRefresh();
@@ -294,9 +302,11 @@ export const ProjectSelector = () => {
         onClick={openDropdown}
         className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-sm text-white transition-colors min-w-[160px]"
       >
-        <FolderOpen className="h-3.5 w-3.5 text-blue-400" />
+        {activating || (!projectsLoaded && !activeProjectName)
+          ? <Spinner className="h-3.5 w-3.5 text-blue-400" />
+          : <FolderOpen className="h-3.5 w-3.5 text-blue-400" />}
         <span className="truncate max-w-[140px]">
-          {activeProjectName || 'Select Project'}
+          {activeProjectName || (projectsLoaded ? 'Select Project' : 'Projekte laden …')}
         </span>
         <ChevronDown className={`h-3.5 w-3.5 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -320,7 +330,19 @@ export const ProjectSelector = () => {
 
           {/* Project List */}
           <div className="max-h-48 overflow-y-auto">
-            {filtered.length === 0 ? (
+            {!projectsLoaded ? (
+              <div className="space-y-1 p-2" role="status" aria-label="Projekte werden geladen">
+                {Array.from({ length: 3 }, (_, i) => (
+                  <div key={i} className="flex items-center gap-3 px-1 py-1.5">
+                    <Skeleton className="h-4 w-4 bg-zinc-800" />
+                    <div className="flex-1 space-y-1.5">
+                      <Skeleton className="h-3 w-2/3 bg-zinc-800" />
+                      <Skeleton className="h-2.5 w-1/4 bg-zinc-800" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filtered.length === 0 ? (
               <div className="px-3 py-4 text-center text-sm text-gray-500">
                 {search ? 'No matching projects' : 'No projects yet'}
               </div>
@@ -374,7 +396,7 @@ export const ProjectSelector = () => {
                   disabled={loading || !newName.trim()}
                   className="shrink-0 px-4 py-1.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 rounded text-sm text-white font-medium transition-colors"
                 >
-                  {loading ? '...' : 'Create'}
+                  {loading ? <Spinner className="h-3.5 w-3.5" /> : 'Create'}
                 </button>
               </div>
             ) : (
@@ -415,6 +437,7 @@ export const ProjectSelector = () => {
                 disabled={loading}
                 className="px-4 py-2 text-sm font-medium text-white bg-red-600 hover:bg-red-500 rounded-lg transition-colors shadow-lg shadow-red-900/20 disabled:opacity-50 flex items-center gap-2"
               >
+                {loading && <Spinner className="h-4 w-4" />}
                 {loading ? 'Deleting...' : 'Yes, Delete Project'}
               </button>
             </div>

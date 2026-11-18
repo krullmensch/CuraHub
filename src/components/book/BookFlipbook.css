@@ -65,6 +65,18 @@
 }
 
 /* The page print: pdf.js renders it, BookFlipbook shows it as an image (blob URL) like the zine */
+/* Spinner on a page whose render is still running (only pages near the current spread render). */
+.zf-page__loading {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  color: rgba(44, 44, 44, 0.35);
+  pointer-events: none;
+}
+
 .zf-page img {
   display: block;
   width: 100%;

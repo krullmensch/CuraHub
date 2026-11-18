@@ -20,9 +20,13 @@ function PublishedVersionChoices({ resolving }: { resolving: boolean }) {
   const [branchError, setBranchError] = useState<string | null>(null);
 
   const copy = activeVersionId != null ? openWorkingCopyOf(versions, activeVersionId) : null;
+  // The button that was clicked — it shows the spinner while the choice resolves.
+  const [clicked, setClicked] = useState<'join' | 'workingCopy' | 'branch' | 'discard' | null>(null);
+  const spins = (c: typeof clicked) => resolving && clicked === c;
 
   const run = async (choice: Parameters<typeof resolvePublishedEdit>[0], isBranch = false) => {
     setBranchError(null);
+    setClicked(isBranch ? 'branch' : typeof choice === 'string' ? choice : 'join' in choice ? 'join' : 'branch');
     const result = await resolvePublishedEdit(choice);
     // No error: nothing was asked any more (a second click while the first one resolves).
     if (result.ok || !result.error) return;
@@ -43,14 +47,14 @@ function PublishedVersionChoices({ resolving }: { resolving: boolean }) {
     <div className="flex flex-col gap-2">
           {copy ? (
             <div className="flex flex-col gap-1">
-              <Button disabled={resolving} onClick={() => void run({ join: copy.id })}>
+              <Button disabled={resolving} loading={spins('join')} onClick={() => void run({ join: copy.id })}>
                 In Arbeitskopie von {nameForEmail(copy.creator.email)} wechseln
               </Button>
               <p className="text-xs text-zinc-400">Deine eben gemachte Änderung wird dabei verworfen.</p>
             </div>
           ) : (
             <div className="flex flex-col gap-1">
-              <Button disabled={resolving} onClick={() => void run('workingCopy')}>
+              <Button disabled={resolving} loading={spins('workingCopy')} onClick={() => void run('workingCopy')}>
                 Arbeitskopie anlegen
               </Button>
               <p className="text-xs text-zinc-400">
@@ -76,14 +80,14 @@ function PublishedVersionChoices({ resolving }: { resolving: boolean }) {
                         if (e.key === 'Enter') submitBranch();
                       }}
                     />
-                    <Button disabled={resolving} onClick={submitBranch}>Anlegen</Button>
+                    <Button disabled={resolving} loading={spins('branch')} onClick={submitBranch}>Anlegen</Button>
                   </div>
                   {branchError && <p className="text-xs text-red-400">{branchError}</p>}
                 </div>
               )}
             </div>
           )}
-          <Button variant="outline" disabled={resolving} onClick={() => void run('discard')}>
+          <Button variant="outline" disabled={resolving} loading={spins('discard')} onClick={() => void run('discard')}>
             Verwerfen
           </Button>
         </div>

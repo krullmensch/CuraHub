@@ -78,7 +78,7 @@ export function PasswordChangeForm({ token, username, knownCurrent, variant, sub
         <Input id="pw-repeat" type="password" autoComplete="new-password" required
           value={repeat} onChange={(e) => setRepeat(e.target.value)} {...inputProps} />
       </div>
-      <Button type="submit" disabled={saving} className="w-full mt-1 font-medium" style={auth ? AUTH_BUTTON_STYLE : undefined}>
+      <Button type="submit" loading={saving} className="w-full mt-1 font-medium" style={auth ? AUTH_BUTTON_STYLE : undefined}>
         {saving ? 'Wird gespeichert…' : submitLabel}
       </Button>
     </form>

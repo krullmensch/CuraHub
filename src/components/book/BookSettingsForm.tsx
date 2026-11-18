@@ -74,6 +74,8 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
   const [committedDepth, setCommittedDepth] = useSyncedState(storedDepth);
   const [committedPublic, setCommittedPublic] = useSyncedState(storedPublic);
   const [busy, setBusy] = useState(false);
+  // What the busy state is for, so only that button spins.
+  const [busyWith, setBusyWith] = useState<'save' | 'cover' | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const sliderRef = useRef<HTMLInputElement>(null);
 
@@ -106,6 +108,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
     // Only when edited: the field shows a stored 1.45 as 1,5 and must not overwrite it.
     if (change.kind === 'set') patch.depth = change.value;
     setBusy(true);
+    setBusyWith('save');
     try {
       afterChange(await saveBookSettings(artwork.id, patch, token));
       toast.success('Gespeichert', { description: 'Buch-Einstellungen aktualisiert.' });
@@ -114,6 +117,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
       toast.error((err as Error).message);
     } finally {
       setBusy(false);
+      setBusyWith(null);
     }
   };
 
@@ -129,6 +133,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
       revert();
     } finally {
       setBusy(false);
+      setBusyWith(null);
     }
   };
 
@@ -192,6 +197,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
   const coverAction = async (action: () => Promise<BookUpdate | null>, done: string) => {
     if (!token) return;
     setBusy(true);
+    setBusyWith('cover');
     try {
       afterChange(await action());
       if (!inline) toast.success(done);
@@ -199,6 +205,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
       toast.error((err as Error).message);
     } finally {
       setBusy(false);
+      setBusyWith(null);
     }
   };
 
@@ -225,7 +232,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
             }} />
           <div className={cn('space-y-2', inline && 'min-w-0 flex-1')}>
             <Button variant="secondary" size="sm" className={cn('w-full text-xs', inline && 'bg-zinc-800 text-zinc-100 hover:bg-zinc-700')}
-              disabled={busy || coverLocked} onClick={() => fileInput.current?.click()}>
+              disabled={busy || coverLocked} loading={busyWith === 'cover'} onClick={() => fileInput.current?.click()}>
               Ersatz-Cover hochladen
             </Button>
             {coverSource === 'override' && (
@@ -284,7 +291,7 @@ export function BookSettingsForm({ mode, asset, onSaved, onClose, disabled = fal
       {!inline && (
         <DialogFooter>
           <Button variant="outline" onClick={() => onClose?.()} disabled={busy}>Abbrechen</Button>
-          <Button onClick={() => void saveAll()} disabled={busy || !artwork}>Speichern</Button>
+          <Button onClick={() => void saveAll()} disabled={busy || !artwork} loading={busyWith === 'save'}>Speichern</Button>
         </DialogFooter>
       )}
     </div>

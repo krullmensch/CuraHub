@@ -9,6 +9,7 @@ import { SystemCheckList } from './SystemCheckList';
 import type { SetupCheck } from '@/lib/setup/setupApi';
 import { normalizePublicUrl, passwordProblem, usernameProblem } from '@/lib/setup/validation';
 import { OperatorFields } from '@/components/legal/OperatorFields';
+import { LoadingState, Spinner } from '@/components/ui/loading';
 import { operatorProblem, type LegalOperator } from '@/lib/legal/operator';
 
 // One small component per wizard step: values and callbacks come from SetupPage, no fetching here.
@@ -32,7 +33,7 @@ function TextInput(props: ComponentProps<typeof Input>) {
 
 export function PrimaryButton({ busy, children, disabled, ...rest }: ComponentProps<typeof Button> & { busy?: boolean }) {
   return (
-    <Button {...rest} disabled={busy || disabled} className="w-full mt-1 font-medium" style={AUTH_BUTTON_STYLE}>
+    <Button {...rest} disabled={disabled} loading={busy} className="w-full mt-1 font-medium" style={AUTH_BUTTON_STYLE}>
       {children}
     </Button>
   );
@@ -69,11 +70,16 @@ export function ChecksStep({ checks, onRecheck, onNext, error, busy }: {
   return (
     <div className="grid gap-4">
       {error && <ErrorBox>{error}</ErrorBox>}
-      <SystemCheckList checks={checks} />
+      {busy && checks.length === 0
+        ? <LoadingState label="Systemprüfung läuft …" className="text-white/60" spinnerClassName="text-white/60" />
+        : <SystemCheckList checks={checks} />}
       {blocked && <ErrorBox>Rot markierte Punkte müssen behoben werden, bevor es weitergeht.</ErrorBox>}
       <div className="grid grid-cols-2 gap-2">
-        <SecondaryButton onClick={onRecheck} disabled={busy}>Erneut prüfen</SecondaryButton>
-        <PrimaryButton type="button" onClick={onNext} disabled={blocked || checks.length === 0} busy={busy}>Weiter</PrimaryButton>
+        <SecondaryButton onClick={onRecheck} disabled={busy}>
+          {busy && checks.length > 0 && <Spinner className="h-4 w-4" />}
+          Erneut prüfen
+        </SecondaryButton>
+        <PrimaryButton type="button" onClick={onNext} disabled={busy || blocked || checks.length === 0}>Weiter</PrimaryButton>
       </div>
     </div>
   );

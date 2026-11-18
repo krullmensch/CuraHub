@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { Spinner } from '@/components/ui/loading';
 
 export default function KeinZugriffPage() {
   const refreshAuth = useAuthStore((state) => state.refreshAuth);
@@ -94,7 +95,7 @@ export default function KeinZugriffPage() {
               }`}
             >
               {checking
-                ? 'Wird geprüft…'
+                ? <span className="inline-flex items-center gap-2"><Spinner className="h-3.5 w-3.5" /> Wird geprüft…</span>
                 : unlocked
                 ? 'Freigegeben ✓'
                 : denied
