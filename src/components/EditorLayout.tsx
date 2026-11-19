@@ -5,7 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { UploadDropzone } from './UploadDropzone';
 import { useEditorStore } from '../store/editorStore';
 import { Button } from '@/components/ui/button';
-import { LogOut, BookOpen, ExternalLink, Globe, Settings, KeyRound } from 'lucide-react';
+import { LogOut, BookOpen, ExternalLink, Globe, Settings } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { VersionPanel } from './VersionPanel';
@@ -14,7 +14,7 @@ import { PublishedVersionDialog } from './versions/PublishedVersionDialog';
 
 import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
-import { LivePresenceBar, SelfAvatar } from './live/PresenceAvatars';
+import { LivePresenceBar } from './live/PresenceAvatars';
 import { startEditorPresence } from '../lib/live/liveConnection';
 import { startVersionStatus } from '../lib/versions/versionStatus';
 import { TourAutoStart } from './tour/TourAutoStart';
@@ -22,8 +22,7 @@ import { TourOverlay } from './tour/TourOverlay';
 import { MobilePlannerLayout } from './mobile/MobilePlannerLayout';
 import { useMobilePlanner } from '../lib/mobilePlanner/mode';
 import { isTouchViewer, readTouchEnv } from '../lib/touch/touchMode';
-import { isLocalAccount } from '../lib/auth/localAccounts';
-import { ChangePasswordDialog } from './auth/ChangePasswordDialog';
+import { AccountMenu } from './auth/AccountMenu';
 import { isSettingsPath, settingsPath } from '../lib/settings/sections';
 import { LoadingOverlay, LoadingState, Spinner } from '@/components/ui/loading';
 
@@ -35,7 +34,7 @@ const MetadataDialog = lazy(() =>
 const AUTH_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 export const EditorLayout = () => {
-  const { user, logout } = useAuthStore();
+  const logout = useAuthStore((state) => state.logout);
   const refreshAuth = useAuthStore((state) => state.refreshAuth);
   const startPlacement = useEditorStore((state) => state.startPlacement);
   const viewMode = useEditorStore((state) => state.plannerViewMode);
@@ -55,7 +54,6 @@ export const EditorLayout = () => {
   const toggleRight = useEditorStore((state) => state.toggleRightSidebar);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [wikiOpen, setWikiOpen] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
   const isProf = useAuthStore((s) => s.isProf);
 
   // Refresh auth (role, token) on mount and when the tab regains focus — on focus at most
@@ -176,7 +174,7 @@ export const EditorLayout = () => {
     <div className="h-full w-full flex flex-col bg-zinc-950 overflow-hidden">
       <header className="relative z-30 border-b border-zinc-800 p-3 bg-zinc-900 flex justify-between items-center">
         <div className="flex items-center gap-4">
-            <h1 className="text-lg font-bold tracking-tight text-white">CuraHub <span className="text-blue-500">Dashboard</span></h1>
+            <h1 className="shrink-0 whitespace-nowrap text-lg font-bold tracking-tight text-white">CuraHub <span className="text-blue-500">Dashboard</span></h1>
             <ProjectSelector />
             <PublishedVersionBadge />
             <nav className="flex gap-4 ml-2 text-sm font-medium">
@@ -245,7 +243,7 @@ export const EditorLayout = () => {
               <div className="relative" ref={viewerPopoverRef} data-tour="viewer-button">
                 <button
                   onClick={() => setViewerPopoverOpen((o) => !o)}
-                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
+                  className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
                 >
                   <Globe className="h-3.5 w-3.5" />
                   Viewer testen
@@ -300,22 +298,8 @@ export const EditorLayout = () => {
               </div>
             )}
 
-            {user?.email && (
-                <span className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
-                    <SelfAvatar />
-                    {user.email.split('@')[0]}
-                </span>
-            )}
-            {user?.email && isLocalAccount(user.email) && (
-                <button
-                    onClick={() => setPasswordOpen(true)}
-                    title="Passwort ändern"
-                    aria-label="Passwort ändern"
-                    className="text-gray-400 hover:text-white transition-colors"
-                >
-                    <KeyRound className="h-4 w-4" />
-                </button>
-            )}
+            {/* Own avatar: account menu („Passwort ändern" for CuraHub accounts) */}
+            <AccountMenu />
             <Button
                 variant="ghost"
                 size="sm"
@@ -389,9 +373,7 @@ export const EditorLayout = () => {
         </Suspense>
       )}
 
-      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
-
-      <TourAutoStart layoutDialogOpen={wikiOpen || passwordOpen} />
+      <TourAutoStart layoutDialogOpen={wikiOpen} />
       <TourOverlay />
     </div>
   );

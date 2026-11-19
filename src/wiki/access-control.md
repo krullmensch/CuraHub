@@ -33,6 +33,6 @@ CuraHub verfügt über ein rollenbasiertes Rechtesystem. Die Anmeldung läuft ü
 ## CuraHub-Konten
 Neben dem HSBI-Login gibt es CuraHub-Konten mit Benutzername und eigenem Passwort, für alle, die ihr HSBI-Passwort nicht in CuraHub eingeben möchten, und für Gäste ohne HSBI-Konto. Ein Admin legt sie unter **Einstellungen → Benutzer** an. Auf der Login-Seite wählst du dafür **CuraHub-Konto**.
 
-Bei der ersten Anmeldung meldest du dich mit dem Startpasswort an, das dir der Admin gegeben hat, und legst gleich ein eigenes fest (mindestens 12 Zeichen). Ändern kannst du es später über das Schlüssel-Symbol neben deinem Namen oben rechts. Hast du es vergessen, setzt ein Admin es zurück und gibt dir ein neues Startpasswort.
+Bei der ersten Anmeldung meldest du dich mit dem Startpasswort an, das dir der Admin gegeben hat, und legst gleich ein eigenes fest (mindestens 12 Zeichen). Ändern kannst du es später mit einem Klick auf deinen Avatar oben rechts → **Passwort ändern**. Bei HSBI-Konten gibt es diesen Eintrag nicht: Ihr Passwort wird bei der HSBI geändert. Hast du es vergessen, setzt ein Admin es zurück und gibt dir ein neues Startpasswort.
 
 Auch die lokalen Admin-Konten aus der Einrichtung sind CuraHub-Konten; sie funktionieren auch dann, wenn der HSBI-Login ausfällt.

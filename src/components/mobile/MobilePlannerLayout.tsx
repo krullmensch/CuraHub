@@ -3,7 +3,7 @@ import { ChevronDown, ChevronUp, LogOut, Monitor } from 'lucide-react';
 import { EditorPage } from '@/pages/EditorPage';
 import { ProjectSelector } from '@/components/ProjectSelector';
 import { PublishedVersionBadge } from '@/components/versions/PublishedVersionBadge';
-import { SelfAvatar } from '@/components/live/PresenceAvatars';
+import { AccountMenu } from '@/components/auth/AccountMenu';
 import { useEditorStore } from '@/store/editorStore';
 import { RoomTab } from './RoomTab';
 import { AssetsTab } from './AssetsTab';
@@ -55,7 +55,7 @@ export function MobilePlannerLayout({ onFullEditor, onLogout }: MobilePlannerLay
         <div className="min-w-0 flex-1">
           <ProjectSelector />
         </div>
-        <SelfAvatar />
+        <AccountMenu compact />
         <button type="button" aria-label="Logout" onClick={onLogout} className="rounded-md p-2 text-zinc-400">
           <LogOut size={18} />
         </button>
