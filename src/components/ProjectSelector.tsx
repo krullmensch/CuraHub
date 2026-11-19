@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { toast } from '@/hooks/use-toast';
 import { Plus, ChevronDown, Search, FolderOpen, Trash2, AlertTriangle } from 'lucide-react';
 import { Spinner } from '@/components/ui/loading';
+import { isSettingsPath } from '@/lib/settings/sections';
 import { Skeleton } from '@/components/ui/skeleton';
 
 interface Project {
@@ -169,7 +170,8 @@ export const ProjectSelector = () => {
     const requestedMode: 'edit' | 'assets' = match?.params.mode === 'assets' ? 'assets' : 'edit';
     const currentSlug = useEditorStore.getState().activeProjectSlug;
 
-    if (requestedSlug === currentSlug) return; // already in sync
+    // Already in sync — except in the settings without any project: those pick one (below).
+    if (requestedSlug === currentSlug && !(currentSlug === null && isSettingsPath(location.pathname))) return;
 
     if (!requestedSlug) {
       // No project slug in the URL (e.g. `/project`) — only auto-pick a project if none is
@@ -177,7 +179,8 @@ export const ProjectSelector = () => {
       if (!currentSlug) {
         const fallback = projects[0];
         if (fallback) {
-          activateProject(fallback, {
+          // The settings have no project in their URL: pick one there without leaving them.
+          activateProject(fallback, isSettingsPath(location.pathname) ? {} : {
             navigateMode: location.pathname.includes('/assets') ? 'assets' : 'edit',
             replace: true,
           });
@@ -209,7 +212,8 @@ export const ProjectSelector = () => {
     // on the assets page would leave the URL pointing at the old project's slug, which the
     // FUNC-01 URL-sync effect above would then "correct" straight back. Navigating keeps
     // URL and store in lockstep and avoids that loop.
-    await activateProject(project, {
+    // The settings have no slug in their URL, so there is nothing to keep in step: stay on them.
+    await activateProject(project, isSettingsPath(location.pathname) ? {} : {
       navigateMode: location.pathname.includes('/assets') ? 'assets' : 'edit',
     });
   };
@@ -247,7 +251,9 @@ export const ProjectSelector = () => {
 
         // Always navigate to the new project's current mode — see the comment in
         // selectProject() for why skipping this on the assets page would loop.
-        navigate(`/exhibition/${project.slug}/${location.pathname.includes('/assets') ? 'assets' : 'edit'}`);
+        if (!isSettingsPath(location.pathname)) {
+          navigate(`/exhibition/${project.slug}/${location.pathname.includes('/assets') ? 'assets' : 'edit'}`);
+        }
       } else {
         const errData = await res.json().catch(() => ({}));
         console.error('Failed to create project HTTP error:', res.status, errData);
@@ -277,7 +283,7 @@ export const ProjectSelector = () => {
         // Clear active project if deleted
         if (activeProjectId === projectToDelete.id) {
           setActiveProject(null, null, null, null, null);
-          navigate('/project'); // Redirect to safety
+          if (!isSettingsPath(location.pathname)) navigate('/project'); // Redirect to safety
         }
         setProjectToDelete(null);
         await fetchProjects();

@@ -194,7 +194,7 @@ export function LegalStep({ initial, onSkip, onNext }: {
     >
       <Hint>
         Wer CuraHub öffentlich betreibt, braucht ein Impressum und eine Datenschutzerklärung. CuraHub erzeugt beide aus diesen
-        Angaben. Du kannst sie auch später unter „Benutzerverwaltung“ eintragen oder ändern.
+        Angaben. Du kannst sie auch später unter „Einstellungen → Rechtliche Angaben“ eintragen oder ändern.
       </Hint>
       {problem && <ErrorBox>{problem}</ErrorBox>}
       <OperatorFields appearance="setup" value={operator} onChange={setOperator} />
@@ -219,7 +219,7 @@ export function SummaryStep({ publicUrl, localUsername, hsbiEmail, operatorName,
         <div><dt className="text-white/60 text-xs">HSBI-Admin</dt><dd className="text-white/85">{hsbiEmail ?? 'übersprungen'}</dd></div>
         <div>
           <dt className="text-white/60 text-xs">Impressum &amp; Datenschutz</dt>
-          <dd className="text-white/85">{operatorName ?? 'später in der Benutzerverwaltung'}</dd>
+          <dd className="text-white/85">{operatorName ?? 'später in den Einstellungen'}</dd>
         </div>
       </dl>
       <PrimaryButton type="button" onClick={onFinish} busy={busy}>Setup abschließen</PrimaryButton>

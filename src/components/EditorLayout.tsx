@@ -24,12 +24,10 @@ import { useMobilePlanner } from '../lib/mobilePlanner/mode';
 import { isTouchViewer, readTouchEnv } from '../lib/touch/touchMode';
 import { isLocalAccount } from '../lib/auth/localAccounts';
 import { ChangePasswordDialog } from './auth/ChangePasswordDialog';
-import { LoadingOverlay, Spinner } from '@/components/ui/loading';
+import { isSettingsPath, settingsPath } from '../lib/settings/sections';
+import { LoadingOverlay, LoadingState, Spinner } from '@/components/ui/loading';
 
 const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
-const ProjectSettingsDialog = lazy(() =>
-  import('./ProjectSettingsDialog').then((m) => ({ default: m.ProjectSettingsDialog }))
-);
 const MetadataDialog = lazy(() =>
   import('./MetadataDialog').then((m) => ({ default: m.MetadataDialog }))
 );
@@ -57,7 +55,6 @@ export const EditorLayout = () => {
   const toggleRight = useEditorStore((state) => state.toggleRightSidebar);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [wikiOpen, setWikiOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
   const [passwordOpen, setPasswordOpen] = useState(false);
   const isProf = useAuthStore((s) => s.isProf);
 
@@ -158,11 +155,14 @@ export const EditorLayout = () => {
   const isPlanningMode = viewMode !== 'firstPerson';
   const isActive = (path: string) => location.pathname.includes(path);
   const isAssetRoute = location.pathname.includes('/assets');
+  const isSettingsRoute = isSettingsPath(location.pathname);
+  // Pages laid over the (hidden, still mounted) editor: the scene survives the round trip.
+  const isPageRoute = isAssetRoute || isSettingsRoute;
   // Phones: the mobile planning view instead of the full editor (asset library stays as it is).
   const { mobile, setOverride } = useMobilePlanner();
   const [touchDevice] = useState(() => isTouchViewer(readTouchEnv()));
 
-  if (mobile && !isAssetRoute) {
+  if (mobile && !isPageRoute) {
     return (
       <>
         <MobilePlannerLayout onFullEditor={() => setOverride('full')} onLogout={handleLogout} />
@@ -208,15 +208,6 @@ export const EditorLayout = () => {
                 >
                     Ausstellungen
                 </Link>
-                {user?.role === 'admin' && (
-                    <Link
-                        to="/users"
-                        data-tour="nav-users"
-                        className="transition-colors text-gray-400 hover:text-white"
-                    >
-                        Benutzerverwaltung
-                    </Link>
-                )}
             </nav>
         </div>
         
@@ -232,16 +223,21 @@ export const EditorLayout = () => {
               </button>
             )}
 
-            {/* Project Settings Button — only for Prof/Admin */}
-            {isProf && activeExhibitionId && (
-              <button
-                data-tour="project-settings"
-                onClick={() => setSettingsOpen(true)}
-                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
+            {/* Settings: the exhibition (prof+) and, for admins, the administration */}
+            {isProf && (
+              <Link
+                to={settingsPath()}
+                data-tour="settings"
+                aria-current={isSettingsRoute ? 'page' : undefined}
+                className={`flex items-center gap-1.5 text-xs border px-3 py-1.5 rounded transition-all ${
+                  isSettingsRoute
+                    ? 'text-white border-zinc-500 bg-zinc-800'
+                    : 'text-gray-400 hover:text-white border-zinc-700 hover:border-zinc-500'
+                }`}
               >
                 <Settings className="h-3.5 w-3.5" />
-                Projekteinstellungen
-              </button>
+                Einstellungen
+              </Link>
             )}
 
             {/* Viewer Button */}
@@ -341,16 +337,19 @@ export const EditorLayout = () => {
          >
             {/* Persistent Editor Background */}
             <div className="absolute inset-0 z-0">
-                 <EditorPage isVisible={!isAssetRoute} />
+                 <EditorPage isVisible={!isPageRoute} />
             </div>
 
-            {/* Content Overlay (Asset Library or empty for Edit route) */}
-            <div className={`absolute inset-0 z-10 ${!isAssetRoute ? 'pointer-events-none' : ''}`}>
-                 <Outlet />
+            {/* Content Overlay (Asset Library, Settings, or empty for Edit route) */}
+            <div className={`absolute inset-0 z-10 ${!isPageRoute ? 'pointer-events-none' : ''}`}>
+                 {/* Own boundary: a lazy page must not suspend the whole layout (and the scene). */}
+                 <Suspense fallback={<div className="flex h-full items-center justify-center bg-zinc-950"><LoadingState /></div>}>
+                   <Outlet />
+                 </Suspense>
             </div>
          
             {/* Show Sidebars specifically for the Editor View */}
-            {isPlanningMode && !isAssetRoute && (
+            {isPlanningMode && !isPageRoute && (
                 <>
                     <AssetSidebar isOpen={leftOpen} onToggle={() => setLeftOpen(!leftOpen)} />
                     <PropertiesPanel isOpen={rightOpen} onToggle={toggleRight} />
@@ -390,16 +389,9 @@ export const EditorLayout = () => {
         </Suspense>
       )}
 
-      {/* Project Settings Dialog */}
-      {settingsOpen && (
-        <Suspense fallback={<LoadingOverlay label="Projekteinstellungen werden geladen …" />}>
-          <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-        </Suspense>
-      )}
-
       <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
 
-      <TourAutoStart layoutDialogOpen={wikiOpen || settingsOpen || passwordOpen} />
+      <TourAutoStart layoutDialogOpen={wikiOpen || passwordOpen} />
       <TourOverlay />
     </div>
   );

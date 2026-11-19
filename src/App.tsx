@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
@@ -12,7 +12,7 @@ const ViewerPage = lazy(() => import('./pages/ViewerPage').then((m) => ({ defaul
 const EditorLayout = lazy(() => import('./components/EditorLayout').then((m) => ({ default: m.EditorLayout })));
 const AssetLibraryPage = lazy(() => import('./pages/AssetLibraryPage').then((m) => ({ default: m.AssetLibraryPage })));
 const ExhibitionsPage = lazy(() => import('./pages/ExhibitionsPage').then((m) => ({ default: m.ExhibitionsPage })));
-const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const KeinZugriffPage = lazy(() => import('./pages/KeinZugriffPage'));
 const ArExportPage = lazy(() => import('./pages/ArExportPage'));
 const LegalPage = lazy(() => import('./pages/LegalPage').then((m) => ({ default: m.LegalPage })));
@@ -46,13 +46,14 @@ function App() {
                 {/* Project editor — projectSlug selected via ProjectSelector in header */}
                 <Route path="/project" element={null} />
                 <Route path="/exhibition/:projectSlug/edit" element={null} />
+                {/* Settings: exhibition (prof+) and administration (admin); roles checked by the page */}
+                <Route path="/einstellungen" element={<SettingsPage />} />
+                <Route path="/einstellungen/:bereich" element={<SettingsPage />} />
              </Route>
           </Route>
 
-          {/* Protected Routes — admin only */}
-          <Route element={<ProtectedRoute requiredRole="admin" />}>
-            <Route path="/users" element={<UsersPage />} />
-          </Route>
+          {/* The former „Benutzerverwaltung" — bookmarks keep working */}
+          <Route path="/users" element={<Navigate to="/einstellungen/benutzer" replace />} />
 
           {/* 404 */}
           <Route path="*" element={

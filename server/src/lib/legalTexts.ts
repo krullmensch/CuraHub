@@ -4,7 +4,7 @@ import type { CheckStatus } from './systemChecks';
 /**
  * Impressum (§ 5 DDG) and Datenschutzerklärung (Art. 13 DSGVO) of this installation. CuraHub is
  * self-hosted, so only the operator knows who is responsible: they enter their details once — in
- * the setup wizard or later on /users — and the client builds both texts from them
+ * the setup wizard or later in the settings (/einstellungen/rechtliches) — and the client builds both texts from them
  * (src/lib/legal/documents.ts). An own Markdown text per document replaces the generated one.
  *
  * Mirrored in src/lib/legal/operator.ts (client) — keep the fields in sync.
@@ -127,7 +127,7 @@ export function legalCheck(s: LegalSettings): { status: CheckStatus; detail: str
     if (missing.length) {
         return {
             status: 'warn',
-            detail: `${missing.join(' und ')} fehlt — Betreiberangaben unter Benutzerverwaltung → Rechtliche Angaben eintragen (Pflicht für öffentlich erreichbare Ausstellungen).`,
+            detail: `${missing.join(' und ')} fehlt — Betreiberangaben unter Einstellungen → Rechtliche Angaben eintragen (Pflicht für öffentlich erreichbare Ausstellungen).`,
         };
     }
     if (!s.privacy.trim() && s.operator?.kind === 'public' && !s.operator.dpo) {

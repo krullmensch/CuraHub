@@ -23,6 +23,7 @@ export const NOINDEX_ROUTE_PATTERNS = [
     /^\/exhibition\/[^/]+\/assets$/,
     /^\/project$/,
     /^\/users$/,
+    /^\/einstellungen(\/[^/]+)?$/,
     /^\/setup$/,
     /^\/ar-export\/[^/]+$/,
 ];

@@ -41,7 +41,7 @@ const formatDate = (dateStr: string | null) => {
 
 export const HomePage = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isAdmin = useAuthStore((s) => s.isAdmin);
+  const isProf = useAuthStore((s) => s.isProf);
   const [featured, setFeatured] = useState<ExhibitionEntry | null>(null);
   const [exhibitions, setExhibitions] = useState<ExhibitionEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -136,12 +136,12 @@ export const HomePage = () => {
           <Link to="/exhibition" className="text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
             Ausstellungen
           </Link>
-          {isAdmin && (
+          {isProf && (
             <Link
-              to="/users"
+              to="/einstellungen"
               className="hidden sm:inline text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
             >
-              Benutzerverwaltung
+              Einstellungen
             </Link>
           )}
           {isAuthenticated ? (

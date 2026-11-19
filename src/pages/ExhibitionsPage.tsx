@@ -44,7 +44,7 @@ const formatDateShort = (dateStr: string | null) => {
 
 export const ExhibitionsPage = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isAdmin = useAuthStore((s) => s.isAdmin);
+  const isProf = useAuthStore((s) => s.isProf);
   const [entries, setEntries] = useState<ExhibitionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -174,12 +174,12 @@ export const ExhibitionsPage = () => {
           <Link to="/exhibitions" className="text-white text-xs tracking-[0.12em] uppercase font-medium">
             Ausstellungen
           </Link>
-          {isAdmin && (
+          {isProf && (
             <Link
-              to="/users"
+              to="/einstellungen"
               className="hidden sm:inline text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
             >
-              Benutzerverwaltung
+              Einstellungen
             </Link>
           )}
           {isAuthenticated ? (

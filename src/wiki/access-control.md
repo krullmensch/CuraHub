@@ -21,18 +21,17 @@ CuraHub verfügt über ein rollenbasiertes Rechtesystem. Die Anmeldung läuft ü
 
 ### 3. Prof
 - Alle Rechte eines Kurators.
-- Ausstellungseinstellungen ändern: Titel, Laufzeit, Plakat.
+- Ausstellungseinstellungen ändern (**Einstellungen → Ausstellung**): Titel, Laufzeit, Plakat.
 - Mitwirkende zu einer Ausstellung hinzufügen oder entfernen.
 - User als Kurator:innen freischalten.
 
 ### 4. Admin
 - Alle Rechte eines Profs, für alle Projekte.
-- Benutzerverwaltung: Rollen vergeben.
-- Systemcheck der Installation einsehen.
+- **Einstellungen → Administration**: Rollen vergeben, CuraHub-Konten anlegen, Systemcheck, rechtliche Angaben.
 - Ausstellungen für die Startseite als "Featured" markieren.
 
 ## CuraHub-Konten
-Neben dem HSBI-Login gibt es CuraHub-Konten mit Benutzername und eigenem Passwort, für alle, die ihr HSBI-Passwort nicht in CuraHub eingeben möchten, und für Gäste ohne HSBI-Konto. Ein Admin legt sie in der **Benutzerverwaltung** an. Auf der Login-Seite wählst du dafür **CuraHub-Konto**.
+Neben dem HSBI-Login gibt es CuraHub-Konten mit Benutzername und eigenem Passwort, für alle, die ihr HSBI-Passwort nicht in CuraHub eingeben möchten, und für Gäste ohne HSBI-Konto. Ein Admin legt sie unter **Einstellungen → Benutzer** an. Auf der Login-Seite wählst du dafür **CuraHub-Konto**.
 
 Bei der ersten Anmeldung meldest du dich mit dem Startpasswort an, das dir der Admin gegeben hat, und legst gleich ein eigenes fest (mindestens 12 Zeichen). Ändern kannst du es später über das Schlüssel-Symbol neben deinem Namen oben rechts. Hast du es vergessen, setzt ein Admin es zurück und gibt dir ein neues Startpasswort.
 

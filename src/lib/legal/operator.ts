@@ -1,5 +1,5 @@
 /**
- * Who runs this CuraHub installation — entered in the setup wizard or later on /users, and turned
+ * Who runs this CuraHub installation — entered in the setup wizard or later in the settings (/einstellungen/rechtliches), and turned
  * into Impressum and Datenschutzerklärung by documents.ts. Every field is a string ('' = not given)
  * except `logRetentionDays`.
  *

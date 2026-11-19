@@ -512,6 +512,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (useEditorStore.getState().mobilePlanner) return;
+      // Hidden behind the asset library or the settings: nothing may change (or undo) the scene unseen.
+      if (!isVisible) return;
       // Don't trigger shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       // Delete/Backspace after a click on a panel button or control must not remove the selection

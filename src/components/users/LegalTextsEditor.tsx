@@ -27,7 +27,7 @@ const DOCS: { field: Field; label: string; path: string }[] = [
 const untouched = (op: LegalOperator) => REQUIRED_OPERATOR_FIELDS.every((f) => !op[f].trim());
 
 /**
- * Admin block on /users: the operator's details (same form as the setup wizard), from which
+ * Settings → Rechtliche Angaben (admin): the operator's details (same form as the setup wizard), from which
  * CuraHub builds Impressum and Datenschutzerklärung; each can be replaced by an own text.
  */
 export const LegalTextsEditor = ({ token }: { token: string }) => {
