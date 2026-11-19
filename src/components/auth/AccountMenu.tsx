@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ChevronDown, KeyRound } from 'lucide-react';
+import { ChevronDown, KeyRound, LogOut } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { SelfAvatar } from '@/components/live/PresenceAvatars';
 import {
@@ -9,12 +9,19 @@ import { isLocalAccount } from '@/lib/auth/localAccounts';
 import { nameForEmail } from '@/lib/live/presence';
 import { ChangePasswordDialog } from './ChangePasswordDialog';
 
+interface AccountMenuProps {
+  /** „Abmelden" (the layout logs out and navigates to the login page). */
+  onLogout: () => void;
+  /** Avatar only, no name or chevron (mobile planner). */
+  compact?: boolean;
+}
+
 /**
- * The own avatar in the header as a menu: who is logged in, with which kind of account, and
+ * The own avatar in the header as a menu: who is logged in, with which kind of account,
  * „Passwort ändern" — only for CuraHub accounts (HSBI accounts have no password in CuraHub;
- * `POST /auth/me/password` refuses them too). `compact`: avatar only (mobile planner).
+ * `POST /auth/me/password` refuses them too) — and „Abmelden".
  */
-export function AccountMenu({ compact = false }: { compact?: boolean }) {
+export function AccountMenu({ onLogout, compact = false }: AccountMenuProps) {
   const email = useAuthStore((s) => s.user?.email);
   const [passwordOpen, setPasswordOpen] = useState(false);
   if (!email) return null;
@@ -47,6 +54,10 @@ export function AccountMenu({ compact = false }: { compact?: boolean }) {
               Das Passwort deines HSBI-Kontos änderst du bei der HSBI, nicht in CuraHub.
             </p>
           )}
+          <DropdownMenuSeparator className="bg-zinc-800" />
+          <DropdownMenuItem className="cursor-pointer focus:bg-zinc-800" onSelect={onLogout}>
+            <LogOut className="h-4 w-4" /> Abmelden
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
       {local && <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />}

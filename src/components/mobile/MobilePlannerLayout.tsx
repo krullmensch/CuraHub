@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ChevronDown, ChevronUp, LogOut, Monitor } from 'lucide-react';
+import { ChevronDown, ChevronUp, Monitor } from 'lucide-react';
 import { EditorPage } from '@/pages/EditorPage';
 import { ProjectSelector } from '@/components/ProjectSelector';
 import { PublishedVersionBadge } from '@/components/versions/PublishedVersionBadge';
@@ -55,10 +55,7 @@ export function MobilePlannerLayout({ onFullEditor, onLogout }: MobilePlannerLay
         <div className="min-w-0 flex-1">
           <ProjectSelector />
         </div>
-        <AccountMenu compact />
-        <button type="button" aria-label="Logout" onClick={onLogout} className="rounded-md p-2 text-zinc-400">
-          <LogOut size={18} />
-        </button>
+        <AccountMenu compact onLogout={onLogout} />
       </header>
       <div className="flex justify-center border-b border-zinc-800 bg-zinc-900 px-3 py-1 empty:hidden">
         <PublishedVersionBadge />

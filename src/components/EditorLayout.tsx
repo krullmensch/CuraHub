@@ -4,8 +4,7 @@ import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { UploadDropzone } from './UploadDropzone';
 import { useEditorStore } from '../store/editorStore';
-import { Button } from '@/components/ui/button';
-import { LogOut, BookOpen, ExternalLink, Globe, Settings } from 'lucide-react';
+import { BookOpen, ExternalLink, Globe, Settings } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { VersionPanel } from './VersionPanel';
@@ -299,16 +298,7 @@ export const EditorLayout = () => {
             )}
 
             {/* Own avatar: account menu („Passwort ändern" for CuraHub accounts) */}
-            <AccountMenu />
-            <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className="text-gray-400 hover:text-white hover:bg-zinc-800"
-            >
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-            </Button>
+            <AccountMenu onLogout={handleLogout} />
         </div>
       </header>
       

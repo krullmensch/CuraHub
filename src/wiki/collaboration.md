@@ -8,7 +8,7 @@ Mitarbeiten kann, wem die Ausstellung gehört oder wer zu ihr eingeladen wurde (
 
 - **Oben in der Kopfzeile** siehst du die Avatare der Personen, die in derselben Version arbeiten wie du. Ein kleines Symbol am Avatar zeigt, ob jemand in der **Ego-Perspektive** unterwegs ist oder im **2D-Wandeditor** arbeitet. Daneben steht, wie viele Personen in **anderen Versionen** sind und wie viele Besucher*innen gerade den **öffentlichen Viewer** ansehen.
 - **Im Versionsgraph** tragen die Versionen die Avatare der Personen, die gerade in ihnen arbeiten.
-- Dein eigener Avatar steht neben deinem Namen. Er ist zu sehen, sobald du angemeldet bist – auch ohne ausgewähltes Projekt. Jede Person hat eine feste Farbe – dieselbe in der Kopfzeile und an den Umrissen im Raum.
+- Dein eigener Avatar steht oben rechts; ein Klick darauf öffnet dein Konto-Menü mit **Abmelden** (und bei CuraHub-Konten **Passwort ändern**). Er ist zu sehen, sobald du angemeldet bist – auch ohne ausgewähltes Projekt. Jede Person hat eine feste Farbe – dieselbe in der Kopfzeile und an den Umrissen im Raum.
 
 ## Sperren: eine Person pro Objekt
 
