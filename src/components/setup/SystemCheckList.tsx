@@ -15,8 +15,8 @@ export function SystemCheckList({ checks }: { checks: SetupCheck[] }) {
         <li key={c.id} className="flex gap-2.5 text-sm">
           {ICON[c.status]}
           <div>
-            <div className="text-white/85">{c.label}</div>
-            <div className="text-white/60 text-xs">{c.detail}</div>
+            <div className="text-zinc-200">{c.label}</div>
+            <div className="text-zinc-400 text-xs">{c.detail}</div>
           </div>
         </li>
       ))}

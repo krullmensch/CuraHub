@@ -13,9 +13,10 @@ import {
 import { AuthBackdrop } from '@/components/AuthBackdrop';
 import { PasswordChangeForm } from '@/components/auth/PasswordChangeForm';
 import {
-  AUTH_BUTTON_STYLE, AUTH_CARD_STYLE, AUTH_DESCRIPTION_STYLE, AUTH_ERROR_STYLE, AUTH_INPUT_CLASS,
-  AUTH_INPUT_STYLE, AUTH_LABEL_STYLE, AUTH_TITLE_STYLE,
+  AUTH_BUTTON_CLASS, AUTH_CARD_CLASS, AUTH_DESCRIPTION_CLASS, AUTH_ERROR_CLASS, AUTH_HINT_CLASS, AUTH_INPUT_CLASS,
+  AUTH_LABEL_CLASS, AUTH_TITLE_CLASS,
 } from '@/components/authStyles';
+import { cn } from '@/lib/utils';
 
 /** 'hsbi' = HSBI login; 'local' = CuraHub account (created by an admin, or the setup wizard's emergency admin). */
 type LoginMode = 'hsbi' | 'local';
@@ -69,14 +70,14 @@ export const LoginPage = () => {
   };
 
   return (
-    <AuthBackdrop>
+    <AuthBackdrop withHeader>
       {/* Login card */}
-      <Card className="w-full border" style={AUTH_CARD_STYLE}>
+      <Card className={AUTH_CARD_CLASS}>
         <CardHeader className="pb-4">
-          <CardTitle className="text-xl font-light" style={AUTH_TITLE_STYLE}>
+          <CardTitle className={AUTH_TITLE_CLASS}>
             {pending ? 'Neues Passwort festlegen' : 'Anmelden'}
           </CardTitle>
-          <CardDescription style={AUTH_DESCRIPTION_STYLE}>
+          <CardDescription className={AUTH_DESCRIPTION_CLASS}>
             {pending
               ? 'Du hast dich mit einem Startpasswort angemeldet. Lege jetzt dein eigenes Passwort fest.'
               : mode === 'hsbi' ? 'Melde dich mit deinem HSBI-Account an.' : 'Melde dich mit deinem CuraHub-Konto an.'}
@@ -99,14 +100,14 @@ export const LoginPage = () => {
               <button
                 type="button"
                 onClick={() => { setPending(null); setPassword(''); }}
-                className="text-xs text-center text-white/45 hover:text-white/75 transition-colors"
+                className="text-xs text-center text-zinc-400 hover:text-white transition-colors"
               >
                 Abbrechen
               </button>
             </div>
           ) : (
           <form onSubmit={handleSubmit} className="grid gap-4">
-            <div role="tablist" aria-label="Kontoart" className="grid grid-cols-2 gap-1 rounded-md p-1" style={{ background: 'rgba(255,255,255,0.05)' }}>
+            <div role="tablist" aria-label="Kontoart" className="grid grid-cols-2 gap-1 rounded-md border border-zinc-800 bg-zinc-950 p-1">
               {(['hsbi', 'local'] as const).map((m) => (
                 <button
                   key={m}
@@ -114,25 +115,24 @@ export const LoginPage = () => {
                   role="tab"
                   aria-selected={mode === m}
                   onClick={() => { setMode(m); setError(''); }}
-                  className="text-xs font-medium rounded px-3 py-1.5 transition-colors"
-                  style={mode === m
-                    ? { background: 'rgba(255,255,255,0.14)', color: 'rgba(255,255,255,0.92)' }
-                    : { color: 'rgba(255,255,255,0.5)' }}
+                  className={cn(
+                    'rounded px-3 py-1.5 text-xs font-medium transition-colors',
+                    mode === m ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:text-white',
+                  )}
                 >
                   {m === 'hsbi' ? 'HSBI-Konto' : 'CuraHub-Konto'}
                 </button>
               ))}
             </div>
             {error && (
-              <div className="text-sm font-medium rounded-md px-3 py-2" style={AUTH_ERROR_STYLE}>
+              <div className={AUTH_ERROR_CLASS}>
                 {error}
               </div>
             )}
             <div className="grid gap-2">
               <label
                 htmlFor="username"
-                className="text-[11px] font-medium uppercase peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                style={AUTH_LABEL_STYLE}
+                className={AUTH_LABEL_CLASS}
               >
                 Benutzername
               </label>
@@ -144,15 +144,13 @@ export const LoginPage = () => {
                 onChange={(e) => setUsername(e.target.value)}
                 required
                 autoComplete="username"
-                style={AUTH_INPUT_STYLE}
                 className={AUTH_INPUT_CLASS}
               />
             </div>
             <div className="grid gap-2">
               <label
                 htmlFor="password"
-                className="text-[11px] font-medium uppercase peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                style={AUTH_LABEL_STYLE}
+                className={AUTH_LABEL_CLASS}
               >
                 Passwort
               </label>
@@ -164,22 +162,18 @@ export const LoginPage = () => {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                style={AUTH_INPUT_STYLE}
                 className={AUTH_INPUT_CLASS}
               />
               {mode === 'hsbi' && (
-                <p className="text-[11px] leading-snug" style={{ color: 'rgba(255,255,255,0.4)' }}>
+                <p className={AUTH_HINT_CLASS}>
                   Das Passwort wird nur zur Prüfung an die HSBI übermittelt und nicht gespeichert.
                 </p>
               )}
             </div>
             <Button
               type="submit"
-              className="w-full mt-1 font-medium transition-all duration-200"
-              style={AUTH_BUTTON_STYLE}
+              className={cn('w-full mt-1 font-medium', AUTH_BUTTON_CLASS)}
               loading={isLoading}
-              onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,1)'; }}
-              onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.92)'; }}
             >
               {isLoading ? 'Anmeldung läuft…' : 'Anmelden'}
             </Button>

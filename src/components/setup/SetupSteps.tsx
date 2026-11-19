@@ -1,9 +1,10 @@
 import { useState, type ComponentProps, type FormEvent, type ReactNode } from 'react';
 import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import {
-  AUTH_BUTTON_STYLE, AUTH_ERROR_STYLE, AUTH_INPUT_CLASS, AUTH_INPUT_STYLE, AUTH_LABEL_CLASS, AUTH_LABEL_STYLE,
-  AUTH_SECONDARY_BUTTON_STYLE,
+  AUTH_BUTTON_CLASS, AUTH_ERROR_CLASS, AUTH_HINT_CLASS, AUTH_INPUT_CLASS, AUTH_LABEL_CLASS,
+  AUTH_SECONDARY_BUTTON_CLASS,
 } from '@/components/authStyles';
 import { SystemCheckList } from './SystemCheckList';
 import type { SetupCheck } from '@/lib/setup/setupApi';
@@ -15,36 +16,36 @@ import { operatorProblem, type LegalOperator } from '@/lib/legal/operator';
 // One small component per wizard step: values and callbacks come from SetupPage, no fetching here.
 
 export function ErrorBox({ children }: { children: ReactNode }) {
-  return <div className="text-sm font-medium rounded-md px-3 py-2" style={AUTH_ERROR_STYLE}>{children}</div>;
+  return <div className={AUTH_ERROR_CLASS}>{children}</div>;
 }
 
 function Field({ id, label, children }: { id: string; label: string; children: ReactNode }) {
   return (
     <div className="grid gap-2">
-      <label htmlFor={id} className={AUTH_LABEL_CLASS} style={AUTH_LABEL_STYLE}>{label}</label>
+      <label htmlFor={id} className={AUTH_LABEL_CLASS}>{label}</label>
       {children}
     </div>
   );
 }
 
 function TextInput(props: ComponentProps<typeof Input>) {
-  return <Input {...props} style={AUTH_INPUT_STYLE} className={AUTH_INPUT_CLASS} />;
+  return <Input {...props} className={AUTH_INPUT_CLASS} />;
 }
 
 export function PrimaryButton({ busy, children, disabled, ...rest }: ComponentProps<typeof Button> & { busy?: boolean }) {
   return (
-    <Button {...rest} disabled={disabled} loading={busy} className="w-full mt-1 font-medium" style={AUTH_BUTTON_STYLE}>
+    <Button {...rest} disabled={disabled} loading={busy} className={cn('w-full mt-1 font-medium', AUTH_BUTTON_CLASS)}>
       {children}
     </Button>
   );
 }
 
 function SecondaryButton(props: ComponentProps<typeof Button>) {
-  return <Button {...props} type="button" variant="outline" className="w-full mt-1" style={AUTH_SECONDARY_BUTTON_STYLE} />;
+  return <Button {...props} type="button" variant="outline" className={cn('w-full mt-1', AUTH_SECONDARY_BUTTON_CLASS)} />;
 }
 
 function Hint({ children }: { children: ReactNode }) {
-  return <p className="text-sm text-white/50">{children}</p>;
+  return <p className={cn(AUTH_HINT_CLASS, 'text-sm')}>{children}</p>;
 }
 
 export function CodeStep({ onSubmit, error, busy }: { onSubmit: (code: string) => void; error: string | null; busy: boolean }) {
@@ -52,7 +53,7 @@ export function CodeStep({ onSubmit, error, busy }: { onSubmit: (code: string) =
   return (
     <form className="grid gap-4" onSubmit={(e: FormEvent) => { e.preventDefault(); onSubmit(code); }}>
       <Hint>
-        Den Setup-Code findest du im Log der App: <code className="text-white/75">docker compose logs app</code>
+        Den Setup-Code findest du im Log der App: <code className="text-zinc-200">docker compose logs app</code>
       </Hint>
       {error && <ErrorBox>{error}</ErrorBox>}
       <Field id="setup-code" label="Setup-Code">
@@ -71,7 +72,7 @@ export function ChecksStep({ checks, onRecheck, onNext, error, busy }: {
     <div className="grid gap-4">
       {error && <ErrorBox>{error}</ErrorBox>}
       {busy && checks.length === 0
-        ? <LoadingState label="Systemprüfung läuft …" className="text-white/60" spinnerClassName="text-white/60" />
+        ? <LoadingState label="Systemprüfung läuft …" className="text-zinc-400" />
         : <SystemCheckList checks={checks} />}
       {blocked && <ErrorBox>Rot markierte Punkte müssen behoben werden, bevor es weitergeht.</ErrorBox>}
       <div className="grid grid-cols-2 gap-2">
@@ -214,12 +215,12 @@ export function SummaryStep({ publicUrl, localUsername, hsbiEmail, operatorName,
     <div className="grid gap-4">
       {error && <ErrorBox>{error}</ErrorBox>}
       <dl className="grid gap-2 text-sm">
-        <div><dt className="text-white/60 text-xs">Öffentliche Adresse</dt><dd className="text-white/85">{publicUrl}</dd></div>
-        <div><dt className="text-white/60 text-xs">Notfall-Admin</dt><dd className="text-white/85">{localUsername}</dd></div>
-        <div><dt className="text-white/60 text-xs">HSBI-Admin</dt><dd className="text-white/85">{hsbiEmail ?? 'übersprungen'}</dd></div>
+        <div><dt className="text-zinc-400 text-xs">Öffentliche Adresse</dt><dd className="text-zinc-200">{publicUrl}</dd></div>
+        <div><dt className="text-zinc-400 text-xs">Notfall-Admin</dt><dd className="text-zinc-200">{localUsername}</dd></div>
+        <div><dt className="text-zinc-400 text-xs">HSBI-Admin</dt><dd className="text-zinc-200">{hsbiEmail ?? 'übersprungen'}</dd></div>
         <div>
-          <dt className="text-white/60 text-xs">Impressum &amp; Datenschutz</dt>
-          <dd className="text-white/85">{operatorName ?? 'später in den Einstellungen'}</dd>
+          <dt className="text-zinc-400 text-xs">Impressum &amp; Datenschutz</dt>
+          <dd className="text-zinc-200">{operatorName ?? 'später in den Einstellungen'}</dd>
         </div>
       </dl>
       <PrimaryButton type="button" onClick={onFinish} busy={busy}>Setup abschließen</PrimaryButton>

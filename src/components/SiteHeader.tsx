@@ -1,4 +1,4 @@
-import { Link, NavLink, useNavigate } from 'react-router-dom';
+import { Link, NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { LayoutDashboard, LogIn, Settings } from 'lucide-react';
 import { useAuthStore } from '@/store/authStore';
 import { AccountMenu } from '@/components/auth/AccountMenu';
@@ -20,6 +20,8 @@ export function SiteHeader({ className }: { className?: string }) {
   const isProf = useAuthStore((s) => s.isProf);
   const logout = useAuthStore((s) => s.logout);
   const navigate = useNavigate();
+  // On the login page itself the „Anmelden" button would only point at the page you are on.
+  const onLogin = useLocation().pathname === '/login';
 
   return (
     <header
@@ -55,7 +57,7 @@ export function SiteHeader({ className }: { className?: string }) {
             )}
             <AccountMenu onLogout={() => { logout(); navigate('/'); }} />
           </>
-        ) : (
+        ) : !onLogin && (
           <Link to="/login" className={HEADER_BUTTON}>
             <LogIn className="h-3.5 w-3.5" />
             Anmelden
