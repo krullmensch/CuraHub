@@ -1,6 +1,7 @@
 import { createContext, forwardRef, useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import HTMLFlipBook from 'react-pageflip';
 import type * as pdfjs from 'pdfjs-dist';
+import { Loader2 } from 'lucide-react';
 import { MIN_PAGE_WIDTH, isNearPage, needsRerender, pageRenderScale } from '@/lib/book/flipPages';
 import { stopRenderLoop } from '@/lib/book/flipRenderLoop';
 import './BookFlipbook.css';
@@ -101,7 +102,9 @@ const Page = forwardRef<HTMLDivElement, PageProps>(({ doc, index, side }, ref) =
 
   return (
     <div className={`zf-page zf-page--${side}`} ref={ref} data-density="soft">
-      {src && <img src={src} alt={`Seite ${index + 1}`} draggable={false} decoding="async" />}
+      {src
+        ? <img src={src} alt={`Seite ${index + 1}`} draggable={false} decoding="async" />
+        : near && <Loader2 aria-label={`Seite ${index + 1} wird geladen`} className="zf-page__loading animate-spin motion-reduce:animate-none" />}
       <div className="zf-page__paper" aria-hidden />
       <div className="zf-page__spine" aria-hidden />
     </div>

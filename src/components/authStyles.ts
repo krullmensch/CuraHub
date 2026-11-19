@@ -1,34 +1,18 @@
-// Shared look of the login and setup cards (dark glass on the gallery grid).
-export const AUTH_CARD_STYLE = {
-  background: 'rgba(255,255,255,0.035)',
-  backdropFilter: 'blur(24px)',
-  WebkitBackdropFilter: 'blur(24px)',
-  borderColor: 'rgba(255,255,255,0.09)',
-  boxShadow: '0 32px 64px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.04) inset',
-} as const;
+// Shared look of the login, setup and password cards — the dashboard's panels and form fields
+// (zinc-900 card, zinc-950 inputs with a blue focus, blue primary button), so signing in looks
+// like the app it leads into.
 
-export const AUTH_TITLE_STYLE = { fontFamily: '"Funnel Display", sans-serif', color: 'rgba(255,255,255,0.88)' } as const;
-export const AUTH_DESCRIPTION_STYLE = { color: 'rgba(255,255,255,0.38)' } as const;
+export const AUTH_CARD_CLASS = 'w-full rounded-lg border border-zinc-800 bg-zinc-900 text-zinc-100 shadow-xl';
+export const AUTH_TITLE_CLASS = 'font-display text-xl font-light text-white';
+export const AUTH_DESCRIPTION_CLASS = 'text-zinc-400';
 
-export const AUTH_INPUT_STYLE = {
-  background: 'rgba(255,255,255,0.05)',
-  borderColor: 'rgba(255,255,255,0.1)',
-  color: 'rgba(255,255,255,0.88)',
-} as const;
-export const AUTH_INPUT_CLASS = 'placeholder:text-white/25 focus-visible:ring-white/20 focus-visible:border-white/25';
+export const AUTH_INPUT_CLASS =
+  'border-zinc-700 bg-zinc-950 text-white placeholder:text-zinc-500 focus-visible:border-blue-500 focus-visible:ring-blue-500/40';
 
-export const AUTH_LABEL_CLASS = 'text-[11px] font-medium uppercase';
-export const AUTH_LABEL_STYLE = { letterSpacing: '0.1em', color: 'rgba(255,255,255,0.45)' } as const;
+export const AUTH_LABEL_CLASS = 'text-xs font-medium text-zinc-300';
+export const AUTH_HINT_CLASS = 'text-xs leading-snug text-zinc-400';
 
-export const AUTH_ERROR_STYLE = {
-  color: 'rgba(248,113,113,0.9)',
-  background: 'rgba(127,29,29,0.2)',
-  border: '1px solid rgba(239,68,68,0.2)',
-} as const;
+export const AUTH_ERROR_CLASS = 'rounded-md border border-red-900/70 bg-red-950/40 px-3 py-2 text-sm font-medium text-red-300';
 
-export const AUTH_BUTTON_STYLE = { background: 'rgba(255,255,255,0.92)', color: '#0a0a0c', letterSpacing: '0.02em' } as const;
-export const AUTH_SECONDARY_BUTTON_STYLE = {
-  background: 'transparent',
-  color: 'rgba(255,255,255,0.7)',
-  borderColor: 'rgba(255,255,255,0.15)',
-} as const;
+export const AUTH_BUTTON_CLASS = 'bg-blue-600 text-white shadow-none hover:bg-blue-500';
+export const AUTH_SECONDARY_BUTTON_CLASS = 'border-zinc-700 bg-transparent text-zinc-300 hover:bg-zinc-800 hover:text-white';

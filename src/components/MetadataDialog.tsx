@@ -1,6 +1,6 @@
 import { useState, Suspense, useMemo } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { useGLTF, Center, OrbitControls, Environment, Lightformer } from '@react-three/drei';
+import { useGLTF, Center, OrbitControls, Environment, Lightformer, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { useAuthStore } from '../store/authStore';
 import {
@@ -214,7 +214,8 @@ export const MetadataDialog = ({ asset, onSave, onCancel }: MetadataDialogProps)
                                 <Lightformer intensity={1} color="white" position={[-5, 1, 3]} rotation={[0, Math.PI / 2, 0]} scale={[10, 5, 1]} />
                                 <Lightformer intensity={1} color="white" position={[5, 1, 3]} rotation={[0, -Math.PI / 2, 0]} scale={[10, 5, 1]} />
                             </Environment>
-                            <Suspense fallback={null}>
+                            {/* Suspense inside the Canvas doesn't reach the DOM boundary above: own spinner. */}
+                            <Suspense fallback={<Html center><Loader2 className="h-6 w-6 animate-spin text-purple-400" /></Html>}>
                                 <InteractiveModel url={getImageUrl(asset.path)} />
                             </Suspense>
                             <OrbitControls

@@ -1,27 +1,24 @@
 import { lazy, Suspense } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, Navigate } from 'react-router-dom';
 import { LoginPage } from './pages/LoginPage';
 import { HomePage } from './pages/HomePage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { SetupGate } from './components/setup/SetupGate';
 import { Toaster } from './components/ui/toaster';
+import { FullPageLoader } from './components/ui/loading';
 import './App.css';
 
 const ViewerPage = lazy(() => import('./pages/ViewerPage').then((m) => ({ default: m.ViewerPage })));
 const EditorLayout = lazy(() => import('./components/EditorLayout').then((m) => ({ default: m.EditorLayout })));
 const AssetLibraryPage = lazy(() => import('./pages/AssetLibraryPage').then((m) => ({ default: m.AssetLibraryPage })));
 const ExhibitionsPage = lazy(() => import('./pages/ExhibitionsPage').then((m) => ({ default: m.ExhibitionsPage })));
-const UsersPage = lazy(() => import('./pages/UsersPage').then((m) => ({ default: m.UsersPage })));
+const SettingsPage = lazy(() => import('./pages/SettingsPage').then((m) => ({ default: m.SettingsPage })));
 const KeinZugriffPage = lazy(() => import('./pages/KeinZugriffPage'));
 const ArExportPage = lazy(() => import('./pages/ArExportPage'));
 const LegalPage = lazy(() => import('./pages/LegalPage').then((m) => ({ default: m.LegalPage })));
 const SetupPage = lazy(() => import('./pages/SetupPage').then((m) => ({ default: m.SetupPage })));
 
-const RouteFallback = () => (
-  <div className="h-screen w-screen flex items-center justify-center bg-zinc-950 text-zinc-400 text-sm">
-    Lädt …
-  </div>
-);
+const RouteFallback = () => <FullPageLoader />;
 
 function App() {
   return (
@@ -49,13 +46,14 @@ function App() {
                 {/* Project editor — projectSlug selected via ProjectSelector in header */}
                 <Route path="/project" element={null} />
                 <Route path="/exhibition/:projectSlug/edit" element={null} />
+                {/* Settings: exhibition (prof+) and administration (admin); roles checked by the page */}
+                <Route path="/einstellungen" element={<SettingsPage />} />
+                <Route path="/einstellungen/:bereich" element={<SettingsPage />} />
              </Route>
           </Route>
 
-          {/* Protected Routes — admin only */}
-          <Route element={<ProtectedRoute requiredRole="admin" />}>
-            <Route path="/users" element={<UsersPage />} />
-          </Route>
+          {/* The former „Benutzerverwaltung" — bookmarks keep working */}
+          <Route path="/users" element={<Navigate to="/einstellungen/benutzer" replace />} />
 
           {/* 404 */}
           <Route path="*" element={

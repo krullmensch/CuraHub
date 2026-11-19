@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Spinner } from '@/components/ui/loading';
 import { GitBranch, X } from 'lucide-react';
 import type { Version } from './buildVersionGraph';
 
@@ -91,7 +92,7 @@ export const NewBranchDialog = ({ sourceVersion, existingBranchNames, onConfirm,
             disabled={loading || !isValid}
             className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm text-white font-medium transition-colors"
           >
-            {loading ? 'Erstelle…' : 'Branch erstellen'}
+            {loading ? <span className="inline-flex items-center gap-2"><Spinner className="h-4 w-4" /> Erstelle…</span> : 'Branch erstellen'}
           </button>
         </div>
       </div>

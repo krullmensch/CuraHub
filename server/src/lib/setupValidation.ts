@@ -34,7 +34,7 @@ export const completeSetupSchema = z.object({
         username: z.string().trim().min(1).max(100).refine((u) => !u.includes('@'), 'Nur die HSBI-Kennung, ohne @hsbi.de'),
         password: z.string().min(1).max(MAX_PASSWORD_LENGTH),
     }).optional(),
-    /** Impressum/Datenschutz details; optional — they can be added later on /users. */
+    /** Impressum/Datenschutz details; optional — they can be added later in the settings (/einstellungen/rechtliches). */
     operator: legalOperatorSchema.refine(operatorComplete, 'Betreiberangaben unvollständig (Name, Anschrift und E-Mail sind Pflicht).').optional(),
 });
 

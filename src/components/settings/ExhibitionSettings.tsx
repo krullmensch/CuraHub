@@ -1,20 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { useAuthStore } from '../store/authStore';
-import { useEditorStore } from '../store/editorStore';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { useAuthStore } from '@/store/authStore';
+import { useEditorStore } from '@/store/editorStore';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { DateRangePicker } from "@/components/ui/date-picker";
 import type { DateRange } from "react-day-picker";
-import { Loader2, Upload, Trash2, UserPlus, X, Image, Search } from 'lucide-react';
+import { Upload, Trash2, UserPlus, X, Image, Search, FolderOpen } from 'lucide-react';
 import { toast } from '@/hooks/use-toast';
+import { LoadingState, Spinner } from '@/components/ui/loading';
 
 interface Collaborator {
   id: number;
@@ -30,14 +25,14 @@ interface ExhibitionData {
   poster_path: string | null;
 }
 
-interface ProjectSettingsDialogProps {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}
-
-export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDialogProps) {
+/**
+ * Settings → Ausstellung → Allgemein: name, period, poster and curators of the exhibition of the
+ * project chosen in the header (formerly the „Projekteinstellungen" dialog).
+ */
+export function ExhibitionSettings() {
   const token = useAuthStore((s) => s.token);
   const activeExhibitionId = useEditorStore((s) => s.activeExhibitionId);
+  const activeProjectName = useEditorStore((s) => s.activeProjectName);
 
 
   // General settings
@@ -58,11 +53,13 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
   const [userSearch, setUserSearch] = useState('');
   const [inviting, setInviting] = useState<number | null>(null); // userId being invited
 
-  // Load exhibition data when dialog opens
+  // Load the exhibition's data; again whenever another project is picked in the header.
   useEffect(() => {
-    if (!open || !activeExhibitionId || !token) return;
+    if (!activeExhibitionId || !token) return;
 
+    let cancelled = false;
     setLoading(true);
+    setUserSearch('');
     Promise.all([
       fetch(`/api/exhibitions/${activeExhibitionId}`, {
         headers: { 'Authorization': `Bearer ${token}` },
@@ -74,6 +71,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
         headers: { 'Authorization': `Bearer ${token}` },
       }).then(r => r.ok ? r.json() : []),
     ]).then(([exhibition, collabs, eligible]: [ExhibitionData | null, Collaborator[], { id: number; email: string; role: string }[]]) => {
+      if (cancelled) return;
       if (exhibition) {
         setTitle(exhibition.title);
         const from = exhibition.start_date ? new Date(exhibition.start_date) : undefined;
@@ -84,9 +82,10 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
       setCollaborators(collabs);
       setEligibleUsers(eligible);
     }).catch(() => {
-      toast.error('Fehler', { description: 'Daten konnten nicht geladen werden.' });
-    }).finally(() => setLoading(false));
-  }, [open, activeExhibitionId, token]);
+      if (!cancelled) toast.error('Fehler', { description: 'Daten konnten nicht geladen werden.' });
+    }).finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [activeExhibitionId, token]);
 
   const handleSaveGeneral = async () => {
     if (!activeExhibitionId || !token) return;
@@ -223,22 +222,29 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
     return labels[role] || role;
   };
 
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[560px] bg-zinc-950 border-zinc-800 text-zinc-100 max-h-[85vh] overflow-y-auto overflow-x-visible">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-display">Projekteinstellungen</DialogTitle>
-        </DialogHeader>
+  if (!activeExhibitionId) {
+    return (
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-dashed border-zinc-800 py-12 text-center text-sm text-zinc-400">
+        <FolderOpen className="h-8 w-8 text-zinc-600" />
+        Wähle oben links ein Projekt, um dessen Ausstellung zu bearbeiten.
+      </div>
+    );
+  }
 
+  return (
+      <div className="max-w-xl">
+        {activeProjectName && (
+          <p className="mb-6 text-xs text-zinc-400">
+            Projekt <span className="text-zinc-200">{activeProjectName}</span> — ein anderes wählst du oben links.
+          </p>
+        )}
         {loading ? (
-          <div className="flex items-center justify-center py-12">
-            <Loader2 className="h-6 w-6 animate-spin text-zinc-400" />
-          </div>
+          <LoadingState label="Ausstellung wird geladen …" className="items-start py-4" inline />
         ) : (
           <div className="space-y-6 py-2">
             {/* Section 1: Allgemein */}
             <section>
-              <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">Allgemein</h3>
+              <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">Name und Zeitraum</h3>
               <div className="space-y-4">
                 <div>
                   <Label htmlFor="exhibition-title" className="text-zinc-300 text-xs">Ausstellungsname</Label>
@@ -258,10 +264,10 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                 </div>
                 <Button
                   onClick={handleSaveGeneral}
-                  disabled={saving || !title.trim()}
-                  className="w-full bg-blue-600 hover:bg-blue-500 text-white"
+                  disabled={!title.trim()}
+                  loading={saving}
+                  className="bg-blue-600 hover:bg-blue-500 text-white"
                 >
-                  {saving ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
                   Speichern
                 </Button>
               </div>
@@ -299,7 +305,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                       disabled={uploadingPoster}
                       className="flex-1 border-zinc-700 text-zinc-300 hover:text-white hover:bg-zinc-800"
                     >
-                      {uploadingPoster ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : <Upload className="h-3.5 w-3.5 mr-2" />}
+                      {uploadingPoster ? <Spinner className="h-3.5 w-3.5 mr-2" /> : <Upload className="h-3.5 w-3.5 mr-2" />}
                       Ersetzen
                     </Button>
                     <Button
@@ -323,7 +329,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                   className={`w-full flex flex-col items-center justify-center gap-2 py-8 rounded-lg border-2 border-dashed transition-colors text-zinc-400 ${isDragging ? 'border-blue-500 bg-blue-950/20 text-blue-300' : 'border-zinc-700 hover:border-zinc-500 bg-zinc-900/50 hover:bg-zinc-900 hover:text-zinc-300'}`}
                 >
                   {uploadingPoster ? (
-                    <Loader2 className="h-8 w-8 animate-spin" />
+                    <Spinner className="h-8 w-8" />
                   ) : (
                     <Image className="h-8 w-8" />
                   )}
@@ -346,7 +352,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
 
             {/* Section 3: Kuratoren */}
             <section>
-              <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">Kuratoren</h3>
+              <h3 className="text-sm font-medium text-zinc-400 uppercase tracking-wider mb-3">Kurator:innen</h3>
 
               {/* Current collaborators */}
               {collaborators.length > 0 && (
@@ -402,7 +408,7 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
                             className="shrink-0 ml-2 flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300 hover:bg-blue-950/30 px-2 py-1 rounded transition-colors disabled:opacity-50"
                           >
                             {inviting === u.id
-                              ? <Loader2 className="h-3 w-3 animate-spin" />
+                              ? <Spinner className="h-3 w-3" />
                               : <UserPlus className="h-3 w-3" />}
                             Hinzufügen
                           </button>
@@ -418,7 +424,6 @@ export function ProjectSettingsDialog({ open, onOpenChange }: ProjectSettingsDia
             </section>
           </div>
         )}
-      </DialogContent>
-    </Dialog>
+      </div>
   );
 }

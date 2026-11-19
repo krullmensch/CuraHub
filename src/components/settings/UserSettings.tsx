@@ -1,15 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
-import { Trash2, Layers, ArrowLeft, KeyRound, UserPlus } from 'lucide-react';
-import { UserExhibitionsModal } from '../components/UserExhibitionsModal';
+import { useAuthStore } from '@/store/authStore';
+import { Trash2, Layers, KeyRound, UserPlus } from 'lucide-react';
+import { UserExhibitionsModal } from '@/components/UserExhibitionsModal';
 import { toast } from '@/hooks/use-toast';
-import { SystemCheckList } from '../components/setup/SystemCheckList';
-import type { SetupCheck } from '../lib/setup/setupApi';
-import { StartPasswordDialog } from '../components/users/StartPasswordDialog';
-import { LegalTextsEditor } from '../components/users/LegalTextsEditor';
-import { isLocalAccount } from '../lib/auth/localAccounts';
-import { LOCAL_USERNAME_RE } from '../lib/setup/validation';
+import { StartPasswordDialog } from '@/components/users/StartPasswordDialog';
+import { isLocalAccount } from '@/lib/auth/localAccounts';
+import { LOCAL_USERNAME_RE } from '@/lib/setup/validation';
+import { Spinner } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/skeleton';
 
 type AppRole = 'user' | 'curator' | 'prof' | 'admin';
 
@@ -36,8 +34,8 @@ const ROLE_LABELS: Record<AppRole, string> = {
   admin: 'Admin',
 };
 
-export const UsersPage = () => {
-  const navigate = useNavigate();
+/** Settings → Administration → Benutzer: every account, roles, local accounts, password resets. */
+export const UserSettings = () => {
   const token = useAuthStore((s) => s.token);
   const currentUser = useAuthStore((s) => s.user);
   const [users, setUsers] = useState<UserRow[]>([]);
@@ -45,21 +43,11 @@ export const UsersPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState<number | null>(null);
   const [modalUser, setModalUser] = useState<{ id: number; email: string } | null>(null);
-  const [system, setSystem] = useState<{ checks: SetupCheck[]; publicUrl: string | null; version: string } | null>(null);
   const [newUsername, setNewUsername] = useState('');
   const [newRole, setNewRole] = useState<AppRole>('curator');
   const [creating, setCreating] = useState(false);
   const [confirmResetId, setConfirmResetId] = useState<number | null>(null);
   const [startPassword, setStartPassword] = useState<{ username: string; password: string; created: boolean } | null>(null);
-
-  // Read-only system checks; the block stays hidden if they can't be loaded.
-  useEffect(() => {
-    let cancelled = false;
-    fetch('/admin/system', { headers: { Authorization: `Bearer ${token}` } })
-      .then(async (res) => { if (res.ok && !cancelled) setSystem(await res.json()); })
-      .catch(() => {});
-    return () => { cancelled = true; };
-  }, [token]);
 
   useEffect(() => {
     let cancelled = false;
@@ -160,49 +148,15 @@ export const UsersPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 bg-black/80 backdrop-blur-md border-b border-white/5">
-        <Link to="/" className="font-display text-xl font-light tracking-wide text-white">
-          Cura<span className="font-semibold">Hub</span>
-        </Link>
-        <button onClick={() => navigate(-1)} className="flex items-center gap-1.5 text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
-          <ArrowLeft className="w-3 h-3" />
-          Zurück
-        </button>
-      </nav>
-
-      <div className="pt-24 px-8 pb-16 max-w-5xl mx-auto">
-        <h1 className="font-display text-3xl font-light text-white mb-2">Benutzerverwaltung</h1>
-        {!loading && (
-          <p className="text-zinc-400 text-sm mb-10">{users.length} registrierte Benutzer</p>
-        )}
-
-        {system && (
-          <section className="border border-zinc-800 rounded-xl p-5 mb-8">
-            <div className="flex items-baseline justify-between gap-4 mb-4">
-              <h2 className="font-display text-lg font-light">System</h2>
-              <span className="text-xs text-zinc-400 text-right">
-                {system.publicUrl ?? 'keine öffentliche Adresse gesetzt'} · Version {system.version}
-              </span>
-            </div>
-            <SystemCheckList checks={system.checks} />
-          </section>
-        )}
-
-        {token && (
-          <section className="border border-zinc-800 rounded-xl p-5 mb-8">
-            <h2 className="font-display text-lg font-light mb-1">Rechtliche Angaben</h2>
-            <p className="text-xs text-zinc-400 mb-4">
-              Aus diesen Angaben erzeugt CuraHub Impressum und Datenschutzerklärung (unter /impressum und /datenschutz,
-              von jeder öffentlichen Seite verlinkt). Die Datenschutzerklärung beschreibt, was CuraHub verarbeitet; lass sie
-              von deiner bzw. deinem Datenschutzbeauftragten prüfen. Wer einen eigenen Text braucht, stellt auf „Eigener Text“ um.
-            </p>
-            <LegalTextsEditor token={token} />
-          </section>
+    <div>
+        {loading ? (
+          <Skeleton className="h-4 w-40 mb-6 bg-zinc-800" />
+        ) : !error && (
+          <p className="text-zinc-400 text-sm mb-6">{users.length} registrierte Benutzer</p>
         )}
 
         <section className="border border-zinc-800 rounded-xl p-5 mb-8">
-          <h2 className="font-display text-lg font-light mb-1">CuraHub-Konto anlegen</h2>
+          <h3 className="font-display text-lg font-light mb-1">CuraHub-Konto anlegen</h3>
           <p className="text-xs text-zinc-400 mb-4">
             Für Personen ohne HSBI-Konto oder die ihr HSBI-Passwort nicht hier eingeben möchten. Sie melden sich
             unter „CuraHub-Konto" an und legen beim ersten Mal ein eigenes Passwort fest.
@@ -237,14 +191,24 @@ export const UsersPage = () => {
               disabled={creating}
               className="flex items-center gap-1.5 text-xs text-zinc-100 border border-zinc-600 hover:border-zinc-400 bg-zinc-800 hover:bg-zinc-700 px-3 py-2 rounded transition-all disabled:opacity-40"
             >
-              <UserPlus className="w-3.5 h-3.5" />
+              {creating ? <Spinner className="w-3.5 h-3.5" /> : <UserPlus className="w-3.5 h-3.5" />}
               {creating ? 'Wird angelegt…' : 'Konto anlegen'}
             </button>
           </form>
         </section>
 
         {loading && (
-          <div className="text-zinc-400 text-sm">Wird geladen…</div>
+          <div className="border border-zinc-800 rounded-xl overflow-hidden" role="status" aria-label="Benutzer werden geladen">
+            <div className="h-11 border-b border-zinc-800 bg-zinc-900/50" />
+            {Array.from({ length: 5 }, (_, i) => (
+              <div key={i} className="flex items-center gap-6 px-5 py-4 border-b border-zinc-800/50 last:border-b-0">
+                <Skeleton className="h-4 w-40 bg-zinc-800" />
+                <Skeleton className="h-6 w-20 bg-zinc-800" />
+                <Skeleton className="h-4 w-28 bg-zinc-800" />
+                <Skeleton className="h-4 w-10 bg-zinc-800" />
+              </div>
+            ))}
+          </div>
         )}
 
         {error && (
@@ -252,7 +216,7 @@ export const UsersPage = () => {
         )}
 
         {!loading && !error && (
-          <div className="border border-zinc-800 rounded-xl overflow-hidden">
+          <div className="border border-zinc-800 rounded-xl overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-900/50">
@@ -295,17 +259,17 @@ export const UsersPage = () => {
                           </select>
                         )}
                       </td>
-                      <td className="px-5 py-4 text-zinc-400">
+                      <td className="px-5 py-4 text-zinc-400 whitespace-nowrap">
                         {new Date(u.createdAt).toLocaleDateString('de-DE', {
                           day: 'numeric', month: 'long', year: 'numeric',
                         })}
                       </td>
                       <td className="px-5 py-4 text-zinc-400">{u._count.projects}</td>
                       <td className="px-5 py-4">
-                        <div className="flex items-center gap-2 justify-end">
+                        <div className="flex flex-wrap items-center gap-2 justify-end">
                           <button
                             onClick={() => { setModalUser({ id: u.id, email: u.email }); setConfirmDeleteId(null); }}
-                            className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
+                            className="flex items-center gap-1.5 whitespace-nowrap text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
                           >
                             <Layers className="w-3 h-3" />
                             Ausstellungen
@@ -329,7 +293,7 @@ export const UsersPage = () => {
                             ) : (
                               <button
                                 onClick={() => { setConfirmResetId(u.id); setConfirmDeleteId(null); }}
-                                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
+                                className="flex items-center gap-1.5 whitespace-nowrap text-xs text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
                               >
                                 <KeyRound className="w-3 h-3" />
                                 Passwort zurücksetzen
@@ -355,7 +319,7 @@ export const UsersPage = () => {
                             ) : (
                               <button
                                 onClick={() => setConfirmDeleteId(u.id)}
-                                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded transition-all"
+                                className="flex items-center gap-1.5 whitespace-nowrap text-xs text-zinc-400 hover:text-red-400 border border-zinc-700 hover:border-red-800 px-3 py-1.5 rounded transition-all"
                               >
                                 <Trash2 className="w-3 h-3" />
                                 Löschen
@@ -371,7 +335,6 @@ export const UsersPage = () => {
             </table>
           </div>
         )}
-      </div>
 
       <StartPasswordDialog account={startPassword} onClose={() => setStartPassword(null)} />
 

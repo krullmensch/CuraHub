@@ -7,6 +7,9 @@ import { ArtworkPlacement } from '../components/ArtworkPlacement';
 import { FrameloopController } from '../components/FrameloopController';
 import { MainCanvasRegistrar } from '../components/MainCanvasRegistrar';
 import { SceneLoadingIndicator } from '../components/SceneLoadingIndicator';
+import { EditorLoadingOverlay } from '../components/EditorLoadingOverlay';
+import { editorLoadingLabel } from '../lib/loading/editorLoading';
+import { SceneReadySignal } from '../components/SceneReadySignal';
 import { SATELLIT_MODEL_URL } from '../lib/modelUrls';
 import { CANVAS_SHADOWS, createRendererFactory } from '../lib/rendererBackend';
 import { RenderQualityControl } from '../components/RenderQualityControl';
@@ -262,6 +265,16 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
     [preparedRenderer, antialias],
   );
 
+  // Loading overlay: renderer, the version's lists, first person (Rapier's chunk + WASM).
+  const versionContentStatus = useEditorStore((state) => state.versionContentStatus);
+  const [physicsReady, setPhysicsReady] = useState(false);
+  if (viewMode !== 'firstPerson' && physicsReady) setPhysicsReady(false);
+  const loadingLabel = editorLoadingLabel({
+    rendererReady: glConfig !== null,
+    versionContentStatus,
+    firstPersonPending: viewMode === 'firstPerson' && !physicsReady,
+  });
+
   // Captured placement awaiting the user's Monitor/Beamer choice (video drops only)
   const [pendingVideoDrop, setPendingVideoDrop] = useState<PendingVideoDrop | null>(null);
 
@@ -499,6 +512,8 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (useEditorStore.getState().mobilePlanner) return;
+      // Hidden behind the asset library or the settings: nothing may change (or undo) the scene unseen.
+      if (!isVisible) return;
       // Don't trigger shortcuts when typing in inputs
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       // Delete/Backspace after a click on a panel button or control must not remove the selection
@@ -724,11 +739,13 @@ export const EditorPage = ({ isVisible = true }: EditorPageProps) => {
           {viewMode === 'firstPerson' && (
             <Suspense fallback={null}>
               <PhysicsWorld mode="editor" />
+              <SceneReadySignal onReady={() => setPhysicsReady(true)} />
             </Suspense>
           )}
         </Canvas>
       )}
       <SceneLoadingIndicator />
+      {isVisible && <EditorLoadingOverlay label={loadingLabel} />}
       {/* Outline of the selected artwork (projected by SelectionOutlineTracker) */}
       <SelectionOutlineSvg />
       {/* Other people's selections (live collaboration) */}

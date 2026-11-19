@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { SiteHeader } from '@/components/SiteHeader';
+import { Spinner } from '@/components/ui/loading';
 
 export default function KeinZugriffPage() {
   const refreshAuth = useAuthStore((state) => state.refreshAuth);
-  const logout = useAuthStore((state) => state.logout);
   const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const user = useAuthStore((state) => state.user);
   const navigate = useNavigate();
   const [checking, setChecking] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
@@ -26,32 +26,7 @@ export default function KeinZugriffPage() {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
-      {/* Nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-8 py-5 bg-zinc-950/90 backdrop-blur-md border-b border-white/5">
-        <Link to="/" className="font-display text-xl font-light tracking-wide text-white">
-          Cura<span className="font-semibold">Hub</span>
-        </Link>
-        {isAuthenticated ? (
-          <div className="flex items-center gap-4">
-            <span className="text-xs text-zinc-400 tracking-wide">
-              Eingeloggt als <span className="text-zinc-300">{user?.email}</span>
-            </span>
-            <button
-              onClick={() => { logout(); navigate('/login'); }}
-              className="border border-zinc-700 hover:border-zinc-500 text-zinc-400 hover:text-white px-4 py-1.5 rounded-full text-xs transition-all"
-            >
-              Logout
-            </button>
-          </div>
-        ) : (
-          <Link
-            to="/login"
-            className="border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white px-4 py-1.5 rounded-full text-xs font-medium transition-all"
-          >
-            Login
-          </Link>
-        )}
-      </nav>
+      <SiteHeader />
 
       {/* Content */}
       <div className="flex-1 flex flex-col items-center justify-center gap-6 text-center px-4 pt-20">
@@ -94,7 +69,7 @@ export default function KeinZugriffPage() {
               }`}
             >
               {checking
-                ? 'Wird geprüft…'
+                ? <span className="inline-flex items-center gap-2"><Spinner className="h-3.5 w-3.5" /> Wird geprüft…</span>
                 : unlocked
                 ? 'Freigegeben ✓'
                 : denied

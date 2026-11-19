@@ -7,6 +7,8 @@ import { assetSearch, arSourceFromAsset, type PlannerAsset } from '@/lib/mobileP
 import { arArtworkInstance } from '@/lib/mobilePlanner/arArtwork';
 import { assetSizeCm } from '@/lib/mobilePlanner/arSize';
 import { FrameSheet } from './FrameSheet';
+import { LoadingOverlay } from '@/components/ui/loading';
+import { Skeleton } from '@/components/ui/skeleton';
 
 const ArWallSheet = lazy(() => import('./ArWallSheet'));
 
@@ -25,6 +27,8 @@ export function AssetsTab() {
   const projectId = useEditorStore((s) => s.activeProjectId);
   const token = useAuthStore((s) => s.token);
   const [assets, setAssets] = useState<PlannerAsset[]>([]);
+  // The project the list was loaded (or failed) for — a skeleton until then.
+  const [loadedFor, setLoadedFor] = useState<number | null>(null);
   const [query, setQuery] = useState('');
   const [sheetFor, setSheetFor] = useState<PlannerAsset | null>(null);
   const [arTarget, setArTarget] = useState<ArTarget | null>(null);
@@ -35,7 +39,8 @@ export function AssetsTab() {
     fetch(`/api/assets?projectId=${projectId}`, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(`HTTP ${res.status}`))))
       .then((data: PlannerAsset[]) => { if (!cancelled) setAssets(data); })
-      .catch(() => toast.error('Fehler', { description: 'Assets konnten nicht geladen werden.' }));
+      .catch(() => toast.error('Fehler', { description: 'Assets konnten nicht geladen werden.' }))
+      .finally(() => { if (!cancelled) setLoadedFor(projectId); });
     return () => { cancelled = true; };
   }, [projectId, token]);
 
@@ -54,6 +59,23 @@ export function AssetsTab() {
         />
       </label>
 
+      {projectId != null && loadedFor !== projectId ? (
+        <div className="grid grid-cols-2 gap-3" role="status" aria-label="Assets werden geladen">
+          {Array.from({ length: 6 }, (_, i) => (
+            <div key={i} className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900">
+              <Skeleton className="aspect-square w-full rounded-none bg-zinc-800" />
+              <div className="space-y-2 p-2">
+                <Skeleton className="h-3 w-3/4 bg-zinc-800" />
+                <Skeleton className="h-8 w-full bg-zinc-800" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : shown.length === 0 ? (
+        <p className="py-10 text-center text-sm text-zinc-400">
+          {query ? 'Keine passenden Assets.' : 'Noch keine Bilder oder Videos im Projekt.'}
+        </p>
+      ) : (
       <div className="grid grid-cols-2 gap-3">
         {shown.map((asset) => {
           return (
@@ -74,6 +96,7 @@ export function AssetsTab() {
           );
         })}
       </div>
+      )}
 
       {sheetFor && (
         <FrameSheet
@@ -93,7 +116,7 @@ export function AssetsTab() {
       )}
 
       {arTarget && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingOverlay label="AR wird geöffnet …" className="z-[1200]" />}>
           <ArWallSheet {...arTarget} onClose={closeAr} />
         </Suspense>
       )}

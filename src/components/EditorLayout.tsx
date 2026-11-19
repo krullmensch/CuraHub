@@ -4,8 +4,7 @@ import { Outlet, useNavigate, Link, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { UploadDropzone } from './UploadDropzone';
 import { useEditorStore } from '../store/editorStore';
-import { Button } from '@/components/ui/button';
-import { LogOut, BookOpen, ExternalLink, Globe, Settings, KeyRound } from 'lucide-react';
+import { BookOpen, ExternalLink, Globe, Settings } from 'lucide-react';
 import { AssetSidebar } from './AssetSidebar';
 import { ProjectSelector } from './ProjectSelector';
 import { VersionPanel } from './VersionPanel';
@@ -14,7 +13,7 @@ import { PublishedVersionDialog } from './versions/PublishedVersionDialog';
 
 import { EditorPage } from '../pages/EditorPage';
 import { PropertiesPanel } from './PropertiesPanel';
-import { LivePresenceBar, SelfAvatar } from './live/PresenceAvatars';
+import { LivePresenceBar } from './live/PresenceAvatars';
 import { startEditorPresence } from '../lib/live/liveConnection';
 import { startVersionStatus } from '../lib/versions/versionStatus';
 import { TourAutoStart } from './tour/TourAutoStart';
@@ -22,13 +21,12 @@ import { TourOverlay } from './tour/TourOverlay';
 import { MobilePlannerLayout } from './mobile/MobilePlannerLayout';
 import { useMobilePlanner } from '../lib/mobilePlanner/mode';
 import { isTouchViewer, readTouchEnv } from '../lib/touch/touchMode';
-import { isLocalAccount } from '../lib/auth/localAccounts';
-import { ChangePasswordDialog } from './auth/ChangePasswordDialog';
+import { AccountMenu } from './auth/AccountMenu';
+import { HEADER_BUTTON, HEADER_BUTTON_ACTIVE } from './headerStyles';
+import { isSettingsPath, settingsPath } from '../lib/settings/sections';
+import { LoadingOverlay, LoadingState, Spinner } from '@/components/ui/loading';
 
 const WikiModal = lazy(() => import('./WikiModal').then((m) => ({ default: m.WikiModal })));
-const ProjectSettingsDialog = lazy(() =>
-  import('./ProjectSettingsDialog').then((m) => ({ default: m.ProjectSettingsDialog }))
-);
 const MetadataDialog = lazy(() =>
   import('./MetadataDialog').then((m) => ({ default: m.MetadataDialog }))
 );
@@ -36,7 +34,7 @@ const MetadataDialog = lazy(() =>
 const AUTH_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 
 export const EditorLayout = () => {
-  const { user, logout } = useAuthStore();
+  const logout = useAuthStore((state) => state.logout);
   const refreshAuth = useAuthStore((state) => state.refreshAuth);
   const startPlacement = useEditorStore((state) => state.startPlacement);
   const viewMode = useEditorStore((state) => state.plannerViewMode);
@@ -56,8 +54,6 @@ export const EditorLayout = () => {
   const toggleRight = useEditorStore((state) => state.toggleRightSidebar);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [wikiOpen, setWikiOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [passwordOpen, setPasswordOpen] = useState(false);
   const isProf = useAuthStore((s) => s.isProf);
 
   // Refresh auth (role, token) on mount and when the tab regains focus — on focus at most
@@ -157,11 +153,14 @@ export const EditorLayout = () => {
   const isPlanningMode = viewMode !== 'firstPerson';
   const isActive = (path: string) => location.pathname.includes(path);
   const isAssetRoute = location.pathname.includes('/assets');
+  const isSettingsRoute = isSettingsPath(location.pathname);
+  // Pages laid over the (hidden, still mounted) editor: the scene survives the round trip.
+  const isPageRoute = isAssetRoute || isSettingsRoute;
   // Phones: the mobile planning view instead of the full editor (asset library stays as it is).
   const { mobile, setOverride } = useMobilePlanner();
   const [touchDevice] = useState(() => isTouchViewer(readTouchEnv()));
 
-  if (mobile && !isAssetRoute) {
+  if (mobile && !isPageRoute) {
     return (
       <>
         <MobilePlannerLayout onFullEditor={() => setOverride('full')} onLogout={handleLogout} />
@@ -175,7 +174,7 @@ export const EditorLayout = () => {
     <div className="h-full w-full flex flex-col bg-zinc-950 overflow-hidden">
       <header className="relative z-30 border-b border-zinc-800 p-3 bg-zinc-900 flex justify-between items-center">
         <div className="flex items-center gap-4">
-            <h1 className="text-lg font-bold tracking-tight text-white">CuraHub <span className="text-blue-500">Dashboard</span></h1>
+            <h1 className="shrink-0 whitespace-nowrap text-lg font-bold tracking-tight text-white">CuraHub <span className="text-blue-500">Dashboard</span></h1>
             <ProjectSelector />
             <PublishedVersionBadge />
             <nav className="flex gap-4 ml-2 text-sm font-medium">
@@ -207,15 +206,6 @@ export const EditorLayout = () => {
                 >
                     Ausstellungen
                 </Link>
-                {user?.role === 'admin' && (
-                    <Link
-                        to="/users"
-                        data-tour="nav-users"
-                        className="transition-colors text-gray-400 hover:text-white"
-                    >
-                        Benutzerverwaltung
-                    </Link>
-                )}
             </nav>
         </div>
         
@@ -231,16 +221,17 @@ export const EditorLayout = () => {
               </button>
             )}
 
-            {/* Project Settings Button — only for Prof/Admin */}
-            {isProf && activeExhibitionId && (
-              <button
-                data-tour="project-settings"
-                onClick={() => setSettingsOpen(true)}
-                className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
+            {/* Settings: the exhibition (prof+) and, for admins, the administration */}
+            {isProf && (
+              <Link
+                to={settingsPath()}
+                data-tour="settings"
+                aria-current={isSettingsRoute ? 'page' : undefined}
+                className={isSettingsRoute ? HEADER_BUTTON_ACTIVE : HEADER_BUTTON}
               >
                 <Settings className="h-3.5 w-3.5" />
-                Projekteinstellungen
-              </button>
+                Einstellungen
+              </Link>
             )}
 
             {/* Viewer Button */}
@@ -248,7 +239,7 @@ export const EditorLayout = () => {
               <div className="relative" ref={viewerPopoverRef} data-tour="viewer-button">
                 <button
                   onClick={() => setViewerPopoverOpen((o) => !o)}
-                  className="flex items-center gap-1.5 text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
+                  className={HEADER_BUTTON}
                 >
                   <Globe className="h-3.5 w-3.5" />
                   Viewer testen
@@ -273,7 +264,9 @@ export const EditorLayout = () => {
                     </div>
 
                     {publishedVersionExists === null && (
-                      <p className="text-xs text-zinc-400">Wird geprüft…</p>
+                      <p className="flex items-center gap-2 text-xs text-zinc-400" role="status">
+                        <Spinner className="h-3.5 w-3.5" /> Wird geprüft…
+                      </p>
                     )}
                     {publishedVersionExists === false && (
                       <>
@@ -285,7 +278,9 @@ export const EditorLayout = () => {
                           disabled={publishing}
                           className="w-full text-xs bg-zinc-800 hover:bg-zinc-700 border border-zinc-600 hover:border-zinc-400 text-zinc-200 px-3 py-2 rounded transition-all disabled:opacity-40"
                         >
-                          {publishing ? 'Wird veröffentlicht…' : 'Aktuellen Stand veröffentlichen'}
+                          {publishing ? (
+                            <span className="inline-flex items-center gap-2"><Spinner className="h-3.5 w-3.5" /> Wird veröffentlicht…</span>
+                          ) : 'Aktuellen Stand veröffentlichen'}
                         </button>
                       </>
                     )}
@@ -299,31 +294,8 @@ export const EditorLayout = () => {
               </div>
             )}
 
-            {user?.email && (
-                <span className="hidden sm:flex items-center gap-2 text-xs text-gray-500">
-                    <SelfAvatar />
-                    {user.email.split('@')[0]}
-                </span>
-            )}
-            {user?.email && isLocalAccount(user.email) && (
-                <button
-                    onClick={() => setPasswordOpen(true)}
-                    title="Passwort ändern"
-                    aria-label="Passwort ändern"
-                    className="text-gray-400 hover:text-white transition-colors"
-                >
-                    <KeyRound className="h-4 w-4" />
-                </button>
-            )}
-            <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className="text-gray-400 hover:text-white hover:bg-zinc-800"
-            >
-                <LogOut className="h-4 w-4 mr-2" />
-                Logout
-            </Button>
+            {/* Own avatar: account menu („Passwort ändern" for CuraHub accounts) */}
+            <AccountMenu onLogout={handleLogout} />
         </div>
       </header>
       
@@ -336,16 +308,19 @@ export const EditorLayout = () => {
          >
             {/* Persistent Editor Background */}
             <div className="absolute inset-0 z-0">
-                 <EditorPage isVisible={!isAssetRoute} />
+                 <EditorPage isVisible={!isPageRoute} />
             </div>
 
-            {/* Content Overlay (Asset Library or empty for Edit route) */}
-            <div className={`absolute inset-0 z-10 ${!isAssetRoute ? 'pointer-events-none' : ''}`}>
-                 <Outlet />
+            {/* Content Overlay (Asset Library, Settings, or empty for Edit route) */}
+            <div className={`absolute inset-0 z-10 ${!isPageRoute ? 'pointer-events-none' : ''}`}>
+                 {/* Own boundary: a lazy page must not suspend the whole layout (and the scene). */}
+                 <Suspense fallback={<div className="flex h-full items-center justify-center bg-zinc-950"><LoadingState /></div>}>
+                   <Outlet />
+                 </Suspense>
             </div>
          
             {/* Show Sidebars specifically for the Editor View */}
-            {isPlanningMode && !isAssetRoute && (
+            {isPlanningMode && !isPageRoute && (
                 <>
                     <AssetSidebar isOpen={leftOpen} onToggle={() => setLeftOpen(!leftOpen)} />
                     <PropertiesPanel isOpen={rightOpen} onToggle={toggleRight} />
@@ -360,7 +335,7 @@ export const EditorLayout = () => {
          </UploadDropzone>
 
          {uploadedAsset && isPlanningMode && (
-             <Suspense fallback={null}>
+             <Suspense fallback={<LoadingOverlay />}>
                <MetadataDialog
                   asset={uploadedAsset}
                   onSave={onMetadataSaved}
@@ -380,21 +355,12 @@ export const EditorLayout = () => {
 
       {/* Wiki Modal */}
       {wikiOpen && (
-        <Suspense fallback={null}>
+        <Suspense fallback={<LoadingOverlay label="Wiki wird geladen …" />}>
           <WikiModal isOpen={wikiOpen} onClose={() => setWikiOpen(false)} />
         </Suspense>
       )}
 
-      {/* Project Settings Dialog */}
-      {settingsOpen && (
-        <Suspense fallback={null}>
-          <ProjectSettingsDialog open={settingsOpen} onOpenChange={setSettingsOpen} />
-        </Suspense>
-      )}
-
-      <ChangePasswordDialog open={passwordOpen} onOpenChange={setPasswordOpen} />
-
-      <TourAutoStart layoutDialogOpen={wikiOpen || settingsOpen || passwordOpen} />
+      <TourAutoStart layoutDialogOpen={wikiOpen} />
       <TourOverlay />
     </div>
   );

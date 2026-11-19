@@ -12,7 +12,7 @@ describe('stepsForRole', () => {
   });
   it('adds settings and user management for admins', () => {
     expect(ids('admin')).toHaveLength(15);
-    expect(ids('admin').slice(12)).toEqual(['settings', 'users', 'wiki']);
+    expect(ids('admin').slice(12)).toEqual(['settings', 'administration', 'wiki']);
   });
   it('spotlights each tool bar group on its own', () => {
     const targets = TOUR_STEPS.map((s) => s.target);

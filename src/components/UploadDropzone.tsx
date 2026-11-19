@@ -2,6 +2,7 @@ import { useState, useRef } from 'react';
 import { useAuthStore } from '../store/authStore';
 import { Button } from "@/components/ui/button";
 import { CloudUpload } from "lucide-react";
+import { Spinner } from "@/components/ui/loading";
 import { preprocessImageForUpload } from '@/lib/imageUtils';
 import {
   SUPPORTED_FORMATS_HINT,
@@ -236,6 +237,14 @@ export const UploadDropzone = ({
         </div>
       )}
 
+      {/* Direct uploads (no preview modal) around other content: nothing else shows they run. */}
+      {children && processing && (
+        <div className="pointer-events-none absolute bottom-6 right-6 z-50 flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/95 px-4 py-2 text-sm text-zinc-200 shadow-xl" role="status" aria-live="polite">
+          <Spinner className="h-4 w-4 text-zinc-400" />
+          Optimierung & Upload läuft…
+        </div>
+      )}
+
       {children ? children : (
           <div
               onClick={handleZoneClick}
@@ -249,7 +258,7 @@ export const UploadDropzone = ({
                   <p className="text-xs text-gray-500">
                       Bilder, Videos, 3D-Modelle (.glb) und Gaussian Splats (.ply, .sog, .spz) — auch ganze Ordner
                   </p>
-                  <Button variant="outline" size="sm" className="mt-4 pointer-events-none" disabled={processing}>
+                  <Button variant="outline" size="sm" className="mt-4 pointer-events-none" loading={processing}>
                       {processing ? 'Verarbeitung…' : 'Dateien auswählen'}
                   </Button>
               </div>

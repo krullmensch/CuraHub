@@ -2,7 +2,7 @@ import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { AuthBackdrop } from '@/components/AuthBackdrop';
-import { AUTH_CARD_STYLE, AUTH_DESCRIPTION_STYLE, AUTH_TITLE_STYLE } from '@/components/authStyles';
+import { AUTH_CARD_CLASS, AUTH_DESCRIPTION_CLASS, AUTH_HINT_CLASS, AUTH_TITLE_CLASS } from '@/components/authStyles';
 import {
   ChecksStep, CodeStep, HsbiAdminStep, LegalStep, LocalAdminStep, PrimaryButton, SummaryStep, UrlStep,
 } from '@/components/setup/SetupSteps';
@@ -63,10 +63,10 @@ export function SetupPage() {
 
   return (
     <AuthBackdrop wide>
-      <Card className="w-full border" style={AUTH_CARD_STYLE}>
+      <Card className={AUTH_CARD_CLASS}>
         <CardHeader className="pb-4">
-          <CardTitle className="text-xl font-light" style={AUTH_TITLE_STYLE}>{title}</CardTitle>
-          <CardDescription style={AUTH_DESCRIPTION_STYLE}>{description}</CardDescription>
+          <CardTitle className={AUTH_TITLE_CLASS}>{title}</CardTitle>
+          <CardDescription className={AUTH_DESCRIPTION_CLASS}>{description}</CardDescription>
         </CardHeader>
         <CardContent>
           {step === 'code' && (
@@ -138,7 +138,7 @@ export function SetupPage() {
           )}
           {step === 'done' && (
             <div className="grid gap-4">
-              <p className="text-sm text-white/50">
+              <p className={`${AUTH_HINT_CLASS} text-sm`}>
                 Die Einrichtung ist abgeschlossen und gesperrt. Melde dich jetzt mit deinem HSBI-Konto oder über „Notfall-Login" an.
               </p>
               <PrimaryButton type="button" onClick={() => navigate('/login', { replace: true })}>Zum Login</PrimaryButton>

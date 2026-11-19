@@ -21,9 +21,14 @@ export default {
   				'0%':   { transform: 'translateX(0%)' },
   				'100%': { transform: 'translateX(-50%)' },
   			},
+  			'progress-indeterminate': {
+  				'0%':   { transform: 'translateX(-100%)' },
+  				'100%': { transform: 'translateX(250%)' },
+  			},
   		},
   		animation: {
   			marquee: 'marquee 8s linear infinite',
+  			'progress-indeterminate': 'progress-indeterminate 1.4s ease-in-out infinite',
   		},
   		colors: {
   			background: 'hsl(var(--background))',

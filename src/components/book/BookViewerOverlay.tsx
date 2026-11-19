@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import * as DialogPrimitive from '@radix-ui/react-dialog';
@@ -10,6 +10,7 @@ import { closeBook } from '@/lib/book/viewerActions';
 import { bookPdfUrl } from '@/lib/book/api';
 import { flipPageSize } from '@/lib/book/flipPages';
 import BookFlipbook from './BookFlipbook';
+import { LoadingState } from '@/components/ui/loading';
 
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -74,7 +75,7 @@ export default function BookViewerOverlay({ book }: { book: OpenBook }) {
           {failed ? (
             <p className="m-auto text-sm">Buch konnte nicht geladen werden</p>
           ) : !loaded ? (
-            <Loader2 className="m-auto h-8 w-8 animate-spin text-[#2c2c2c]/60" />
+            <LoadingState label="Buch wird geladen …" className="m-auto text-[#2c2c2c]/70" spinnerClassName="h-8 w-8 text-[#2c2c2c]/60" />
           ) : (
             <div className="min-h-0 flex-1">
               <BookFlipbook doc={loaded.doc} pageSize={loaded.pageSize} />

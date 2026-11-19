@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { LoadingState } from '@/components/ui/loading';
 import * as Dialog from '@radix-ui/react-dialog';
 import { useAuthStore } from '../store/authStore';
 import { X, Trash2, UserMinus } from 'lucide-react';
@@ -93,7 +94,7 @@ export const UserExhibitionsModal = ({ userId, userEmail, onClose }: Props) => {
             </Dialog.Close>
           </div>
 
-          {loading && <p className="text-zinc-400 text-sm">Wird geladen…</p>}
+          {loading && <LoadingState label="Ausstellungen werden geladen …" />}
           {error && <p className="text-red-400 text-sm">{error}</p>}
 
           {!loading && !error && (

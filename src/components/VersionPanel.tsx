@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, lazy, Suspense } from 'react';
 import { GitBranch } from 'lucide-react';
+import { LoadingOverlay } from '@/components/ui/loading';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import type { Version } from './version-graph/buildVersionGraph';
@@ -115,7 +116,7 @@ export const VersionPanel = ({
       {toggleButton}
 
       {hasOpenedOnce && (
-        <Suspense fallback={null}>
+        <Suspense fallback={isOpen ? <LoadingOverlay label="Versionen werden geladen …" /> : null}>
           <VersionPanelContent
             isOpen={isOpen}
             onToggle={onToggle}

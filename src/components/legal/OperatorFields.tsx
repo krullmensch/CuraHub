@@ -1,5 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react';
-import { AUTH_INPUT_CLASS, AUTH_INPUT_STYLE, AUTH_LABEL_CLASS, AUTH_LABEL_STYLE } from '@/components/authStyles';
+import { AUTH_INPUT_CLASS, AUTH_LABEL_CLASS } from '@/components/authStyles';
 import { cn } from '@/lib/utils';
 import type { LegalOperator } from '@/lib/legal/operator';
 
@@ -8,11 +8,9 @@ type Appearance = 'setup' | 'admin';
 const LOOK: Record<Appearance, { input: string; inputStyle?: CSSProperties; label: string; labelStyle?: CSSProperties; hint: string; legend: string }> = {
   setup: {
     input: cn('flex w-full rounded-md border px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-1', AUTH_INPUT_CLASS),
-    inputStyle: AUTH_INPUT_STYLE,
     label: AUTH_LABEL_CLASS,
-    labelStyle: AUTH_LABEL_STYLE,
-    hint: 'text-[11px] text-white/40',
-    legend: 'text-xs font-medium text-white/70',
+    hint: 'text-[11px] text-zinc-500',
+    legend: 'text-xs font-medium text-zinc-200',
   },
   admin: {
     input: 'w-full bg-zinc-900 border border-zinc-700 text-zinc-100 text-sm rounded px-3 py-1.5 focus:outline-none focus:border-zinc-500',
@@ -64,7 +62,7 @@ export function OperatorFields({ value, onChange, appearance }: OperatorFieldsPr
         <legend className={cn(look.legend, 'mb-2')}>Betreiber</legend>
         <div className="flex flex-wrap gap-x-5 gap-y-2 text-sm" role="radiogroup" aria-label="Art des Betreibers">
           {([['public', 'Hochschule oder andere öffentliche Stelle'], ['private', 'Privatperson, Verein oder Unternehmen']] as const).map(([kind, label]) => (
-            <label key={kind} className={cn('flex items-center gap-2 cursor-pointer', appearance === 'setup' ? 'text-white/70' : 'text-zinc-300')}>
+            <label key={kind} className={cn('flex items-center gap-2 cursor-pointer', 'text-zinc-300')}>
               <input type="radio" name={`operator-kind-${appearance}`} checked={value.kind === kind} onChange={() => set('kind', kind)} />
               {label}
             </label>

@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { X } from 'lucide-react';
 import { Grid } from 'ldrs/react';
 import 'ldrs/react/Grid.css';
+import { ProgressBar } from '@/components/ui/loading';
+import { progressPercent } from '@/lib/loading/progress';
 import { useEditorStore } from '@/store/editorStore';
 import type { ModelViewerElement } from '@/types/model-viewer';
 
@@ -93,9 +95,16 @@ export default function ArSceneSheet({ glbUrl, title, onClose }: ArSceneSheetPro
           />
         )}
         {!loaded && !failed && (
-          <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-3">
+          <div role="status" aria-live="polite" className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center gap-4 px-8">
             <Grid size="48" speed="1.5" color="white" />
-            <span className="text-sm text-zinc-300">{Math.round(progress * 100)} %</span>
+            <span className="text-sm text-zinc-200">
+              {viewerReady ? 'AR-Modell wird geladen …' : 'AR-Ansicht wird vorbereitet …'}
+            </span>
+            {/* model-viewer reports 0 until the download starts: indeterminate until then. */}
+            <ProgressBar value={viewerReady && progress > 0 ? progress : null} className="max-w-xs" label="AR-Modell wird geladen" />
+            {viewerReady && progress > 0 && (
+              <span className="text-xs tabular-nums text-zinc-400">{progressPercent(progress)} %</span>
+            )}
           </div>
         )}
       </div>

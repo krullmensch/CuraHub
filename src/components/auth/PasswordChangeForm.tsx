@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  AUTH_BUTTON_STYLE, AUTH_ERROR_STYLE, AUTH_INPUT_CLASS, AUTH_INPUT_STYLE, AUTH_LABEL_CLASS, AUTH_LABEL_STYLE,
+  AUTH_BUTTON_CLASS, AUTH_ERROR_CLASS, AUTH_INPUT_CLASS, AUTH_LABEL_CLASS,
 } from '@/components/authStyles';
 import { changePassword, newPasswordError } from '@/lib/auth/localAccounts';
 import { MIN_PASSWORD_LENGTH } from '@/lib/setup/validation';
@@ -28,10 +28,8 @@ export function PasswordChangeForm({ token, username, knownCurrent, variant, sub
   const [saving, setSaving] = useState(false);
 
   const auth = variant === 'auth';
-  const inputProps = auth ? { style: AUTH_INPUT_STYLE, className: AUTH_INPUT_CLASS } : {};
-  const labelProps = auth
-    ? { className: AUTH_LABEL_CLASS, style: AUTH_LABEL_STYLE }
-    : { className: 'text-xs font-medium text-zinc-400' };
+  const inputProps = auth ? { className: AUTH_INPUT_CLASS } : {};
+  const labelProps = { className: auth ? AUTH_LABEL_CLASS : 'text-xs font-medium text-zinc-400' };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,8 +50,7 @@ export function PasswordChangeForm({ token, username, knownCurrent, variant, sub
     <form onSubmit={handleSubmit} className="grid gap-4">
       {error && (
         <div
-          className={auth ? 'text-sm font-medium rounded-md px-3 py-2' : 'text-sm rounded-md px-3 py-2 bg-red-950/40 border border-red-900 text-red-300'}
-          style={auth ? AUTH_ERROR_STYLE : undefined}
+          className={auth ? AUTH_ERROR_CLASS : 'text-sm rounded-md px-3 py-2 bg-red-950/40 border border-red-900 text-red-300'}
         >
           {error}
         </div>
@@ -78,7 +75,7 @@ export function PasswordChangeForm({ token, username, knownCurrent, variant, sub
         <Input id="pw-repeat" type="password" autoComplete="new-password" required
           value={repeat} onChange={(e) => setRepeat(e.target.value)} {...inputProps} />
       </div>
-      <Button type="submit" disabled={saving} className="w-full mt-1 font-medium" style={auth ? AUTH_BUTTON_STYLE : undefined}>
+      <Button type="submit" loading={saving} className={auth ? `w-full mt-1 font-medium ${AUTH_BUTTON_CLASS}` : 'w-full mt-1 font-medium'}>
         {saving ? 'Wird gespeichert…' : submitLabel}
       </Button>
     </form>

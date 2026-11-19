@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Spinner } from '@/components/ui/loading';
 import { useEditorStore } from '../store/editorStore';
 import { useAuthStore } from '../store/authStore';
 import { Save, X } from 'lucide-react';
@@ -114,7 +115,7 @@ export const SaveVersionDialog = ({ onSave, onCancel, branchName = 'main' }: Sav
             disabled={loading || !comment.trim()}
             className="px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed rounded-lg text-sm text-white font-medium transition-colors"
           >
-            {loading ? 'Saving...' : 'Save Version'}
+            {loading ? <span className="inline-flex items-center gap-2"><Spinner className="h-4 w-4" /> Speichert…</span> : 'Save Version'}
           </button>
         </div>
       </div>

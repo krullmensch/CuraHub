@@ -105,8 +105,11 @@ export default function ArWallSheet({ instance, title, sizeLabel, onClose }: ArW
       <div className="relative flex-1">
         {!url && <ArtworkArBuilder instance={instance} withUsdz={ios} onDone={onDone} onError={onError} />}
         {(!url || !viewerReady) && (
-          <div className="absolute inset-0 flex items-center justify-center">
+          <div role="status" aria-live="polite" className="absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center">
             <Grid size="48" speed="1.5" color="white" />
+            <span className="text-sm text-zinc-200">
+              {!url ? (ios ? 'AR-Modell wird erstellt (GLB + USDZ) …' : 'AR-Modell wird erstellt …') : 'AR-Ansicht wird vorbereitet …'}
+            </span>
           </div>
         )}
         {url && viewerReady && (

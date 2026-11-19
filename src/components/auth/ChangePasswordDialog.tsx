@@ -10,7 +10,7 @@ interface ChangePasswordDialogProps {
   onOpenChange: (open: boolean) => void;
 }
 
-/** "Passwort ändern" for a logged-in local account (editor header). */
+/** "Passwort ändern" for a logged-in local account (avatar menu, `AccountMenu`). */
 export function ChangePasswordDialog({ open, onOpenChange }: ChangePasswordDialogProps) {
   const token = useAuthStore((s) => s.token);
   const username = useAuthStore((s) => s.user?.email);
