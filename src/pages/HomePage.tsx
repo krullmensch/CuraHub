@@ -2,8 +2,10 @@ import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { Skeleton } from '@/components/ui/skeleton';
-import { ArrowRight, Layers, Calendar } from 'lucide-react';
+import { ArrowRight, Layers, Calendar, RotateCw } from 'lucide-react';
 import { LegalLinks } from '@/components/legal/LegalLinks';
+import { SiteHeader } from '@/components/SiteHeader';
+import { HEADER_BUTTON } from '@/components/headerStyles';
 
 // `navigator.connection` (Network Information API) isn't in the standard DOM
 // lib types yet — narrow it with a type guard instead of `any`.
@@ -41,7 +43,6 @@ const formatDate = (dateStr: string | null) => {
 
 export const HomePage = () => {
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isProf = useAuthStore((s) => s.isProf);
   const [featured, setFeatured] = useState<ExhibitionEntry | null>(null);
   const [exhibitions, setExhibitions] = useState<ExhibitionEntry[]>([]);
   const [loading, setLoading] = useState(true);
@@ -114,7 +115,7 @@ export const HomePage = () => {
   }, []);
 
   return (
-    <div className="h-screen w-full overflow-y-auto bg-black text-white relative">
+    <div className="h-screen w-full overflow-y-auto bg-zinc-950 text-white relative">
       {/* ── Background Video ── */}
       <video
         ref={videoRef}
@@ -125,66 +126,35 @@ export const HomePage = () => {
         poster="/BG_Video_CuraHub-poster.webp"
         className="fixed inset-0 w-full h-full object-cover pointer-events-none z-0 grayscale"
       />
-      <div className="fixed inset-0 bg-black/70 pointer-events-none z-0" />
+      <div className="fixed inset-0 bg-zinc-950/80 pointer-events-none z-0" />
 
-      {/* ── Nav ── */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-5 bg-black/80 backdrop-blur-md border-b border-white/5">
-        <Link to="/" className="font-display text-xl font-light tracking-wide text-white">
-          Cura<span className="font-semibold">Hub</span>
-        </Link>
-        <div className="flex items-center gap-3 sm:gap-6 text-sm">
-          <Link to="/exhibition" className="text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
-            Ausstellungen
-          </Link>
-          {isProf && (
-            <Link
-              to="/einstellungen"
-              className="hidden sm:inline text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
-            >
-              Einstellungen
-            </Link>
-          )}
-          {isAuthenticated ? (
-            <Link
-              to="/project"
-              className="rounded-full border border-zinc-600 px-4 py-2 text-zinc-200 sm:rounded-none sm:border-0 sm:px-0 sm:py-0 sm:text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
-            >
-              Dashboard
-            </Link>
-          ) : (
-            <Link
-              to="/login"
-              className="border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white px-4 py-1.5 rounded-full text-xs font-medium transition-all"
-            >
-              Login
-            </Link>
-          )}
-        </div>
-      </nav>
+      {/* ── Header: the same bar as the dashboard ── */}
+      <SiteHeader />
 
       {/* ── Hero ── */}
-      <section className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6 sm:px-8 pt-20 homepage-fade-up">
+      <section className="relative z-10 min-h-screen flex flex-col items-center justify-center px-6 sm:px-8 pt-20 pb-12 homepage-fade-up">
         {loading ? (
-          <div className="flex flex-col items-center gap-6 w-full max-w-xl">
+          <div className="flex flex-col items-center gap-6 w-full max-w-xl" role="status" aria-label="Ausstellung wird geladen">
             <Skeleton className="h-4 w-32 bg-zinc-800" />
             <Skeleton className="h-16 w-full bg-zinc-800" />
             <Skeleton className="h-5 w-64 bg-zinc-800" />
-            <Skeleton className="h-10 w-40 mt-4 bg-zinc-800 rounded-full" />
+            <div className="mt-4 flex gap-3">
+              <Skeleton className="h-10 w-44 bg-zinc-800 rounded-lg" />
+              <Skeleton className="h-10 w-40 bg-zinc-800 rounded-lg" />
+            </div>
           </div>
         ) : error ? (
           <div className="text-center">
             <p className="text-zinc-400 mb-4">{error}</p>
-            <button
-              onClick={fetchData}
-              className="text-sm text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-5 py-2 rounded-full transition-all"
-            >
+            <button onClick={fetchData} className={`${HEADER_BUTTON} mx-auto`}>
+              <RotateCw className="h-3.5 w-3.5" />
               Erneut versuchen
             </button>
           </div>
         ) : featured ? (
           <div className="text-center max-w-3xl">
             <p
-              className="text-xs tracking-[0.35em] uppercase text-zinc-400 mb-8 homepage-fade-up"
+              className="text-xs font-medium uppercase tracking-wider text-zinc-400 mb-6 homepage-fade-up"
               style={{ animationDelay: '0.1s' }}
             >
               Aktuelle Ausstellung
@@ -197,50 +167,60 @@ export const HomePage = () => {
             </h1>
             {featured.version.comment && (
               <p
-                className="text-lg text-zinc-400 font-light mb-8 homepage-fade-up"
+                className="text-lg text-zinc-300 mb-6 homepage-fade-up"
                 style={{ animationDelay: '0.4s' }}
               >
                 {featured.version.comment}
               </p>
             )}
             <div
-              className="flex items-center justify-center gap-6 text-xs text-zinc-400 mb-10 homepage-fade-up"
+              className="flex flex-wrap items-center justify-center gap-2 text-xs text-zinc-300 mb-10 homepage-fade-up"
               style={{ animationDelay: '0.5s' }}
             >
               {featured.version.published_at && (
-                <span className="flex items-center gap-1.5">
-                  <Calendar className="w-3 h-3" />
+                <span className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1">
+                  <Calendar className="w-3.5 h-3.5 text-zinc-400" />
                   {formatDate(featured.version.published_at)}
                 </span>
               )}
-              <span className="flex items-center gap-1.5">
-                <Layers className="w-3 h-3" />
+              <span className="flex items-center gap-1.5 rounded-md border border-zinc-800 bg-zinc-900/80 px-2.5 py-1">
+                <Layers className="w-3.5 h-3.5 text-zinc-400" />
                 {featured.version.artworkCount} {featured.version.artworkCount === 1 ? 'Objekt' : 'Objekte'}
               </span>
             </div>
-            <Link
-              to={`/exhibition/${featured.exhibition.slug}`}
-              className="inline-flex items-center gap-2 border border-zinc-600 hover:border-white text-zinc-300 hover:text-white px-8 py-3 rounded-full text-sm font-medium transition-all homepage-fade-up group"
+            <div
+              className="flex flex-wrap items-center justify-center gap-3 homepage-fade-up"
               style={{ animationDelay: '0.6s' }}
             >
-              Ausstellung betreten
-              <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
-            </Link>
+              <Link
+                to={`/exhibition/${featured.exhibition.slug}`}
+                className="group inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition-colors hover:bg-blue-500"
+              >
+                Ausstellung betreten
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+              <Link
+                to="/exhibitions"
+                className="inline-flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-900/80 px-5 py-2.5 text-sm font-medium text-zinc-300 transition-colors hover:border-zinc-500 hover:text-white"
+              >
+                Alle Ausstellungen
+              </Link>
+            </div>
           </div>
         ) : (
           /* Empty state — no featured exhibition */
           <div className="text-center max-w-lg">
             <h1
-              className="font-display text-5xl sm:text-6xl font-light tracking-tight text-white mb-6 homepage-fade-up"
+              className="text-5xl sm:text-6xl font-bold tracking-tight text-white mb-4 homepage-fade-up"
               style={{ animationDelay: '0.2s' }}
             >
-              Cura<span className="font-semibold">Hub</span>
+              CuraHub
             </h1>
             <p
-              className="text-zinc-400 text-lg font-light homepage-fade-up"
+              className="text-zinc-400 text-lg homepage-fade-up"
               style={{ animationDelay: '0.4s' }}
             >
-              Digitale Ausstellungsraume der HSBI
+              Digitale Ausstellungsräume der HSBI
             </p>
           </div>
         )}
@@ -248,17 +228,19 @@ export const HomePage = () => {
 
       {/* ── Past Exhibitions ── */}
       {!loading && !error && exhibitions.length > 0 && (
-        <section className="relative z-10 px-4 sm:px-8 pb-24 pt-12">
+        <section className="relative z-10 px-4 sm:px-8 pb-24">
           <div className="max-w-5xl mx-auto">
-            <div className="flex items-center gap-4 mb-12 homepage-fade-up" style={{ animationDelay: '0.7s' }}>
-              <div className="h-px flex-1 bg-zinc-800" />
-              <h2 className="text-xs tracking-[0.3em] uppercase text-zinc-400 font-medium">
+            <div className="flex items-center justify-between gap-4 mb-4 border-b border-zinc-800 pb-3 homepage-fade-up" style={{ animationDelay: '0.7s' }}>
+              <h2 className="text-xs font-medium uppercase tracking-wider text-zinc-400">
                 Vergangene Ausstellungen
               </h2>
-              <div className="h-px flex-1 bg-zinc-800" />
+              <Link to="/exhibitions" className="flex items-center gap-1 text-sm text-gray-400 transition-colors hover:text-white">
+                Alle anzeigen
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {exhibitions.map((entry, i) => (
                 <Link
                   key={entry.version.id}
@@ -266,8 +248,8 @@ export const HomePage = () => {
                   className="group block homepage-fade-up"
                   style={{ animationDelay: `${0.8 + i * 0.1}s` }}
                 >
-                  <div className="border border-zinc-800/80 rounded-xl p-6 bg-zinc-950/50 hover:border-zinc-600 hover:bg-zinc-900/40 transition-all duration-300">
-                    <h3 className="font-display text-lg font-normal text-zinc-200 group-hover:text-white transition-colors mb-3 leading-tight">
+                  <div className="h-full rounded-lg border border-zinc-800 bg-zinc-900/90 p-5 transition-colors hover:border-zinc-600 hover:bg-zinc-900">
+                    <h3 className="text-base font-semibold text-zinc-100 group-hover:text-white transition-colors mb-2 leading-tight">
                       {entry.exhibition.title}
                     </h3>
                     {entry.version.comment && (
@@ -275,7 +257,7 @@ export const HomePage = () => {
                         {entry.version.comment}
                       </p>
                     )}
-                    <div className="flex items-center justify-between text-xs text-zinc-400">
+                    <div className="flex items-center justify-between text-xs text-zinc-500">
                       <span className="flex items-center gap-1.5">
                         <Layers className="w-3 h-3" />
                         {entry.version.artworkCount} {entry.version.artworkCount === 1 ? 'Objekt' : 'Objekte'}
@@ -293,20 +275,18 @@ export const HomePage = () => {
       )}
 
       {/* ── Footer ── */}
-      <footer className="relative z-10 border-t border-zinc-900 px-8 py-12 homepage-fade-up" style={{ animationDelay: '1s' }}>
-        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-zinc-400">
-          <p>
-            CuraHub ist ein digitales Ausstellungstool der{' '}
-            <span className="text-zinc-400">HSBI</span>.
-          </p>
+      <footer className="relative z-10 border-t border-zinc-800 bg-zinc-900/80 px-6 py-6 homepage-fade-up" style={{ animationDelay: '1s' }}>
+        <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-zinc-400">
+          <p>CuraHub ist ein digitales Ausstellungstool der HSBI.</p>
           <LegalLinks />
-          <p>
-            Kuratieren erfordert einen{' '}
-            <span className="text-zinc-400">HSBI</span>-Account.{' '}
-            <Link to="/login" className="text-zinc-400 hover:text-white transition-colors underline underline-offset-2">
-              Anmelden
-            </Link>
-          </p>
+          {!isAuthenticated && (
+            <p>
+              Zum Kuratieren brauchst du ein Konto.{' '}
+              <Link to="/login" className="text-zinc-300 hover:text-white transition-colors underline underline-offset-2">
+                Anmelden
+              </Link>
+            </p>
+          )}
         </div>
       </footer>
     </div>

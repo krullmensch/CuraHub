@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Skeleton } from '@/components/ui/skeleton';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LegalLinks } from '@/components/legal/LegalLinks';
+import { SiteHeader } from '@/components/SiteHeader';
 import { fetchLegalData, LEGAL_PAGES, type LegalKind } from '@/lib/legal/legalApi';
 import { resolveLegalDocuments } from '@/lib/legal/documents';
 
@@ -32,14 +32,9 @@ export const LegalPage = ({ kind }: { kind: LegalKind }) => {
 
   return (
     <div className="min-h-screen bg-zinc-950 text-white flex flex-col">
-      <nav className="flex items-center justify-between px-8 py-5 border-b border-white/5">
-        <Link to="/" className="font-display text-xl font-light tracking-wide text-white">
-          Cura<span className="font-semibold">Hub</span>
-        </Link>
-        <LegalLinks className="text-zinc-400" />
-      </nav>
+      <SiteHeader />
 
-      <main className="flex-1 px-8 py-12">
+      <main className="flex-1 px-8 pt-24 pb-12">
         <div className="max-w-3xl mx-auto wiki-content">
           {state.status === 'loading' && (
             <div role="status" aria-label={`${page.title} wird geladen`} className="space-y-4">
@@ -68,6 +63,12 @@ export const LegalPage = ({ kind }: { kind: LegalKind }) => {
           ))}
         </div>
       </main>
+
+      <footer className="border-t border-zinc-800 bg-zinc-900/80 px-6 py-6">
+        <div className="max-w-3xl mx-auto flex justify-center">
+          <LegalLinks className="text-zinc-400" />
+        </div>
+      </footer>
     </div>
   );
 };

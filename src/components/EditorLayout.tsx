@@ -22,6 +22,7 @@ import { MobilePlannerLayout } from './mobile/MobilePlannerLayout';
 import { useMobilePlanner } from '../lib/mobilePlanner/mode';
 import { isTouchViewer, readTouchEnv } from '../lib/touch/touchMode';
 import { AccountMenu } from './auth/AccountMenu';
+import { HEADER_BUTTON, HEADER_BUTTON_ACTIVE } from './headerStyles';
 import { isSettingsPath, settingsPath } from '../lib/settings/sections';
 import { LoadingOverlay, LoadingState, Spinner } from '@/components/ui/loading';
 
@@ -226,11 +227,7 @@ export const EditorLayout = () => {
                 to={settingsPath()}
                 data-tour="settings"
                 aria-current={isSettingsRoute ? 'page' : undefined}
-                className={`flex items-center gap-1.5 text-xs border px-3 py-1.5 rounded transition-all ${
-                  isSettingsRoute
-                    ? 'text-white border-zinc-500 bg-zinc-800'
-                    : 'text-gray-400 hover:text-white border-zinc-700 hover:border-zinc-500'
-                }`}
+                className={isSettingsRoute ? HEADER_BUTTON_ACTIVE : HEADER_BUTTON}
               >
                 <Settings className="h-3.5 w-3.5" />
                 Einstellungen
@@ -242,7 +239,7 @@ export const EditorLayout = () => {
               <div className="relative" ref={viewerPopoverRef} data-tour="viewer-button">
                 <button
                   onClick={() => setViewerPopoverOpen((o) => !o)}
-                  className="flex items-center gap-1.5 whitespace-nowrap text-xs text-gray-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-all"
+                  className={HEADER_BUTTON}
                 >
                   <Globe className="h-3.5 w-3.5" />
                   Viewer testen

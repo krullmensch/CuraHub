@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { useAuthStore } from '../store/authStore';
 import { ArrowUpRight, Layers, Calendar } from 'lucide-react';
 import { LegalLinks } from '@/components/legal/LegalLinks';
+import { SiteHeader } from '@/components/SiteHeader';
 
 interface ExhibitionEntry {
   exhibition: {
@@ -43,8 +43,6 @@ const formatDateShort = (dateStr: string | null) => {
 
 
 export const ExhibitionsPage = () => {
-  const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
-  const isProf = useAuthStore((s) => s.isProf);
   const [entries, setEntries] = useState<ExhibitionEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -90,7 +88,7 @@ export const ExhibitionsPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#0a0a0a] text-white font-body">
+    <div className="min-h-screen bg-zinc-950 text-white font-body">
       <style>{`
         @keyframes catalogue-in {
           from { opacity: 0; transform: translateY(16px); }
@@ -165,40 +163,11 @@ export const ExhibitionsPage = () => {
         }
       `}</style>
 
-      {/* Nav */}
-      <nav className="fixed top-0 left-0 right-0 z-50 flex items-center justify-between px-4 py-4 sm:px-8 sm:py-5 bg-[#0a0a0a]/90 backdrop-blur-md border-b border-white/[0.05]">
-        <Link to="/" className="font-display text-xl font-light tracking-wide text-white">
-          Cura<span className="font-semibold">Hub</span>
-        </Link>
-        <div className="flex items-center gap-3 sm:gap-6 text-sm">
-          <Link to="/exhibitions" className="text-white text-xs tracking-[0.12em] uppercase font-medium">
-            Ausstellungen
-          </Link>
-          {isProf && (
-            <Link
-              to="/einstellungen"
-              className="hidden sm:inline text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors"
-            >
-              Einstellungen
-            </Link>
-          )}
-          {isAuthenticated ? (
-            <Link to="/project" className="rounded-full border border-zinc-600 px-4 py-2 text-zinc-200 sm:rounded-none sm:border-0 sm:px-0 sm:py-0 sm:text-zinc-400 hover:text-white text-xs tracking-[0.12em] uppercase transition-colors">
-              Dashboard
-            </Link>
-          ) : (
-            <Link
-              to="/login"
-              className="border border-zinc-700 hover:border-zinc-500 text-zinc-300 hover:text-white px-4 py-1.5 rounded-full text-xs font-medium transition-all"
-            >
-              Login
-            </Link>
-          )}
-        </div>
-      </nav>
+      {/* Header: the same bar as the dashboard */}
+      <SiteHeader />
 
       {/* Header */}
-      <header className="pt-36 pb-16 px-8 catalogue-in" style={{ animationDelay: '0s' }}>
+      <header className="pt-28 pb-16 px-8 catalogue-in" style={{ animationDelay: '0s' }}>
         <div className="max-w-5xl mx-auto">
           <div className="flex items-end justify-between gap-6 pb-8 border-b border-zinc-800">
             <div>
